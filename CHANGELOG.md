@@ -13,12 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 <!-- Changes to existing functionality go here -->
+- The meta agent's delegated sessions panel can now be folded away, so the transcript gets the full width on a narrow or vertical window.
 
 ### Fixed
 <!-- Bug fixes go here -->
 - Cmd+Alt+W (Ctrl+Alt+W on Windows and Linux) now opens the new-worktree dialog, like the New Worktree menu item it is shown next to, instead of creating a worktree with a generated name
-- The meta agent's delegated sessions panel can now be folded away, so the transcript gets the full width on a narrow or vertical window.
-- Codex sessions preserve Streamable HTTP MCP servers instead of merging them into invalid stdio configurations.
+- Codex sessions no longer fail to start when an HTTP MCP server is also listed in `~/.codex/config.toml`
+- Copilot tool calls show their tool name, arguments and result instead of "unknown", and Copilot messages are labeled "Copilot Agent"
 - Archiving a session now shows an error when it fails, and no longer hangs when a worktree's git remote stops responding
 - In a project spanning several repositories, pulling or pushing one of them from the title bar shows its progress and names the repository, and no longer greys out pull and push for the others while it runs
 
