@@ -34,6 +34,10 @@ Competitors/
 - When such a folder contains `README.md` or `index.md` (case-insensitive, `README.md` preferred), that file is the folder page's body, not a child. This is how an imported folder of docs keeps its landing page. When `Name.md` exists beside `Name/`, a `README.md` inside is an ordinary child page.
 - Files that are neither pages nor table `.csv` files (images, attachments) are carried along by moves but are not pages.
 
+### Attachments
+
+A file added to a page (dropped or pasted into it) is stored in `.assets/` inside the page's child folder, under its own name: `Competitors.md` keeps its attachments in `Competitors/.assets/`, and links them as `![chart](Competitors/.assets/chart.png)` or `[deck](Competitors/.assets/deck.pdf)`. The folder is hidden, so it is not a page, and it moves, trashes and restores with the page. A file whose name is taken by different content gets the first free ` (2)`, ` (3)`, ... suffix; the same content reuses the existing file. When a page is renamed, links in its own body into its old child folder are rewritten to the new one.
+
 ### Frontmatter
 
 Frontmatter is flat YAML, read with the YAML core schema (dates stay strings):

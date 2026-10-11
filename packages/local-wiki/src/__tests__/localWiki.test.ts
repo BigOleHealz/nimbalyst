@@ -62,6 +62,26 @@ describe('move and rename', () => {
     expect(snap.pages.find((p) => p.id === 'P')).toMatchObject({ parentId: 'A', path: 'Archive/Acme Corp/Pricing.md' });
     expect(snap.issues).toEqual([]);
   });
+
+  it('stores attachments in the page folder, dedupes them, and keeps their links through a rename and move', async () => {
+    await put('Q3 Plan.md', '---\nid: Q\n---\n');
+    await put('Archive.md', '---\nid: R\n---\n');
+    await open();
+    const bytes = new TextEncoder().encode('%PDF');
+    const first = await wiki!.storeAttachment('Q', 'spec v2.pdf', bytes);
+    expect(first).toEqual({ path: 'Q3 Plan/.assets/spec v2.pdf', link: 'Q3%20Plan/.assets/spec%20v2.pdf' });
+    expect(await wiki!.storeAttachment('Q', 'spec v2.pdf', bytes)).toEqual(first);
+    expect((await wiki!.storeAttachment('Q', '../spec v2.pdf', new TextEncoder().encode('other'))).path).toBe('Q3 Plan/.assets/spec v2 (2).pdf');
+    // The hidden folder is not a page, and the page has no children.
+    const snap = await wiki!.snapshot();
+    expect(snap.pages.map((p) => p.title).sort()).toEqual(['Archive', 'Q3 Plan']);
+
+    await wiki!.writeBody('Q', `![shot](Q3%20Plan/.assets/shot.png) and [spec](${first.link}) and [web](https://x.test/Q3%20Plan/a)\n`, null);
+    await wiki!.command({ type: 'update-document-title', documentId: 'Q', title: 'Q4 Plan' });
+    await wiki!.command({ type: 'move-document', documentId: 'Q', parentFolderId: 'R' });
+    expect(await read('Archive/Q4 Plan.md')).toContain('![shot](Q4%20Plan/.assets/shot.png) and [spec](Q4%20Plan/.assets/spec%20v2.pdf) and [web](https://x.test/Q3%20Plan/a)');
+    expect(await exists(path.join(root, 'Archive/Q4 Plan/.assets/spec v2.pdf'))).toBe(true);
+  });
 });
 
 describe('scan', () => {

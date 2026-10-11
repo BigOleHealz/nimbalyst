@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, rmdir, unlink } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, rmdir, unlink } from 'node:fs/promises';
 import { watch as fsWatchSync } from 'node:fs';
 import * as path from 'node:path';
 import yaml from 'js-yaml';
@@ -6,7 +6,9 @@ import { contentVersion, idForFileName, ulid } from './ids.js';
 import { composeMarkdownFile, flattenLegacy, parseMarkdownFile, RESERVED_KEYS } from './frontmatter.js';
 import { fileStemForTitle, nameKey, uniqueStem } from './names.js';
 import { atomicWrite, movePath, pathExists, relJoin } from './fsutil.js';
-import { ACTIVITY_SUFFIX, MARKER_FILE, TRASH_DIR, TRASH_MANIFEST, type PageRecord, type TrashManifest } from './scan.js';
+import { ACTIVITY_SUFFIX, linkBaseDir, MARKER_FILE, TRASH_DIR, TRASH_MANIFEST, type PageRecord, type TrashManifest } from './scan.js';
+import { ATTACHMENTS_DIR, rebaseChildFolderLinks, writeAttachment } from './attachments.js';
+import { encodeLinkPath } from './links.js';
 import { decodeRow } from './tableCodec.js';
 import { tableInfo } from './project.js';
 import { searchDocs, type SearchDoc } from './search.js';
@@ -233,6 +235,25 @@ export class LocalWiki extends WikiTables {
       }
       await this.refresh();
       return result;
+    });
+  }
+
+  /**
+   * Stores a file dropped into a page as an attachment in the page's
+   * `<child folder>/.assets/`. Returns its wiki-relative path and the link to
+   * write in the page body (relative to the page, percent-encoded).
+   */
+  async storeAttachment(id: string, fileName: string, bytes: Uint8Array): Promise<{ path: string; link: string }> {
+    return this.mutate(async () => {
+      const page = await this.pageForWrite(id);
+      this.requireWellFormed(page);
+      if (page.sidecar) throw new LocalWikiError('invalid', 'Only markdown pages take attachments');
+      const assetsRel = relJoin(page.dir, ATTACHMENTS_DIR);
+      const assetsAbs = this.abs(assetsRel);
+      await mkdir(assetsAbs, { recursive: true });
+      const name = await writeAttachment(assetsAbs, fileName, bytes, await readdir(assetsAbs));
+      const rel = relJoin(assetsRel, name);
+      return { path: rel, link: encodeLinkPath(path.posix.relative(linkBaseDir(page), rel)) };
     });
   }
 
@@ -598,7 +619,9 @@ export class LocalWiki extends WikiTables {
         else delete data.title;
         if (order === null) delete data.order;
         else data.order = order;
-        if (JSON.stringify(data) !== JSON.stringify(parsed.data)) await atomicWrite(abs, composeMarkdownFile(data, parsed.body));
+        // A renamed page's links into its own child folder (attachments) follow the folder.
+        const body = page.bodySource === 'file' ? rebaseChildFolderLinks(parsed.body, path.posix.basename(page.dir), stem) : parsed.body;
+        if (JSON.stringify(data) !== JSON.stringify(parsed.data) || body !== parsed.body) await atomicWrite(abs, composeMarkdownFile(data, body));
       }
     } else if (wantTitle || order !== null) {
       const data = { id: page.id, ...(wantTitle ? { title: wantTitle } : {}), ...(order !== null ? { order } : {}) };
