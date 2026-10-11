@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The meta agent's delegated sessions panel can now be folded away, so the transcript gets the full width on a narrow or vertical window.
 - Codex sessions preserve Streamable HTTP MCP servers instead of merging them into invalid stdio configurations.
 - Archiving a session now shows an error when it fails, and no longer hangs when a worktree's git remote stops responding
+- In a project spanning several repositories, pulling or pushing one of them from the title bar shows its progress and names the repository, and no longer greys out pull and push for the others while it runs
 
 ### Removed
 <!-- Removed features go here -->
