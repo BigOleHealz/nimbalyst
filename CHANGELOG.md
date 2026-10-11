@@ -53,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Local wiki pages an agent edited now open in the Wiki with the edit applied instead of in red/green review
 - Removing a project's last slash command or action prompt on the desktop now removes it on the phone too
 - The iOS session list now shows an error when the device's database can't be read, instead of an empty list
+- The iOS session list no longer fails with "Couldn't load sessions" on iPhones with an older system SQLite
 - The desktop no longer fails to refresh its sign-in every 30 seconds when its saved sync server address is malformed
 - A Local wiki type file written as the wiki format describes, without `icon`, `color`, `modes` or `idPrefix`, now loads; a type file that still fails to load shows in the Local section with the reason instead of its tables and typed pages silently disappearing
 - Shell commands no longer appear as sub-agents in the agent sidebar, and a stopped task no longer looks the same as one that failed.
