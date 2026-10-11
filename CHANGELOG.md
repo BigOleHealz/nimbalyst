@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cmd+Alt+W (Ctrl+Alt+W on Windows and Linux) now opens the new-worktree dialog, like the New Worktree menu item it is shown next to, instead of creating a worktree with a generated name
 - The meta agent's delegated sessions panel can now be folded away, so the transcript gets the full width on a narrow or vertical window.
 - Codex sessions preserve Streamable HTTP MCP servers instead of merging them into invalid stdio configurations.
+- Archiving a session now shows an error when it fails, and no longer hangs when a worktree's git remote stops responding
 
 ### Removed
 <!-- Removed features go here -->

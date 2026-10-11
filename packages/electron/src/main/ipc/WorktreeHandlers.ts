@@ -22,11 +22,15 @@ import { getTerminalsByWorktreeId, deleteTerminalInstance } from '../utils/termi
 import { gitRefWatcher } from '../file/GitRefWatcher';
 import { isGitRepositoryInUse } from '../file/GitWatcherLifecycle';
 import { listReposForRoot, resolveDefaultRepo } from '../services/workspaceRepos';
+import { withTimeout } from '../utils/gitUncommittedFiles';
 import type { WorktreeCreateResult } from '../../shared/ipc/types';
 import { gitOperationLock } from '../services/GitOperationLock';
 import fs from 'node:fs';
 import { archiveSessionsAndDestroyProviders } from '../services/ai/archiveSessionProviderLifecycle';
 import { createWorktreeArchiveCleanup } from '../services/worktreeArchiveCleanup';
+
+// Archive waits on this fetch; a stalled remote must not hang the click (#282).
+const STATUS_FETCH_TIMEOUT_MS = 15_000;
 
 const logger = log.scope('WorktreeHandlers');
 
@@ -543,8 +547,12 @@ export function registerWorktreeHandlers(): void {
         // Fetch latest remote refs for accurate merge detection
         if (options?.fetchFirst && baseBranch) {
           try {
-            const git = simpleGit(worktreePath);
-            await git.fetch(['origin', baseBranch]);
+            const git = simpleGit(worktreePath, { timeout: { block: STATUS_FETCH_TIMEOUT_MS } });
+            await withTimeout(
+              git.fetch(['origin', baseBranch]),
+              STATUS_FETCH_TIMEOUT_MS,
+              `git fetch timed out after ${STATUS_FETCH_TIMEOUT_MS}ms`,
+            );
           } catch (fetchError) {
             logger.warn('Failed to fetch base branch before status check (continuing with local refs)', { fetchError });
           }
