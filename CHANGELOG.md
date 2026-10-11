@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 <!-- Bug fixes go here -->
+- A Claude Code session no longer keeps showing "Waiting for your response" after you answer its question while it carries on working.
 
 ### Removed
 <!-- Removed features go here -->
