@@ -515,7 +515,12 @@ export class SettingsControlService {
     // as enabled, and nothing ever read it -- indistinguishable from a feature
     // that is broken (#1501). `bucket` is unvalidated too, and every value
     // other than 'alpha'/'beta' silently landed in `developerFeatures`.
-    const definition = FEATURE_BUCKETS[bucket];
+    // Own-property check: a plain index would resolve `constructor`,
+    // `__proto__`, etc. from Object.prototype. (`Object.hasOwn` is ES2022;
+    // this package's lib is ES2020.)
+    const definition = Object.prototype.hasOwnProperty.call(FEATURE_BUCKETS, bucket)
+      ? FEATURE_BUCKETS[bucket]
+      : undefined;
     if (!definition) {
       return {
         ok: false,

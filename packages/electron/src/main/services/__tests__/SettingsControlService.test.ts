@@ -279,6 +279,24 @@ describe('SettingsControlService.toggleFeature', () => {
     expect(setAppSetting).not.toHaveBeenCalled();
   });
 
+  it.each(['constructor', '__proto__', 'toString'])(
+    'rejects inherited object property "%s" as a bucket',
+    async (bucket) => {
+      developerModeOn();
+      vi.mocked(setAppSetting).mockClear();
+
+      const result = await SettingsControlService.getInstance().toggleFeature(`session-proto-${bucket}`, {
+        bucket: bucket as 'alpha',
+        tag: 'worktrees',
+        enabled: true,
+      });
+
+      expect(result).toMatchObject({ ok: false });
+      expect(result.message).toContain('Unknown feature bucket');
+      expect(setAppSetting).not.toHaveBeenCalled();
+    },
+  );
+
   it('reports the missing tag before asking the user for Developer Mode', async () => {
     // Developer Mode off: an unregistered tag can never be toggled, so sending
     // the user to Settings > Advanced first would be a dead end.
