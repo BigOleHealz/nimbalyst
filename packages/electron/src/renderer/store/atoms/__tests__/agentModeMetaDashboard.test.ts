@@ -9,7 +9,7 @@ import {
 } from '../agentMode';
 import { activeWorkspacePathAtom } from '../openProjects';
 
-// NIM-3087: on a narrow/vertical window the meta-agent "Delegated Sessions"
+// On a narrow/vertical window the meta-agent "Delegated Sessions"
 // pane must be foldable, and the choice has to survive a reload.
 describe('meta-agent dashboard collapse', () => {
   it('defaults to expanded and flips on toggle', () => {
