@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { checkArchiveWrites, findArchiveWrites } from '../check-session-archive-writes.mjs';
+import path from 'node:path';
+import { checkArchiveWrites, findArchiveWrites, isArchiveHelper } from '../check-session-archive-writes.mjs';
+
+test('recognizes the helper from a Windows-style path', () => {
+  const root = 'C:\\repo';
+  const helper = path.win32.join(root, 'packages', 'electron', 'src', 'renderer', 'utils', 'saveSessionArchived.ts');
+  const other = path.win32.join(root, 'packages', 'electron', 'src', 'renderer', 'utils', 'other.ts');
+  assert.equal(isArchiveHelper(helper, root, path.win32), true);
+  assert.equal(isArchiveHelper(other, root, path.win32), false);
+});
 
 test('flags direct isArchived writes and ignores comments, strings, and other calls', () => {
   const flagged = [

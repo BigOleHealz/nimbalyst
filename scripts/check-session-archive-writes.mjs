@@ -78,12 +78,18 @@ export function findArchiveWrites(source, fileName = 'file.tsx') {
   return hits;
 }
 
+// `path.relative` uses the platform separator; HELPER is slash-separated, so
+// compare in POSIX form or Windows flags the helper itself.
+export function isArchiveHelper(file, root = repoRoot, pathImpl = path) {
+  return pathImpl.relative(root, file).split(pathImpl.sep).join('/') === HELPER;
+}
+
 export function checkArchiveWrites(roots = SCAN_ROOTS) {
   const failures = [];
   for (const root of roots) {
     for (const file of listSourceFiles(path.join(repoRoot, root))) {
       const relative = path.relative(repoRoot, file);
-      if (relative === HELPER) continue;
+      if (isArchiveHelper(file)) continue;
       for (const hit of findArchiveWrites(readFileSync(file, 'utf8'), file)) {
         failures.push(`${relative}:${hit.line}: ${CHANNEL} with isArchived`);
       }
