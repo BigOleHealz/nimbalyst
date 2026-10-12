@@ -9,7 +9,23 @@
 import { BrowserTrackerSchemaStore, parseBuiltinTrackers } from '@nimbalyst/collab-bundle/trackers-ui';
 import type { WikiTypeInfo } from '../api/client';
 
-function modelJson(type: WikiTypeInfo): string {
+const NOT_A_TABLE_COLUMN = new Set(['description', 'created', 'updated']);
+
+/**
+ * The table shows only role fields and `tableView.defaultColumns` by default,
+ * and wiki type files rarely declare either, so a type's own fields would be
+ * hidden with no way here to add them. A file that lists its columns keeps them.
+ */
+function tableView(definition: Record<string, unknown>, fields: unknown[], titleField: string): Record<string, unknown> {
+  const declared = (definition.tableView as Record<string, unknown> | undefined) ?? {};
+  if (Array.isArray(declared.defaultColumns)) return declared;
+  const defaultColumns = fields
+    .map((field) => (field && typeof field === 'object' ? (field as { name?: unknown }).name : null))
+    .filter((name): name is string => typeof name === 'string' && name !== titleField && !NOT_A_TABLE_COLUMN.has(name));
+  return { ...declared, defaultColumns };
+}
+
+export function modelJson(type: WikiTypeInfo): string {
   const definition = type.definition ?? {};
   const fields = Array.isArray(definition.fields) ? definition.fields : type.fields;
   return JSON.stringify({
@@ -20,6 +36,7 @@ function modelJson(type: WikiTypeInfo): string {
     displayName: type.displayName,
     displayNamePlural: type.displayNamePlural,
     fields,
+    tableView: tableView(definition, fields, type.titleField),
     roles: { ...((definition.roles as Record<string, unknown> | undefined) ?? {}), title: type.titleField },
     modes: { inline: true, fullDocument: type.storage === 'pages' },
     idPrefix: typeof definition.idPrefix === 'string' ? definition.idPrefix : type.typeId.slice(0, 3),
