@@ -482,6 +482,19 @@ function schedulePersist(workspacePath: string): void {
 const initPromises = new Map<string, Promise<void>>();
 
 /**
+ * Project settings entries saved before entries carried a target always meant
+ * the project owning the history. Without the target, the page SettingsView
+ * records after Back would not equal the restored entry and would truncate
+ * Forward history.
+ */
+function withLegacySettingsTarget(entry: NavigationEntry, workspacePath: string): NavigationEntry {
+  if (entry.mode !== 'settings' || entry.settings?.scope !== 'project' || entry.settings.target) {
+    return entry;
+  }
+  return { ...entry, settings: { ...entry.settings, target: { kind: 'workspace', workspacePath } } };
+}
+
+/**
  * Initialize navigation history from workspace state.
  * Call this when workspace path is known.
  *
@@ -512,7 +525,7 @@ export async function initNavigationHistory(
 
       if (saved && Array.isArray(saved.entries)) {
         store.set(navigationHistoryAtomFamily(workspacePath), {
-          entries: saved.entries,
+          entries: saved.entries.map(entry => withLegacySettingsTarget(entry, workspacePath)),
           currentIndex: saved.currentIndex ?? saved.entries.length - 1,
         });
         console.log('[navigationHistory] Loaded', saved.entries.length, 'entries for', workspacePath);
