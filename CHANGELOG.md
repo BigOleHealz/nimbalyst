@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Claude Code sessions suggest your next prompt in the empty input after a turn; press Tab to fill it in (toggle in Agent Features)
 - Claude Agent sessions stopped by a usage limit can continue on their own once the limit resets; turn it on from the limit card in the transcript or in Agent Features
 - The iOS app can copy diagnostics (versions and recent sync errors, no session content) from Settings, the "Couldn't load sessions" screen and the sync error banner, for pasting into a bug report
+- Customize a project's initials, color, or image in Project Settings > Appearance
 
 ### Changed
 <!-- Changes to existing functionality go here -->
