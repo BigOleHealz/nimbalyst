@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 <!-- Changes to existing functionality go here -->
 - The meta agent's delegated sessions panel can now be folded away, so the transcript gets the full width on a narrow or vertical window.
-- Pages search has a full-width search box with active filters shown as pills inside it
+- Pages search and the tracker toolbar show active filters, tags and source as pills inside the search box; the tracker toolbar's Clear and source buttons are gone, Filter is an icon in the box, and Import moved into the New menu
 
 ### Fixed
 <!-- Bug fixes go here -->

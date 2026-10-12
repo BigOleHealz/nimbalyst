@@ -20,7 +20,7 @@
  * to the shared filter set; the search text it was appended to is untouched.
  */
 
-import type { JSX, KeyboardEvent as ReactKeyboardEvent } from 'react';
+import type { JSX, KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react';
 import {
   lazy,
   Suspense,
@@ -84,6 +84,13 @@ export interface TrackerFilterOmniboxProps {
   showPills?: boolean;
   /** Draw the pills inside the box, before the text, instead of in a row below it. */
   inlinePills?: boolean;
+  /**
+   * Clicking a field pill calls this instead of pulling the pill back into the
+   * text. Returning `false` declines, and the pill is pulled back as usual.
+   */
+  onPillClick?: (clauseIndex: number, clause: TrackerFieldFilter) => boolean | void;
+  /** Controls drawn at the right end of an inline-pills box, before its clear button. */
+  trailing?: ReactNode;
   /** Layout for the surface this instance sits on (width, padding, borders). */
   className?: string;
   placeholder?: string;
@@ -126,6 +133,8 @@ export function TrackerFilterOmnibox({
   onTagFilterChange,
   showPills = true,
   inlinePills = false,
+  onPillClick,
+  trailing,
   className = '',
   placeholder = 'Search, # for tags, or a field name to filter…',
   size = 'default',
@@ -428,8 +437,10 @@ export function TrackerFilterOmnibox({
             <button
               type="button"
               className="flex h-full min-w-0 items-center gap-1 px-1.5 hover:bg-nim-tertiary hover:text-nim"
-              onClick={() => editClause(clause, index)}
-              title={`Edit ${serializeClause(clause, fields)}`}
+              onClick={() => {
+                if (onPillClick?.(index, clause) === false || !onPillClick) editClause(clause, index);
+              }}
+              title={onPillClick ? 'Edit filters' : `Edit ${serializeClause(clause, fields)}`}
             >
               <span className="shrink-0 font-medium text-nim">
                 {parts.field}
@@ -461,7 +472,7 @@ export function TrackerFilterOmnibox({
       {inlinePills ? (
         <div
           ref={boxRef}
-          className={`tracker-filter-omnibox-box flex min-w-0 cursor-text flex-wrap items-center gap-1 border border-nim bg-nim-secondary focus-within:border-[var(--nim-primary)] ${large ? 'min-h-9 rounded-md py-1 pl-3 pr-2' : 'rounded py-0.5 pl-2 pr-1'}`}
+          className={`tracker-filter-omnibox-box flex min-w-0 cursor-text flex-wrap items-center gap-1 border border-nim bg-nim-secondary focus-within:border-[var(--nim-primary)] ${large ? 'min-h-9 rounded-md py-1 pl-3 pr-2' : 'min-h-7 rounded py-0.5 pl-2 pr-1'}`}
           onClick={(event) => {
             if (event.target === event.currentTarget) inputRef.current?.focus();
           }}
@@ -489,6 +500,7 @@ export function TrackerFilterOmnibox({
             onKeyDown={handleKeyDown}
             data-testid="tracker-filter-omnibox-input"
           />
+          {trailing}
           {hasAnything && (
             <button
               type="button"
