@@ -8,3 +8,10 @@ it('heals a stale manager after process restart even when parent and activity ti
   expect(result.sessionsNeedingIndexUpdate).toEqual([local]);
   expect(result.sessionsNeedingMessageSync).toEqual([]);
 });
+
+it('republishes a local session whose server row is unreadable under the current key', () => {
+  // An undecryptable row carries no value, so the mirror snapshot omits the session and it reads as absent.
+  const local = { id: 'old-key', workspaceId: '/p', provider: 'claude-code', title: 'Old', messageCount: 3, createdAt: 5000, updatedAt: 6000 };
+  const result = selectSessionsForIndexSync([local], { complete: true, indexProtocolVersion: 2, sessions: [], projects: [] }, 7000);
+  expect(result.sessionsNeedingIndexUpdate).toEqual([local]);
+});

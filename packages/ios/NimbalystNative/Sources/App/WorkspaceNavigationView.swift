@@ -19,6 +19,8 @@ final class WorkspaceNavigationState: ObservableObject {
     /// Outlives `hosts`, which is empty from foreground until the socket reconnects.
     /// Changes only alongside a `hosts` write, so it needs no publisher of its own.
     private var knownDesktopIds: Set<String> = []
+    /// Same lifetime as `knownDesktopIds`: an empty roster while reconnecting keeps the last answer.
+    private(set) var hasMultipleHosts = false
     private var hostSubscription: AnyCancellable?
     private weak var hostSource: AnyObject?
     private var composeStates: [String: SessionComposeState] = [:]
@@ -35,11 +37,12 @@ final class WorkspaceNavigationState: ObservableObject {
         hostSubscription?.cancel()
         hostSubscription = publisher.sink { [weak self] devices in
             guard let self else { return }
-            let roster = devices.filter { $0.type == "desktop" || $0.type == "headless" }
+            let roster = DeviceRoster.recent(devices.filter { $0.type == "desktop" || $0.type == "headless" })
             for device in roster {
                 if device.type == "desktop" { knownDesktopIds.insert(device.deviceId) }
                 else { knownDesktopIds.remove(device.deviceId) }
             }
+            if !roster.isEmpty { hasMultipleHosts = roster.count > 1 }
             hosts = roster
             adoptDefaultHost(from: hosts)
         }
@@ -48,6 +51,12 @@ final class WorkspaceNavigationState: ObservableObject {
     /// Desktop-created sessions carry no hostDeviceId and are listed under a desktop.
     var includesUnattributedSessions: Bool {
         hostDeviceId.map(knownDesktopIds.contains) ?? false
+    }
+
+    /// With one computer there is nothing to choose, and filtering would hide
+    /// sessions recorded under that computer's older device ids.
+    var sessionListHostFilter: String? {
+        hasMultipleHosts ? hostDeviceId : nil
     }
 
     func stopObservingHosts() {
@@ -92,6 +101,7 @@ final class WorkspaceNavigationState: ObservableObject {
     func clearAccount() {
         hostDeviceId = nil
         knownDesktopIds = []
+        hasMultipleHosts = false
         composeStates.removeAll()
         chooseProject(nil)
     }
@@ -162,7 +172,7 @@ struct WorkspaceNavigationView: View {
             Group {
                 if let project = navigation.project {
                     SessionListView(
-                        project: project, selection: selection, hostDeviceId: navigation.hostDeviceId,
+                        project: project, selection: selection, hostDeviceId: navigation.sessionListHostFilter,
                         includeUnattributedSessions: navigation.includesUnattributedSessions
                     )
                         .id(project.id)
@@ -229,7 +239,28 @@ struct WorkspaceNavigationView: View {
         return appState.syncManager?.connectedDevices.contains(where: { $0.type == "desktop" }) ?? false
     }
 
+    @ViewBuilder
     private var computerMenu: some View {
+        if navigation.hasMultipleHosts {
+            computerPicker
+        } else {
+            connectionIndicator
+                .accessibilityLabel(isDesktopConnected ? "Computer connected" : "Computer offline")
+        }
+    }
+
+    private var connectionIndicator: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "desktopcomputer")
+                .font(.system(size: 14))
+                .foregroundStyle(appState.isConnected ? .primary : .secondary)
+            Circle()
+                .fill(isDesktopConnected ? Color.green : (appState.isConnected ? Color.orange : Color.gray))
+                .frame(width: 8, height: 8)
+        }
+    }
+
+    private var computerPicker: some View {
         Menu {
             Picker("Machine", selection: Binding(
                 get: { navigation.hostDeviceId },
@@ -244,14 +275,7 @@ struct WorkspaceNavigationView: View {
                 }
             }
         } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "desktopcomputer")
-                    .font(.system(size: 14))
-                    .foregroundStyle(appState.isConnected ? .primary : .secondary)
-                Circle()
-                    .fill(isDesktopConnected ? Color.green : (appState.isConnected ? Color.orange : Color.gray))
-                    .frame(width: 8, height: 8)
-            }
+            connectionIndicator
         }
         .accessibilityLabel("Switch computer")
         .accessibilityIdentifier("Switch Computer")
