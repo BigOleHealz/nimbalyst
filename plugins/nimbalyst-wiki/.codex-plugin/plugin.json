@@ -1,0 +1,36 @@
+{
+  "name": "nimbalyst-wiki",
+  "version": "0.3.0",
+  "description": "Your project's Nimbalyst Wiki from Codex: the team's pages on the Nimbalyst server, or a local wiki of plain files in the repository. Read pages as context, and record what people decided in the page it affects.",
+  "author": {
+    "name": "Nimbalyst",
+    "url": "https://nimbalyst.com"
+  },
+  "homepage": "https://nimbalyst.com",
+  "repository": "https://github.com/nimbalyst/nimbalyst",
+  "license": "MIT",
+  "keywords": [
+    "pages",
+    "wiki",
+    "knowledge",
+    "team",
+    "local"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.codex-mcp.json",
+  "interface": {
+    "displayName": "Nimbalyst Wiki",
+    "shortDescription": "Read and update your project's wiki",
+    "developerName": "Nimbalyst",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://nimbalyst.com",
+    "defaultPrompt": [
+      "What does the wiki say about this?",
+      "Record what we decided in the wiki"
+    ]
+  }
+}

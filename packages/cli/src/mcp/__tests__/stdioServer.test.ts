@@ -16,6 +16,7 @@ import { initWiki, openWiki } from '@nimbalyst/local-wiki';
 import { PAGE_TOOL_NAMES } from '@nimbalyst/collab-protocol';
 import { handleMessage, runStdioServer } from '../stdioServer.js';
 import { TeamScopeRefusal, ToolMap, textResult } from '../toolMap.js';
+import { resolvePluginWorkspace } from '../pluginWorkspace.js';
 
 const packageDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const repoRoot = path.resolve(packageDir, '../..');
@@ -222,5 +223,17 @@ describe('tool calls', () => {
       id: null,
       error: { code: -32600, message: 'Invalid request' },
     });
+  });
+});
+
+describe('plugin workspace', () => {
+  const pluginRoot = '/home/u/.codex/plugins/cache/nimbalyst/nimbalyst-wiki/0.3.0';
+
+  it('uses Claude Code project, else Codex PWD only when started in the plugin directory', () => {
+    expect(resolvePluginWorkspace({ CLAUDE_PROJECT_DIR: '/repo', PWD: '/other' }, pluginRoot, pluginRoot)).toBe('/repo');
+    expect(resolvePluginWorkspace({ PWD: '/repo' }, `${pluginRoot}/`, pluginRoot)).toBe('/repo');
+    // A host that moved the cwd without updating PWD: the cwd wins.
+    expect(resolvePluginWorkspace({ PWD: '/stale' }, '/repo', pluginRoot)).toBe('/repo');
+    expect(resolvePluginWorkspace({}, pluginRoot, pluginRoot)).toBe(pluginRoot);
   });
 });

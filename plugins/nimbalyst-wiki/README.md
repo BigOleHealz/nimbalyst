@@ -7,11 +7,12 @@ There are two kinds of wiki, and you can use either or both:
 - **Local wiki**: a folder of markdown files in your repository. No account, no server. Keep it private to your checkout (`nimbalyst-local/wiki`, ignored by git) or check it in (`docs/wiki`) so teammates get it through git.
 - **Team wiki**: a Nimbalyst Teams project's pages, shared live on the Nimbalyst server, with comments, history and access managed by your team.
 
-You can work with the wiki from four places, all on the same pages:
+You can work with the wiki from these places, all on the same pages:
 
 | | Local wiki | Team wiki |
 | --- | --- | --- |
 | Claude Code (this plugin) | yes | yes |
+| Codex (this plugin) | yes | yes |
 | Nimbalyst app | Wiki mode, Local section | Wiki mode, Team section |
 | `nim` command line | `nim wiki ...` | `nim wiki ...` |
 | Browser | `nim wiki serve` | the Nimbalyst web console |
@@ -33,7 +34,7 @@ The plugin brings three MCP servers. `/mcp` lists them:
 - `nimbalyst-team`: the team wiki on the Nimbalyst server. It asks you to sign in to Nimbalyst the first time you connect it in `/mcp`. Leave it disconnected if you only use a local wiki.
 - `nimbalyst-session`: lets Claude cite what you typed in this session when it records a decision. It reads only this session's transcript, on your machine.
 
-### Commands
+### Skills
 
 - `/nimbalyst-wiki:setup` builds a wiki that is useful from day one: it asks a few questions about who the wiki is for, then writes a Home page, the writing guide ("How we write this wiki") and a handful of starter pages from your project's README and docs. It can also define types (below). Running it again fills gaps and never duplicates or overwrites what people wrote.
 - `/nimbalyst-wiki:capture` records what this session decided. Claude lists the decisions, answered questions and open questions from the conversation, finds the page each one affects, and writes it there. If nothing is worth keeping, it says so.
@@ -66,6 +67,22 @@ After a session with real work in it (a commit, a plan, or several file edits), 
 ### If you also use the Nimbalyst app
 
 Inside the Nimbalyst app, agents already have the wiki tools, and the plugin stands aside so there is one write path per page.
+
+## Codex
+
+The same plugin installs in the Codex CLI:
+
+```sh
+codex plugin marketplace add nimbalyst/nimbalyst
+codex plugin add nimbalyst-wiki@nimbalyst
+```
+
+It brings the same skills (`nimbalyst-wiki:setup`, `capture`, `update`, `connect`) and the same three MCP servers; `codex mcp list` shows them. Sign in to the team wiki with `codex mcp login nimbalyst-team`.
+
+Two differences from Claude Code:
+
+- Codex does not run hooks that come with a plugin, so there is no reminder to capture decisions at the end of a session. Ask for it ("record what we decided in the wiki").
+- `nimbalyst-session` reads Claude Code transcripts only, so decisions recorded from Codex are marked with your name but carry no quote from the session.
 
 ## Nimbalyst app
 
