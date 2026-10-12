@@ -120,6 +120,8 @@ final class WireFixtureTests: XCTestCase {
         "ServerError": roundTrip(ServerError.self),
         "SessionControlBroadcast": roundTrip(SessionControlBroadcast.self),
         "SessionControlMessage": roundTrip(SessionControlMessage.self),
+        "SessionContextBroadcast": roundTrip(SessionContextBroadcast.self),
+        "SessionContextUpdateMessage": roundTrip(SessionContextUpdateMessage.self),
         "SessionSyncRequest": roundTrip(SessionSyncRequest.self),
         "SessionSyncResponse": roundTrip(SessionSyncResponse.self),
         "SettingsSyncBroadcast": roundTrip(SettingsSyncBroadcast.self),

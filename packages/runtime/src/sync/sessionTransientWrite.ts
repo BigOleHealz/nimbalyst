@@ -24,7 +24,7 @@ export interface TransientSessionWriteDeps {
   openSocket(sessionId: string): Promise<{ ws: WebSocket; release(): void }>;
   shouldSync(message: AgentMessage): boolean;
   encryptMessage(message: AgentMessage, key: CryptoKey): Promise<PreparedSessionMessage>;
-  encryptTitle(title: string, key: CryptoKey): Promise<{ encryptedTitle: string; titleIv: string }>;
+  encryptTitle(title: string, key: CryptoKey, sessionId?: string): Promise<{ encryptedTitle: string; titleIv: string }>;
 }
 
 export interface TransientSessionMetadata {
@@ -120,7 +120,7 @@ export async function writeSessionMessagesOverTransientSocket(
           // only; sending plaintext here would leak titles into DO SQLite
           // (see also IndexRoom.encrypted_title for the index-side equivalent).
           if (metadata.title) {
-            const { encryptedTitle, titleIv } = await deps.encryptTitle(metadata.title, key);
+            const { encryptedTitle, titleIv } = await deps.encryptTitle(metadata.title, key, `session:${sessionId}`);
             wireMetadata.encryptedTitle = encryptedTitle;
             wireMetadata.titleIv = titleIv;
           }

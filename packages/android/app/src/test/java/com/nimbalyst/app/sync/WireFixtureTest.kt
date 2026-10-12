@@ -65,6 +65,7 @@ class WireFixtureTest {
         "indexSyncRequest.json" to IndexSyncRequest::class.java,
         "indexSyncResponse.json" to IndexSyncResponse::class.java,
         "indexDeleteBroadcast.json" to IndexDeleteBroadcast::class.java,
+        "sessionContextBroadcast.json" to SessionContextBroadcast::class.java,
         "appendMessage.json" to AppendMessageRequest::class.java,
         "messageBroadcast.json" to MessageBroadcast::class.java,
         "syncRequest.json" to SessionSyncRequest::class.java,
@@ -163,6 +164,7 @@ class WireFixtureTest {
             "fileIndexUpdate.json" to "desktop publishes file metadata",
             "fileIndexDelete.json" to "desktop publishes file metadata",
             "voiceToolResponse.json" to "voice is out of scope on Android",
+            "sessionContextUpdate.json" to "desktop's leg; Android consumes the broadcast",
         )
 
         /** Fields Android deliberately does not model, per fixture. */

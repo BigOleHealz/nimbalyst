@@ -579,6 +579,23 @@
       "direction": "serverToIos",
       "swiftType": "SessionMessageAppendAck",
       "swiftSource": "packages/ios/NimbalystNative/Sources/Sync/SessionPayloadStore.swift"
+    },
+    {
+      "file": "sessionContextUpdate.json",
+      "tsType": "Extract<ClientMessage, { type: 'sessionContextUpdate' }>",
+      "tsSource": "packages/runtime/src/sync/collabV3WireTypes.ts",
+      "direction": "desktopToServer",
+      "swiftType": "SessionContextUpdateMessage",
+      "swiftSource": "packages/ios/NimbalystNative/Sources/Sync/SyncProtocol.swift",
+      "notes": "Phones do not send this; they receive sessionContextBroadcast. Relayed, never stored. Ciphertext is synthetic; in production it decrypts to client-metadata JSON holding only currentContext."
+    },
+    {
+      "file": "sessionContextBroadcast.json",
+      "tsType": "Extract<ServerMessage, { type: 'sessionContextBroadcast' }>",
+      "tsSource": "packages/runtime/src/sync/collabV3WireTypes.ts",
+      "direction": "serverToIos",
+      "swiftType": "SessionContextBroadcast",
+      "swiftSource": "packages/ios/NimbalystNative/Sources/Sync/SyncProtocol.swift"
     }
   ],
   "findings": [

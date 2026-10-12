@@ -619,6 +619,19 @@ public final class DatabaseManager: @unchecked Sendable {
         }
     }
 
+    /// Update only the live context-window usage for an existing session.
+    /// Returns false when no local row exists; never creates one.
+    @discardableResult
+    public func updateSessionContext(sessionId: String, tokens: Int, contextWindow: Int) throws -> Bool {
+        try writer.write { db in
+            try db.execute(
+                sql: "UPDATE sessions SET contextTokens = ?, contextWindow = ? WHERE id = ?",
+                arguments: [tokens, contextWindow, sessionId]
+            )
+            return db.changesCount > 0
+        }
+    }
+
     // MARK: - Synced Document Queries
 
     public func documents(forProject projectId: String) throws -> [SyncedDocument] {

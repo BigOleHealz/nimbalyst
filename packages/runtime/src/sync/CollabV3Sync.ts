@@ -38,6 +38,8 @@ import {
   uint8ArrayToBase64,
 } from './collabV3Crypto';
 import { buildSyncedSessionIndexFields } from './sessionIndexEntryFields';
+import { encryptStable } from './stableCiphertext';
+import { createLiveContextPublisher } from './liveSessionContext';
 import { resolveIndexSortTimestamp } from './sessionSortTimestamp';
 import {
   createIndexPublicationGate,
@@ -167,13 +169,10 @@ const MOBILE_PUSH_ACK_TIMEOUT_MS = 10_000;
  * Encrypt queued prompts for wire transmission.
  * Each prompt's text is encrypted individually.
  */
-async function encryptQueuedPrompts(
-  prompts: PlaintextQueuedPrompt[],
-  key: CryptoKey
-): Promise<EncryptedQueuedPrompt[]> {
+async function encryptQueuedPrompts(prompts: PlaintextQueuedPrompt[], key: CryptoKey, sessionId: string): Promise<EncryptedQueuedPrompt[]> {
   return Promise.all(
     prompts.map(async (prompt) => {
-      const { encrypted, iv } = await encrypt(prompt.prompt, key);
+      const { encrypted, iv } = await encryptStable(`queued:${sessionId}:${prompt.id}`, prompt.prompt, key);
       return {
         id: prompt.id,
         encryptedPrompt: encrypted,
@@ -215,11 +214,9 @@ async function decryptQueuedPrompts(
 /**
  * Encrypt a session title for wire transmission.
  */
-async function encryptTitle(
-  title: string,
-  key: CryptoKey
-): Promise<{ encryptedTitle: string; titleIv: string }> {
-  const { encrypted, iv } = await encrypt(title, key);
+/** With a scope (index: session id; session room: `session:` + id), an unchanged title keeps its ciphertext. */
+async function encryptTitle(title: string, key: CryptoKey, sessionId?: string): Promise<{ encryptedTitle: string; titleIv: string }> {
+  const { encrypted, iv } = sessionId ? await encryptStable(`title:${sessionId}`, title, key) : await encrypt(title, key);
   return {
     encryptedTitle: encrypted,
     titleIv: iv,
@@ -346,11 +343,8 @@ function indexPatchSignatureForEntry(entry: CachedSessionIndex): string {
 /**
  * Encrypt client metadata for wire transmission.
  */
-async function encryptClientMetadata(
-  metadata: ClientMetadata,
-  key: CryptoKey
-): Promise<{ encryptedClientMetadata: string; clientMetadataIv: string }> {
-  const { encrypted, iv } = await encrypt(JSON.stringify(metadata), key);
+async function encryptClientMetadata(metadata: ClientMetadata, key: CryptoKey, sessionId: string): Promise<{ encryptedClientMetadata: string; clientMetadataIv: string }> {
+  const { encrypted, iv } = await encryptStable(`clientMeta:${sessionId}`, JSON.stringify(metadata), key);
   return { encryptedClientMetadata: encrypted, clientMetadataIv: iv };
 }
 
@@ -850,6 +844,11 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
   }
 
   const indexPublishQueue = createKeyedSerialQueue();
+  const liveContext = createLiveContextPublisher({
+    serialize: indexPublishQueue.run, getCached: (id) => sessionIndexCache.get(id), setCached: (id, entry) => { sessionIndexCache.set(id, entry); },
+    encryptionKey: () => config.encryptionKey, send: (frame) => !!indexWs && indexConnected && indexWs.readyState === WS_OPEN && (indexWs.send(frame), true),
+    fallback: async (id, currentContext) => (await provider.pushChange(id, { type: 'metadata_updated', metadata: { currentContext } })) ?? { published: true },
+  });
   /**
    * Guards the window between reading the cache and sending. The bulk
    * reconciliation path encrypts hundreds of entries outside the per-session
@@ -1192,7 +1191,7 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
     if (!config.encryptionKey) {
       throw new Error('[CollabV3] Cannot send queued prompts: no encryption key available');
     }
-    indexEntry.encryptedQueuedPrompts = await encryptQueuedPrompts(queuedPrompts, config.encryptionKey);
+    indexEntry.encryptedQueuedPrompts = await encryptQueuedPrompts(queuedPrompts, config.encryptionKey, indexEntry.sessionId);
   }
 
   async function sendIndexUpdate(baseEntry: CachedSessionIndex, options?: PushChangeOptions): Promise<PushChangeOutcome> {
@@ -1238,7 +1237,7 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
     };
 
     if (baseEntry.title) {
-      const { encryptedTitle, titleIv } = await encryptTitle(baseEntry.title, config.encryptionKey);
+      const { encryptedTitle, titleIv } = await encryptTitle(baseEntry.title, config.encryptionKey, baseEntry.sessionId);
       indexEntry.encryptedTitle = encryptedTitle;
       indexEntry.titleIv = titleIv;
     }
@@ -1249,9 +1248,9 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
       baseEntry.queuedPromptCount,
     );
 
-    const clientMeta = buildClientMetadataFromCacheEntry(baseEntry);
+    const clientMeta = buildClientMetadataFromCacheEntry(liveContext.overlay(baseEntry));
     if (clientMeta) {
-      const { encryptedClientMetadata, clientMetadataIv } = await encryptClientMetadata(clientMeta, config.encryptionKey);
+      const { encryptedClientMetadata, clientMetadataIv } = await encryptClientMetadata(clientMeta, config.encryptionKey, baseEntry.sessionId);
       indexEntry.encryptedClientMetadata = encryptedClientMetadata;
       indexEntry.clientMetadataIv = clientMetadataIv;
     }
@@ -1315,9 +1314,9 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
       lastReadAt: publishedEntry.lastReadAt,
     };
 
-    const clientMeta = shouldSend ? buildClientMetadataFromCacheEntry(publishedEntry) : undefined;
+    const clientMeta = shouldSend ? buildClientMetadataFromCacheEntry(liveContext.overlay(publishedEntry)) : undefined;
     if (clientMeta) {
-      const { encryptedClientMetadata, clientMetadataIv } = await encryptClientMetadata(clientMeta, config.encryptionKey);
+      const { encryptedClientMetadata, clientMetadataIv } = await encryptClientMetadata(clientMeta, config.encryptionKey, baseEntry.sessionId);
       patch.encryptedClientMetadata = encryptedClientMetadata;
       patch.clientMetadataIv = clientMetadataIv;
     }
@@ -3069,7 +3068,7 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
 
       // Encrypt title - encryption is required
       if (session.title) {
-        const { encryptedTitle, titleIv } = await encryptTitle(session.title, config.encryptionKey);
+        const { encryptedTitle, titleIv } = await encryptTitle(session.title, config.encryptionKey, session.id);
         entry.encryptedTitle = encryptedTitle;
         entry.titleIv = titleIv;
       }
@@ -3102,7 +3101,7 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
             }
           : undefined;
       if (clientMeta) {
-        const { encryptedClientMetadata, clientMetadataIv } = await encryptClientMetadata(clientMeta, config.encryptionKey);
+        const { encryptedClientMetadata, clientMetadataIv } = await encryptClientMetadata(clientMeta, config.encryptionKey, session.id);
         entry.encryptedClientMetadata = encryptedClientMetadata;
         entry.clientMetadataIv = clientMetadataIv;
       }
@@ -3286,7 +3285,7 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
 
         // Encrypt title
         if (change.metadata.title && config.encryptionKey) {
-          const { encryptedTitle, titleIv } = await encryptTitle(change.metadata.title, config.encryptionKey);
+          const { encryptedTitle, titleIv } = await encryptTitle(change.metadata.title, config.encryptionKey, `session:${sessionId}`);
           metadata.encryptedTitle = encryptedTitle;
           metadata.titleIv = titleIv;
         }
@@ -3306,7 +3305,7 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
             if (!config.encryptionKey) {
               throw new Error('[CollabV3] Cannot send queued prompts: no encryption key available');
             }
-            metadata.encryptedQueuedPrompts = await encryptQueuedPrompts(change.metadata.queuedPrompts, config.encryptionKey);
+            metadata.encryptedQueuedPrompts = await encryptQueuedPrompts(change.metadata.queuedPrompts, config.encryptionKey, `session:${sessionId}`);
           } else {
             metadata.encryptedQueuedPrompts = [];
           }
@@ -3335,12 +3334,12 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
           if (clientMeta.draftInput !== undefined) {
             // console.log('[CollabV3] Encrypting clientMeta with draftInput, sending to index');
           }
-          const encrypted = await encryptClientMetadata(clientMeta, config.encryptionKey);
+          const encrypted = await encryptClientMetadata(clientMeta, config.encryptionKey, `session:${sessionId}`);
           metadata.encryptedClientMetadata = encrypted.encryptedClientMetadata;
           metadata.clientMetadataIv = encrypted.clientMetadataIv;
         }
-        // Only send to session room if connected; index-only updates skip this
-        if (sessionConnected) {
+        // Session room only when connected and a stored field changed: the per-message updatedAt push is index-only.
+        if (sessionConnected && Object.values(metadata).some(value => value !== undefined)) {
           clientMessage = { type: 'updateMetadata', metadata };
         }
         break;
@@ -3534,6 +3533,7 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
   }
 
   const provider: SyncProvider = {
+    publishLiveContext: liveContext.publish,
     async connect(sessionId: string): Promise<void> {
       const pending = sessionConnectionsInFlight.get(sessionId);
       if (pending) return pending;

@@ -94,6 +94,7 @@ import { ToolUsageService } from '../ToolUsageService';
 import { historyManager } from '../../HistoryManager';
 import { addGitignoreBypass } from '../../file/WorkspaceEventBus';
 import { getSyncProvider, isDesktopTrulyAway } from '../SyncManager';
+import { publishContextUsage } from './publishContextUsage';
 import { requestMobilePush } from './mobilePushRequest';
 import { createAskUserQuestionListeners } from './askUserQuestionListeners';
 import { createTeammateIdleWakeListener } from './teammateIdleWake';
@@ -1544,23 +1545,8 @@ export class MessageStreamingHandler {
               // Push live context usage to mobile sync
               const syncProvider = getSyncProvider();
               if (syncProvider) {
-                // Streaming chunks must not wait for index publication. This task catches failures internally.
-                void (async () => {
-                  try {
-                    const outcome = await syncProvider.pushChange(session.id, {
-                      type: 'metadata_updated',
-                      metadata: {
-                        currentContext: {
-                          tokens: partialContextFill,
-                          contextWindow: partialContextWindow,
-                        },
-                      },
-                    });
-                    warnIfUnpublished(message => logger.main.warn(message), session.id, '[AIService] Failed to publish sync change', outcome);
-                  } catch (error) {
-                    logger.main.warn(`[AIService] Failed to publish sync change for session ${session.id}:`, error);
-                  }
-                })();
+                // Streaming chunks must not wait for publication; the helper catches its own failures.
+                void publishContextUsage(syncProvider, session.id, { tokens: partialContextFill, contextWindow: partialContextWindow });
               }
 
               session.tokenUsage = updatedUsage;
@@ -2388,20 +2374,7 @@ export class MessageStreamingHandler {
               if (contextFillTokens !== undefined && contextWindowForDisplay) {
                 const syncProvider = getSyncProvider();
                 if (syncProvider) {
-                  try {
-                    const outcome = await syncProvider.pushChange(session.id, {
-                      type: 'metadata_updated',
-                      metadata: {
-                        currentContext: {
-                          tokens: contextFillTokens,
-                          contextWindow: contextWindowForDisplay,
-                        },
-                      },
-                    });
-                    warnIfUnpublished(message => logger.main.warn(message), session.id, '[AIService] Failed to publish sync change', outcome);
-                  } catch (error) {
-                    logger.main.warn(`[AIService] Failed to publish sync change for session ${session.id}:`, error);
-                  }
+                  await publishContextUsage(syncProvider, session.id, { tokens: contextFillTokens, contextWindow: contextWindowForDisplay });
                 }
               }
 
@@ -2445,20 +2418,7 @@ export class MessageStreamingHandler {
               if (reportsCurrentContext && contextFillTokens !== undefined && reportedContextWindow) {
                 const syncProvider = getSyncProvider();
                 if (syncProvider) {
-                  try {
-                    const outcome = await syncProvider.pushChange(session.id, {
-                      type: 'metadata_updated',
-                      metadata: {
-                        currentContext: {
-                          tokens: contextFillTokens,
-                          contextWindow: reportedContextWindow,
-                        },
-                      },
-                    });
-                    warnIfUnpublished(message => logger.main.warn(message), session.id, '[AIService] Failed to publish sync change', outcome);
-                  } catch (error) {
-                    logger.main.warn(`[AIService] Failed to publish sync change for session ${session.id}:`, error);
-                  }
+                  await publishContextUsage(syncProvider, session.id, { tokens: contextFillTokens, contextWindow: reportedContextWindow });
                 }
               }
 

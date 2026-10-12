@@ -730,7 +730,9 @@ public final class SyncManager: ObservableObject {
         case "createWorktreeResponseBroadcast":
             handleCreateWorktreeResponse(data)
         case "voiceToolResponseBroadcast":
-            handleVoiceToolResponse(data)
+            if let requestId = voiceTools.receive(data) { requests.resolve(requestId: requestId) }
+        case "sessionContextBroadcast":
+            liveContext.apply(data)
         case "error":
             handleIndexError(data)
         default:
@@ -834,10 +836,8 @@ public final class SyncManager: ObservableObject {
         return await voiceTools.call(toolName: "nimbalyst_live_v1", argsJson: json, projectId: scope.projectId, scope: scope)
     }
 
-    private func handleVoiceToolResponse(_ data: Data) {
-        guard let requestId = voiceTools.receive(data) else { return }
-        requests.resolve(requestId: requestId)
-    }
+    /// Mid-turn context usage relayed, never stored, by the server.
+    private lazy var liveContext = LiveSessionContextApplier(crypto: crypto, database: database)
 
     // MARK: - Settings Sync
 

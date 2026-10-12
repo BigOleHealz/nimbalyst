@@ -378,6 +378,24 @@ data class IndexBroadcast(
     val fromConnectionId: String? = null,
 )
 
+/**
+ * A session's live context-window usage, relayed by the server and never
+ * stored. `encryptedContext`/`contextIv` decrypt to [ClientMetadata] JSON
+ * holding only `currentContext`.
+ */
+data class LiveSessionContext(
+    val sessionId: String,
+    val encryptedContext: String,
+    val contextIv: String,
+    val at: Long,
+)
+
+data class SessionContextBroadcast(
+    val type: String,
+    val update: LiveSessionContext,
+    val fromConnectionId: String? = null,
+)
+
 data class IndexDeleteBroadcast(
     val type: String,
     val sessionId: String,

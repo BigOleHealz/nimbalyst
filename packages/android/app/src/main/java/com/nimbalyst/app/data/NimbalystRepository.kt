@@ -271,6 +271,10 @@ class NimbalystRepository(
         database.sessionDao().updateDraftInput(sessionId, draftInput, draftUpdatedAt)
     }
 
+    /** Writes a relayed live context reading. False when the session is not in the local DB. */
+    suspend fun updateLiveContext(sessionId: String, tokens: Int, contextWindow: Int): Boolean =
+        database.sessionDao().updateLiveContext(sessionId, tokens, contextWindow) > 0
+
     suspend fun updateClientMetadata(sessionId: String, clientMetadataJson: String) {
         database.sessionDao().updateClientMetadata(sessionId, clientMetadataJson)
     }

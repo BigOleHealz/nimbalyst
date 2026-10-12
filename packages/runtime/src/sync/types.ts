@@ -233,6 +233,9 @@ export interface SyncProvider {
     options?: PushChangeOptions,
   ): void | Promise<void | PushChangeOutcome>;
 
+  /** Live context usage, relayed to other devices without a stored write (see liveSessionContext.ts). */
+  publishLiveContext?(sessionId: string, currentContext: { tokens: number; contextWindow: number }): Promise<PushChangeOutcome>;
+
   /**
    * Append transcript rows over a socket opened for this write alone, for a
    * session that has no permanent room socket. Refuses (non-retryable) after

@@ -1,4 +1,4 @@
-import type { SessionPayloadReference, SessionPayloadClientMessage, SessionPayloadServerMessage } from '@nimbalyst/collab-protocol';
+import type { LiveSessionContext, SessionPayloadReference, SessionPayloadClientMessage, SessionPayloadServerMessage } from '@nimbalyst/collab-protocol';
 /**
  * CollabV3 wire types.
  *
@@ -312,6 +312,7 @@ export type ClientMessage =
   | { type: 'voiceToolRequest'; request: EncryptedVoiceToolRequest }
   | { type: 'voiceToolResponse'; response: EncryptedVoiceToolResponse }
   | { type: 'sessionControl'; message: { sessionId: string; messageType: string; payload?: Record<string, unknown>; timestamp: number; sentBy: 'desktop' | 'mobile'; sentByDeviceId?: string; targetDeviceId?: string } }
+  | { type: 'sessionContextUpdate'; update: LiveSessionContext }
   | {
       type: 'requestMobilePush';
       sessionId: string;
@@ -448,6 +449,7 @@ export type ServerMessage =
   | { type: 'voiceToolRequestBroadcast'; request: EncryptedVoiceToolRequest; fromConnectionId?: string }
   | { type: 'voiceToolResponseBroadcast'; response: EncryptedVoiceToolResponse; fromConnectionId?: string }
   | { type: 'sessionControlBroadcast'; message: { sessionId: string; messageType: string; payload?: Record<string, unknown>; timestamp: number; sentBy: 'desktop' | 'mobile'; sentByDeviceId?: string; targetDeviceId?: string }; fromConnectionId?: string }
+  | { type: 'sessionContextBroadcast'; update: LiveSessionContext; fromConnectionId?: string }
   | { type: 'settingsSyncBroadcast'; settings: EncryptedSettingsPayload; fromConnectionId?: string }
   | { type: 'readReceiptBroadcast'; receipt: EncryptedReadReceiptPayload; fromConnectionId?: string }
   | { type: 'trackerPersonalStateBroadcast'; state: EncryptedTrackerPersonalStatePayload; fromConnectionId?: string }
