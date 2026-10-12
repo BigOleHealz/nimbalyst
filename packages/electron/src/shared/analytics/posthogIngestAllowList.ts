@@ -51,6 +51,8 @@ export const INGESTED_ALWAYS = [
   'mobile_ask_user_question_response',
   'mobile_tool_permission_response',
   'mobile_session_cancelled',
+  'mobile_session_load_error',
+  'mobile_sync_error',
   'collab_home_opened',
   'team_surface_opened',
   'collab_document_opened',
@@ -328,9 +330,6 @@ export const INTENTIONALLY_DROPPED = [
   'mobile_pairing_completed',
   'mobile_push_requested',
   'mobile_request_user_input_response',
-  // Not yet on the PostHog transformation; move to INGESTED_ALWAYS together
-  // with adding it there.
-  'mobile_session_load_error',
   'mobile_workstream_created',
   'mobile_worktree_created',
   'permission_setting_changed',
