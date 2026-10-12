@@ -196,6 +196,20 @@ final class PendingSessionResolverTests: XCTestCase {
         XCTAssertTrue(navigation.composeState(for: "session").text.isEmpty)
     }
 
+    func testDesktopSubmitClearsADraftItSyncedToTheComposer() {
+        let compose = SessionComposeState()
+        compose.applyRemoteDraft("Prompt typed on desktop", updatedAt: 500)
+        XCTAssertEqual(compose.text, "Prompt typed on desktop")
+        // The desktop sent it: its newer clear arrives stored as nil.
+        compose.applyRemoteDraft(nil, updatedAt: 600)
+        XCTAssertEqual(compose.text, "")
+        // A clear older than text typed here does not erase it.
+        compose.text = "Typed on the phone"
+        compose.lastLocalEditAt = 700
+        compose.applyRemoteDraft(nil, updatedAt: 650)
+        XCTAssertEqual(compose.text, "Typed on the phone")
+    }
+
     func testResolvesSessionAlreadyInDatabaseWithoutWaiting() throws {
         let db = try makeDatabase()
         try db.upsertSession(makeSession(id: "s1"))
