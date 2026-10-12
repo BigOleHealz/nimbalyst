@@ -3905,7 +3905,7 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
 
       if (hasPublishableConfig(projectConfig)) {
         const configJson = JSON.stringify(projectConfig);
-        const { encrypted: encryptedConfig, iv: configIv } = await encrypt(configJson, config.encryptionKey);
+        const { encrypted: encryptedConfig, iv: configIv } = await encryptStable(`projectConfig:${projectId}`, configJson, config.encryptionKey);
         message.encryptedConfig = encryptedConfig;
         message.configIv = configIv;
       }
