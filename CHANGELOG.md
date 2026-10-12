@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - In a type's table, clicking a page title now opens the page, and the web wiki viewer shows the fields defined in the type file as columns
 - Picking a filter such as a tag in Pages search now applies it instead of discarding it
 - The phone no longer shows a "different sync key" notice that re-pairing could not clear, and its computer picker lists only computers seen in the last week, hiding the picker when there is just one
+- The phone no longer fails to open a session with "bad response from the server" after its sign-in token expires while it is reconnecting
 - Long assistant replies and question forms no longer disappear from the phone's transcript; only bulky tool output is shortened for mobile sync
 
 ### Removed

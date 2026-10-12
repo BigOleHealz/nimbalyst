@@ -34,6 +34,11 @@ final class WebSocketClient: @unchecked Sendable {
     private var serverUrl: String?
     private var authToken: String?
     private var roomId: String?
+    /// Read before every connect attempt, retries included. The JWT lives five
+    /// minutes; without this a socket keeps retrying with the token it was
+    /// first given, which the server answers with 401 indefinitely.
+    var freshToken: (@MainActor () async -> String?)?
+    var currentAuthToken: String? { authToken }
 
     /// Callback for received messages.
     var onMessage: ((Data) -> Void)?
@@ -139,7 +144,22 @@ final class WebSocketClient: @unchecked Sendable {
         self.authToken = authToken
         isIntentionallyClosed = false
 
-        performConnect()
+        connectWithFreshToken()
+    }
+
+    /// Fenced by generation: a disconnect or a newer connect while the token is
+    /// being read wins over this attempt.
+    @MainActor
+    private func connectWithFreshToken() {
+        guard let freshToken else { performConnect(); return }
+        connectionGeneration &+= 1
+        let generation = connectionGeneration
+        Task { @MainActor [weak self] in
+            let token = await freshToken()
+            guard let self, !self.isIntentionallyClosed, self.connectionGeneration == generation else { return }
+            if let token { self.authToken = token }
+            self.performConnect()
+        }
     }
 
     /// Disconnect and stop reconnection attempts.
@@ -161,7 +181,7 @@ final class WebSocketClient: @unchecked Sendable {
     @MainActor
     func reconnect() {
         guard !isIntentionallyClosed else { return }
-        performConnect()
+        connectWithFreshToken()
     }
 
     @MainActor
@@ -393,7 +413,7 @@ final class WebSocketClient: @unchecked Sendable {
             let retry = DispatchWorkItem { [weak self] in
                 guard let self, !self.isIntentionallyClosed, self.isAppInForeground,
                       self.connectionGeneration == generation else { return }
-                self.performConnect()
+                self.connectWithFreshToken()
             }
             self.reconnectWork?.cancel()
             self.reconnectWork = retry

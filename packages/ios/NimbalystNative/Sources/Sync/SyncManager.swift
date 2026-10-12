@@ -433,6 +433,12 @@ public final class SyncManager: ObservableObject {
         didSet { indexClient.onReconnectNeeded = onReconnectNeeded }
     }
 
+    /// The session room retries on its own, so it reads the token per attempt
+    /// instead of reusing the one from the last index connect.
+    public var freshToken: (@MainActor () async -> String?)? {
+        didSet { sessionClient.freshToken = freshToken }
+    }
+
     func waitForConnection() async -> Bool { await indexClient.waitForReady() }
 
     /// Retire transport before awaiting auth, so creation cannot use a stale

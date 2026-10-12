@@ -661,6 +661,14 @@ public final class AppState: ObservableObject {
         syncManager = sync
         sync.setAppInForeground(recovery.isForeground, recover: false)
         sync.onReconnectNeeded = { [weak self] in self?.recovery.connectionFailed() }
+        sync.freshToken = { [weak self, weak sync] in
+            guard let self, let sync else { return nil }
+            return await SyncCredentials.freshToken(
+                read: { self.authManager.sessionJwt },
+                isCurrent: { account.id == KeychainManager.getActiveAccount()?.id && self.syncManager === sync && self.authManager.isAuthenticated },
+                refresh: { await self.refreshJWT() }
+            )
+        }
         recovery.configure(identity: account.id)
         if networkObserver == nil {
             networkObserver = SyncNetworkObserver { [weak self] in self?.recovery.request(reason: "network") }
