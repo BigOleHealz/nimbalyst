@@ -17,7 +17,7 @@ This project is a small, connected workspace you can explore without setting any
 - See how a markdown document becomes a tracker item in the [tutorial walkthrough plan](planning/plan-tutorial-walkthrough.md).
 - Review a realistic issue in the [example bug](nimbalyst://{{TRACKER_ISSUE_KEY:EXAMPLE_BUG}}).
 - Go to tracker mode (the third icon from the top on the left nav) and explore integrated trackers
-- Start a wiki for this project: turn on the Wiki extension in Settings, then ask the agent to set up a wiki from these files. Open Wiki mode to read and edit the pages it writes.
+- Start a wiki for this project: ask the agent to set up a wiki from these files, then open Wiki mode to read and edit the pages it writes.
 
 ## Your wiki
 
