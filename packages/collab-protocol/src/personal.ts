@@ -1,3 +1,4 @@
+import type { SessionPayloadReference, SessionPayloadClientMessage, SessionPayloadServerMessage } from './sessionPayload.js';
 import type {
   IndexPageRequestMessage,
   IndexPageResponseMessage,
@@ -18,6 +19,7 @@ import type {
 // ============================================================================
 
 export type ClientMessage =
+  | SessionPayloadClientMessage
   | { type: 'beginSessionReplay'; activityAt: number }
   | IndexPageRequestMessage
   | PersonalStatePageRequestMessage
@@ -59,6 +61,7 @@ export interface PingMessage {
 
 /** Request messages since a cursor */
 export interface SyncRequestMessage {
+  sinceRevision?: number;
   type: 'syncRequest';
   sinceId?: string;
   sinceSeq?: number;
@@ -67,6 +70,7 @@ export interface SyncRequestMessage {
 /** Append a new message to the session */
 export interface AppendMessageMessage {
   type: 'appendMessage';
+  expectedRevision?: number;
   message: EncryptedMessage;
 }
 
@@ -514,6 +518,7 @@ export interface EncryptedSettingsPayload {
 // ============================================================================
 
 export type ServerMessage =
+  | SessionPayloadServerMessage
   | { type: 'indexSessionExpired'; sessionId: string; activityAt: number }
   | IndexChangesAvailableMessage
   | IndexPageResponseMessage
@@ -545,6 +550,7 @@ export type ServerMessage =
 
 /** Response to syncRequest */
 export interface SyncResponseMessage {
+  revisionCursor?: number;
   type: 'syncResponse';
   messages: EncryptedMessage[];
   metadata: SessionMetadata | null;
@@ -789,6 +795,9 @@ export interface DeviceInfo {
  * Content is E2E encrypted - server only sees ciphertext.
  */
 export interface EncryptedMessage {
+  projectionVersion?: number;
+  revision?: number;
+  payload?: SessionPayloadReference;
   /** ULID for global ordering */
   id: string;
   /** Monotonic sequence within session */

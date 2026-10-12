@@ -159,6 +159,7 @@ data class CreateWorktreeResponse(
 )
 
 data class SessionSyncRequest(
+    val sinceRevision: Long? = null,
     val type: String = "syncRequest",
     val sinceSeq: Int? = null,
     /** Message id cursor; the server accepts either this or [sinceSeq]. */
@@ -471,6 +472,7 @@ data class ServerErrorMessage(
 )
 
 data class SessionSyncResponse(
+    val revisionCursor: Long? = null,
     val type: String,
     val messages: List<ServerMessageEntry> = emptyList(),
     val metadata: SessionRoomMetadata? = null,
@@ -479,6 +481,9 @@ data class SessionSyncResponse(
 )
 
 data class ServerMessageEntry(
+    val projectionVersion: Int? = null,
+    val revision: Long? = null,
+    val payload: SessionPayloadReference? = null,
     val id: String,
     val sequence: Int,
     val createdAt: Long,
@@ -490,6 +495,7 @@ data class ServerMessageEntry(
 )
 
 data class AppendMessageRequest(
+    val expectedRevision: Long? = null,
     val type: String = "appendMessage",
     val message: ServerMessageEntry,
 )

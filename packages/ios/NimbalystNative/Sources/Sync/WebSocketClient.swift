@@ -203,7 +203,7 @@ final class WebSocketClient: @unchecked Sendable {
         // Server clamps each to 32 chars; keep them short and URL-encoded.
         let platformLabel = Self.encodedClientLabel("mobile")
         let versionLabel = Self.encodedClientLabel(Self.appVersion ?? "unknown")
-        let urlString = "\(wsBase)/sync/\(roomId)?token=\(encodedToken)&platform=\(platformLabel)&version=\(versionLabel)"
+        let urlString = "\(wsBase)/sync/\(roomId)?token=\(encodedToken)&platform=\(platformLabel)&version=\(versionLabel)&sessionPayloadVersion=1"
 
         guard let url = URL(string: urlString) else {
             logger.error("Invalid WebSocket URL: \(urlString)")

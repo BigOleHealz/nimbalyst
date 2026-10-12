@@ -1,3 +1,4 @@
+import type { SessionPayloadReference, SessionPayloadClientMessage, SessionPayloadServerMessage } from '@nimbalyst/collab-protocol';
 /**
  * CollabV3 wire types.
  *
@@ -32,6 +33,9 @@ import type { IndexPageRequestInput } from './indexReplicationClient';
 // ============================================================================
 
 export interface EncryptedMessage {
+  projectionVersion?: number;
+  revision?: number;
+  payload?: SessionPayloadReference;
   id: string;
   sequence: number;
   createdAt: number;
@@ -290,8 +294,9 @@ export interface IndexClientMetadataPatch {
 }
 
 export type ClientMessage =
-  | { type: 'syncRequest'; sinceId?: string; sinceSeq?: number }
-  | { type: 'appendMessage'; message: EncryptedMessage }
+  | SessionPayloadClientMessage
+  | { type: 'syncRequest'; sinceId?: string; sinceSeq?: number; sinceRevision?: number }
+  | { type: 'appendMessage'; message: EncryptedMessage; expectedRevision?: number }
   | { type: 'updateMetadata'; metadata: Partial<SessionMetadata> }
   | { type: 'deleteSession' }
   | { type: 'indexSyncRequest'; projectId?: string }
@@ -411,8 +416,9 @@ export interface ServerProjectEntry {
 }
 
 export type ServerMessage =
+  | SessionPayloadServerMessage
   | { type: 'indexSessionExpired'; sessionId: string; activityAt: number }
-  | { type: 'syncResponse'; messages: EncryptedMessage[]; metadata: SessionMetadata | null; hasMore: boolean; cursor: string | null }
+  | { type: 'syncResponse'; messages: EncryptedMessage[]; metadata: SessionMetadata | null; hasMore: boolean; cursor: string | null; revisionCursor?: number }
   | { type: 'messageBroadcast'; message: EncryptedMessage; fromConnectionId?: string }
   | { type: 'metadataBroadcast'; metadata: Partial<SessionMetadata>; fromConnectionId?: string }
   | { type: 'indexSyncResponse'; sessions: SessionIndexEntry[]; projects: ServerProjectEntry[] }

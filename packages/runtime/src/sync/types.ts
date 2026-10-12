@@ -238,7 +238,7 @@ export interface SyncProvider {
    * session that has no permanent room socket. Refuses (non-retryable) after
    * `disconnectAll` until the provider is reconnected.
    */
-  sendSessionMessages?(sessionId: string, messages: AgentMessage[]): Promise<PushChangeOutcome>;
+  sendSessionMessages?(sessionId: string, messages: AgentMessage[], replay?: { activityAt: number }): Promise<PushChangeOutcome>;
 
   /**
    * Bulk update the sessions index with existing sessions.
