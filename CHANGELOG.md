@@ -10,6 +10,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 <!-- New features go here -->
+
+### Changed
+<!-- Changes to existing functionality go here -->
+
+### Fixed
+<!-- Bug fixes go here -->
+
+### Removed
+<!-- Removed features go here -->
+
+## [0.81.1] - 2026-10-12
+
+
+### Added
+<!-- New features go here -->
 - The nimbalyst-wiki plugin installs in the Codex CLI, with the same wiki skills and tools as in Claude Code
 - Drop or paste files into a local wiki page to attach them: images show inline, other files become links, and attachments stay with the page when it is renamed or moved
 - Claude Code sessions suggest your next prompt in the empty input after a turn; press Tab to fill it in (toggle in Agent Features)
