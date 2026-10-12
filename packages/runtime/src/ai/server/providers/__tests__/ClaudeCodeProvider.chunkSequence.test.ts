@@ -17,7 +17,7 @@
  * sendMessage emits, update the expectations and say so in the commit.
  */
 
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('electron', async () => ({
   app: { ...(await import('../../../../../../electron/test-stubs/privateUserData')).testApp, isPackaged: false },
@@ -30,6 +30,12 @@ vi.mock('../claudeCode/cliPathResolver', () => ({
 vi.mock('../../../../electron/claudeCodeEnvironment', () => ({
   setupClaudeCodeEnvironment: () => ({}),
   resolveNativeBinaryPath: () => undefined,
+}));
+
+// The real window is 8s; the tests that let it expire cannot wait that long.
+vi.mock('../claudeCode/promptSuggestionWait', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../claudeCode/promptSuggestionWait')>()),
+  PROMPT_SUGGESTION_WAIT_MS: 300,
 }));
 
 const queryMock = vi.fn();
@@ -131,12 +137,13 @@ async function runTurn(
   provider: ClaudeCodeProvider,
   message: string,
   onChunk?: (chunk: StreamChunk, index: number) => void,
+  documentContext: object = { mode: 'agent' },
 ): Promise<StreamChunk[]> {
   const collected: StreamChunk[] = [];
   let index = 0;
   for await (const chunk of provider.sendMessage(
     message,
-    { mode: 'agent' } as never,
+    documentContext as never,
     'nimbalyst-session-1',
     undefined,
     os.tmpdir(),
@@ -1185,6 +1192,160 @@ describe('ClaudeCodeProvider.sendMessage chunk sequence', () => {
     expect(live.close).toHaveBeenCalledOnce();
     expect(idleMessages).toHaveLength(1);
     expect(idleMessages[0].message).toContain('sleep 45');
+  });
+});
+
+describe('ClaudeCodeProvider prompt suggestions', () => {
+  const ANSWER = [
+    INIT_CHUNK,
+    { type: 'assistant', session_id: 'sdk-session-1', message: { id: 'msg_1', content: [{ type: 'text', text: 'done' }] } },
+    { type: 'result', subtype: 'success', is_error: false, num_turns: 1 },
+  ];
+  const SUGGESTION = { type: 'prompt_suggestion', suggestion: 'run the tests', uuid: 'u1', session_id: 'sdk-session-1' };
+  const HUMAN = { mode: 'agent', promptProvenance: { actor: 'human', origin: 'composer' } };
+  const humanTurn = (provider: ClaudeCodeProvider, message: string, onChunk?: (chunk: StreamChunk, index: number) => void) =>
+    runTurn(provider, message, onChunk, HUMAN);
+
+  async function makeResumedProvider(): Promise<ClaudeCodeProvider> {
+    const { provider } = await makeProvider();
+    // A provider session id already exists: the CLI suppresses a suggestion on the first turn only.
+    (provider as unknown as { sessions: { getSessionId: () => string } }).sessions.getSessionId = () => 'sdk-session-1';
+    return provider;
+  }
+
+  beforeEach(() => {
+    queryMock.mockReset();
+    ClaudeCodeProvider.setPromptSuggestionsEnabledLoader(() => true);
+  });
+  afterEach(() => {
+    ClaudeCodeProvider.setPromptSuggestionsEnabledLoader(null);
+  });
+
+  it('reads the frame the SDK sends after result and yields it once after complete', async () => {
+    const provider = await makeResumedProvider();
+    queryMock.mockImplementation(() => scriptQuery([...ANSWER, SUGGESTION]));
+
+    const chunks = await humanTurn(provider, 'hi');
+
+    expect(queryMock.mock.calls[0][0].options.promptSuggestions).toBe(true);
+    expect(chunks.map((chunk) => chunk.type)).toEqual(['text', 'complete', 'prompt_suggestion']);
+    expect(chunks[2]).toEqual({ type: 'prompt_suggestion', suggestion: 'run the tests' });
+  });
+
+  it('does not request one for a prompt an automation or agent sent', async () => {
+    const provider = await makeResumedProvider();
+    queryMock.mockImplementation(() => scriptQuery([...ANSWER, SUGGESTION]));
+
+    const chunks = await runTurn(provider, 'hi', undefined, { mode: 'agent', promptProvenance: { actor: 'system', origin: 'automation' } });
+
+    expect(queryMock.mock.calls[0][0].options.promptSuggestions).toBeUndefined();
+    expect(chunks.map((chunk) => chunk.type)).toEqual(['text', 'complete']);
+  });
+
+  it('neither requests nor reads suggestions while the setting is off', async () => {
+    ClaudeCodeProvider.setPromptSuggestionsEnabledLoader(() => false);
+    const provider = await makeResumedProvider();
+    queryMock.mockImplementation(() => scriptQuery([...ANSWER, SUGGESTION]));
+
+    const chunks = await humanTurn(provider, 'hi');
+
+    expect(queryMock.mock.calls[0][0].options.promptSuggestions).toBeUndefined();
+    expect(chunks.map((chunk) => chunk.type)).toEqual(['text', 'complete']);
+  });
+
+  it('does not wait on the first turn of a conversation, where the CLI sends none', async () => {
+    const { provider } = await makeProvider();
+    const live = liveQuery();
+    queryMock.mockImplementation(({ prompt }: { prompt: AsyncIterable<unknown> }) => {
+      live.attach(prompt);
+      return live.query;
+    });
+    live.send(...ANSWER);
+
+    await humanTurn(provider, 'hi');
+
+    expect(provider.canAcceptFollowUpDuringDrain()).toBe(false);
+  });
+
+  it('stops waiting when no suggestion comes, and a follow-up may adopt the query meanwhile', async () => {
+    const provider = await makeResumedProvider();
+    const live = liveQuery();
+    queryMock.mockImplementation(({ prompt }: { prompt: AsyncIterable<unknown> }) => {
+      live.attach(prompt);
+      return live.query;
+    });
+    live.send(...ANSWER);
+    const chunks: StreamChunk[] = [];
+    const turn = humanTurn(provider, 'hi', (chunk) => chunks.push(chunk));
+
+    await waitFor(() => chunks.some((chunk) => chunk.type === 'complete'));
+    expect(provider.canAcceptFollowUpDuringDrain()).toBe(true);
+
+    await turn;
+    expect(chunks.some((chunk) => chunk.type === 'prompt_suggestion')).toBe(false);
+    expect(provider.canAcceptFollowUpDuringDrain()).toBe(false);
+  });
+
+  it('ends the wait at its deadline even while other chunks keep arriving after result', async () => {
+    const provider = await makeResumedProvider();
+    const live = liveQuery();
+    queryMock.mockImplementation(({ prompt }: { prompt: AsyncIterable<unknown> }) => {
+      live.attach(prompt);
+      return live.query;
+    });
+    live.send(...ANSWER);
+    let awaitingAtComplete: boolean | null = null;
+    const turn = humanTurn(provider, 'hi', (chunk) => {
+      // The host reads this while handling `complete` to tell mobile the turn is over.
+      if (chunk.type === 'complete') awaitingAtComplete = provider.willAwaitPromptSuggestion();
+    });
+    // Each chunk would restart a silence window; the 300ms (mocked) deadline must still hold.
+    const ticker = setInterval(() => live.send({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed' } }), 50);
+    const startedAt = Date.now();
+    try {
+      await turn;
+    } finally {
+      clearInterval(ticker);
+    }
+
+    expect(awaitingAtComplete).toBe(true);
+    expect(Date.now() - startedAt).toBeLessThan(1_500);
+    expect(provider.willAwaitPromptSuggestion()).toBe(false);
+  });
+
+  it('hands the live query to a follow-up and drops the stale frame that arrives for the old turn', async () => {
+    const provider = await makeResumedProvider();
+    const live = liveQuery();
+    queryMock.mockImplementation(({ prompt }: { prompt: AsyncIterable<unknown> }) => {
+      live.attach(prompt);
+      return live.query;
+    });
+    live.send(...ANSWER);
+    const first: StreamChunk[] = [];
+    const firstTurn = humanTurn(provider, 'hi', (chunk) => first.push(chunk));
+    await waitFor(() => first.some((chunk) => chunk.type === 'complete'));
+    await waitFor(() => provider.canAcceptFollowUpDuringDrain());
+
+    const second: StreamChunk[] = [];
+    const secondTurn = humanTurn(provider, 'follow up', (chunk) => second.push(chunk));
+    await waitFor(() => live.prompts.length === 2);
+    await firstTurn;
+
+    // The process survives the handoff; nothing was closed or aborted.
+    expect(live.close).not.toHaveBeenCalled();
+    expect(live.promptStreamEnded).toBe(false);
+    expect(queryMock).toHaveBeenCalledTimes(1);
+
+    // The frame for the first answer lands during the second turn: it is not the second turn's.
+    live.send(SUGGESTION, INIT_CHUNK,
+      { type: 'assistant', session_id: 'sdk-session-1', message: { id: 'msg_2', content: [{ type: 'text', text: 'FOLLOWUP_OK' }] } },
+      { type: 'result', subtype: 'success', is_error: false, num_turns: 1 });
+    await waitFor(() => second.some((chunk) => chunk.type === 'complete'));
+    await secondTurn;
+
+    expect(first.some((chunk) => chunk.type === 'prompt_suggestion')).toBe(false);
+    expect(second.some((chunk) => chunk.type === 'prompt_suggestion')).toBe(false);
+    expect(second.filter((chunk) => chunk.type === 'text').map((chunk) => chunk.content)).toEqual(['FOLLOWUP_OK']);
   });
 });
 

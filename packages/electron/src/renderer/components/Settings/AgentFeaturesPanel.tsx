@@ -48,6 +48,10 @@ export function AgentFeaturesPanel() {
     settingAtom('ai.showMcpSessionStatus'),
   ) as [boolean, (value: boolean) => void];
 
+  const [promptSuggestionsEnabled, setPromptSuggestionsEnabled] = useAtom(
+    settingAtom('ai.promptSuggestionsEnabled'),
+  ) as [boolean, (value: boolean) => void];
+
   const [aiDebugSettings] = useAtom(aiDebugSettingsAtom);
   const [, updateAIDebugSettings] = useAtom(setAIDebugSettingsAtom);
   const { showToolCalls, chatShowToolCalls, aiDebugLogging, showPromptAdditions } = aiDebugSettings;
@@ -265,6 +269,14 @@ export function AgentFeaturesPanel() {
           name="Show MCP Server Status"
           description="Show a chip in the session header listing this session's MCP servers, which are connected, and which never reached it."
           testId="show-mcp-session-status-toggle"
+        />
+
+        <SettingsToggle
+          checked={promptSuggestionsEnabled}
+          onChange={(checked) => setPromptSuggestionsEnabled(checked)}
+          name="Suggest next prompt"
+          description="After a Claude Code turn you started, show a predicted next prompt in the input. Press Tab to fill it in, then Enter to send. Each suggestion is one extra model call that reuses the conversation cache."
+          testId="prompt-suggestions-toggle"
         />
 
         <div className="agent-preferred-language flex items-start justify-between gap-4 py-3">

@@ -249,6 +249,11 @@ export class AIService {
       return (this.getSettingsStore().get('customClaudeCodePath', '') as string) || '';
     });
 
+    // Read fresh each query so the Agent Features toggle applies on the next turn.
+    ClaudeCodeProvider.setPromptSuggestionsEnabledLoader(
+      () => this.getSettingsStore().get('promptSuggestionsEnabled', true) !== false,
+    );
+
     // API keys must be explicitly set by the user in settings.
     // NEVER auto-import keys from process.env. A user's .env file with
     // ANTHROPIC_API_KEY was silently picked up, persisted into settings,

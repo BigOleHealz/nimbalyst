@@ -114,6 +114,7 @@ Twelve built-in provider lanes, plus any agent an extension contributes. Every l
 - Full-screen AI session interface
 - Agent navigation badge with a grouped list of sessions awaiting input, running, or unread
 - Plan mode toggle (Shift+Tab)
+- Suggested next prompt for Claude Code sessions (on by default, toggle under Agent Features): shown in the empty input after a turn you started, Tab fills it in; skipped for turns started by agents or automations
 - Model-aware reasoning effort selector, including Ultra for supported Codex models
 - Model selector (per-session or per-workstream)
 - Context window usage display with pace tracking

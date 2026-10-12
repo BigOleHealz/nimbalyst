@@ -592,9 +592,11 @@ export interface StreamChunk {
   // liveness -- the Git journal behind the menu-bar indicator -- can see the
   // call end. It carries the same `toolCall` object as that earlier chunk, so it
   // is a completion signal only, never a second tool call.
-  type: 'text' | 'tool_call' | 'tool_result' | 'tool_error' | 'error' | 'complete' | 'context_usage' | 'stream_edit_start' | 'stream_edit_content' | 'stream_edit_end' | 'pre_edit_snapshot' | 'post_edit_snapshot';
+  type: 'text' | 'tool_call' | 'tool_result' | 'tool_error' | 'error' | 'complete' | 'context_usage' | 'prompt_suggestion' | 'stream_edit_start' | 'stream_edit_content' | 'stream_edit_end' | 'pre_edit_snapshot' | 'post_edit_snapshot';
   content?: string;
   isSystem?: boolean; // For system messages like slash command output
+  /** Predicted next user prompt, for `prompt_suggestion` chunks. Ephemeral UI state, never transcript content. */
+  suggestion?: string;
   toolCall?: {
     id?: string;
     name: string;
