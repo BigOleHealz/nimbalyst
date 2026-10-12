@@ -7,6 +7,7 @@ import { supersedeOpenQuestions } from './supersedeOpenQuestions';
 import { beginTurnSetup, TurnSetupCancelledError } from './turnSetupStages';
 import { canDispatchIntoDrain } from './drainFollowUp';
 import { publishTurnNotExecuting } from './turnExecutingSync';
+import { cancelUsageLimitResume, maybeScheduleUsageLimitResume } from './usageLimitAutoResume';
 /**
  * Streaming message handler for AIService.
  *
@@ -1493,6 +1494,8 @@ export class MessageStreamingHandler {
       const { isToolLoopSession, toolLoopTools, toolLoopSystemPrompt } = resolveToolLoopTurnConfig(session, effectiveWorkspacePath);
 
       setup.finish();
+      // Awaited so it can never cancel the resume this same turn schedules on its own limit error.
+      await cancelUsageLimitResume(session.id).catch(error => logger.main.error('[AIService] Failed to cancel usage-limit resume:', error));
       for await (const chunk of provider.sendMessage(messageToSend, contextWithSession, session.id, sessionMessages, effectiveWorkspacePath, attachments, toolLoopTools, toolLoopSystemPrompt)) {
         if (!chunk) continue;
         chunkCount++;
@@ -2239,7 +2242,12 @@ export class MessageStreamingHandler {
               isBedrockToolError,
               isServerError,
               isCodexAuthRequired: chunk.isCodexAuthRequired || false,
+              isUsageLimit: chunk.usageLimitType !== undefined,
             });
+            if (chunk.usageLimitResetsAtMs !== undefined) {
+              maybeScheduleUsageLimitResume({ sessionId: session.id, workspacePath, resetsAtMs: chunk.usageLimitResetsAtMs })
+                .catch(error => logger.main.error('[AIService] Failed to schedule usage-limit resume:', error));
+            }
 
             // An in-band 'error' chunk from a tool-loop agent (Gemini's only
             // failure-settle path) does NOT throw, so the outer catch never runs

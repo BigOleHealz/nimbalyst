@@ -43,6 +43,7 @@ export function AgentFeaturesPanel() {
 
   const autoCommitEnabled = useAtomValue(autoCommitEnabledAtom);
   const setAutoCommitEnabled = useSetAtom(setAutoCommitEnabledAtom);
+  const usageLimitAutoResumeEnabled = useAtomValue(settingAtom('ai.usageLimitAutoResumeEnabled'));
 
   const [showMcpSessionStatus, setShowMcpSessionStatus] = useAtom(
     settingAtom('ai.showMcpSessionStatus'),
@@ -253,6 +254,19 @@ export function AgentFeaturesPanel() {
           }}
           name="Auto-approve Commits"
           description="Automatically approve when Claude proposes git commits."
+        />
+
+        <SettingsToggle
+          checked={usageLimitAutoResumeEnabled}
+          onChange={(checked) => {
+            // Through main, not the atom: turning it off also cancels pending resumes.
+            window.electronAPI.invoke('wakeup:set-usage-limit-auto-resume', checked).catch((error: unknown) => {
+              console.error('[AgentFeaturesPanel] Failed to set usage-limit auto-resume:', error);
+            });
+          }}
+          name="Resume after usage limits reset"
+          description="When a Claude usage limit stops a session, continue it automatically once the limit resets."
+          testId="usage-limit-auto-resume-toggle"
         />
 
         <SettingsToggle

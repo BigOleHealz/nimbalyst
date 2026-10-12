@@ -197,6 +197,9 @@ import {
 } from './protocols/collabAssetProtocol';
 import { SessionNamingService } from './services/SessionNamingService';
 import { SessionWakeupScheduler } from './services/SessionWakeupScheduler';
+import { createSessionWakeup } from './services/sessionWakeupCreation';
+import { configureUsageLimitAutoResume } from './services/ai/usageLimitAutoResume';
+import { getSettingsService } from './services/SettingsService';
 import { getPendingSubmissionStore, getSessionWakeupsStore, repositoryManager } from './services/RepositoryManager';
 import { recoverPendingSubmissionsOnBoot } from './services/ai/pendingSubmissions';
 import { ExtensionDevService } from './services/ExtensionDevService';
@@ -2367,28 +2370,8 @@ app.whenReady().then(async () => {
     // Lives here in main because runtime is cross-platform (Capacitor/mobile too) and must
     // not import Electron-only services.
     ClaudeCodeProvider.setScheduleWakeupHandler(async ({ sessionId, workspacePath, delaySeconds, prompt, reason }) => {
-        const id = `wakeup-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
         const fireAt = new Date(Date.now() + delaySeconds * 1000);
-
-        const row = await getSessionWakeupsStore().create({
-            id,
-            sessionId,
-            workspaceId: workspacePath,
-            prompt,
-            reason,
-            fireAt,
-        });
-        SessionWakeupScheduler.getInstance().onCreated(row);
-
-        for (const window of BrowserWindow.getAllWindows()) {
-            if (!window.isDestroyed()) {
-                try {
-                    window.webContents.send('wakeup:changed', row);
-                } catch {
-                    // ignore destroyed window
-                }
-            }
-        }
+        await createSessionWakeup(getSessionWakeupsStore(), { sessionId, workspacePath, prompt, reason, fireAt });
 
         console.log(`[CLAUDE-CODE] ScheduleWakeup -> session=${sessionId} fireAt=${fireAt.toISOString()} delay=${delaySeconds}s`);
     });
@@ -3124,6 +3107,15 @@ app.whenReady().then(async () => {
             },
         });
         await scheduler.start();
+        const wakeupsStore = getSessionWakeupsStore();
+        configureUsageLimitAutoResume({
+            store: wakeupsStore,
+            isEnabled: () => getSettingsService().get('ai.usageLimitAutoResumeEnabled'),
+            setEnabled: (enabled) => getSettingsService().set('ai.usageLimitAutoResumeEnabled', enabled),
+            create: (request) => createSessionWakeup(wakeupsStore, request),
+            cancel: (id) => scheduler.cancel(id),
+            now: () => Date.now(),
+        });
     } catch (error) {
         logger.mcp.error('Failed to start session wakeup scheduler:', error);
     }

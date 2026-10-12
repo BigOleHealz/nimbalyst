@@ -130,6 +130,7 @@ Twelve built-in provider lanes, plus any agent an extension contributes. Every l
   - ToolPermission
 - Rate limit warning (amber) and blocked (red) widgets
 - Scheduled wakeups (agent self-paces via `schedule_wakeup` MCP tool; persists across restarts; banner with Fire now / Cancel; clock icon on session list rows; OS notification on fire; overdue prompt on launch)
+- Auto-resume after a Claude usage limit resets (opt-in from the blocked card or Agent Features settings; Claude Agent only; uses a scheduled wakeup, cancelled by any new turn)
 - Transcript with collapsible tool call groups
 - Click-to-copy code blocks
 - Agent file-placement preference -- open file tabs above the transcript or in the right pane

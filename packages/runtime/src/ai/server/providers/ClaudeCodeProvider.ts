@@ -150,6 +150,7 @@ import {
 } from './claudeCode/streamClosedRecovery';
 import { normalizeStructuredContextUsage } from '../utils/contextUsage';
 import { createTurnState } from './claudeCode/turnState';
+import { blockingUsageLimit, rateLimitMarker, usageLimitSystemMessage } from './claudeCode/usageLimit';
 import { buildTurnQuery, prepareTurnAttachments, resolveTurnPaths } from './claudeCode/turnPrologue';
 import { buildTurnCompleteUsage, finishTurn, handleTurnError, type TurnEpilogueHost } from './claudeCode/turnEpilogue';
 import { fromDbBoolean } from '../../../core/dbBoolean';
@@ -1332,7 +1333,11 @@ export class ClaudeCodeProvider extends BaseAgentProvider {
 
                   const errorType = isAuthError ? 'authentication_error' : isBedrockToolError ? 'bedrock_tool_error' : isExpiredSessionError ? 'expired_session_error' : 'api_error';
                   this.logError(sessionId, 'claude-code', new Error(errorMessage), 'result_chunk', errorType, hideMessages);
-                  transcriptAdapter?.systemMessage(errorMessage, 'error');
+                  const usageLimit = state.blockingUsageLimit;
+                  transcriptAdapter?.systemMessage(
+                    usageLimit ? usageLimitSystemMessage(usageLimit, errorMessage, this.config.model) : errorMessage,
+                    'error',
+                  );
 
                   yield {
                     type: 'error',
@@ -1341,6 +1346,8 @@ export class ClaudeCodeProvider extends BaseAgentProvider {
                     ...(isBedrockToolError && { isBedrockToolError: true }),
                     ...(isExpiredSessionError && { isExpiredSessionError: true }),
                     ...(isServerError && { isServerError: true }),
+                    ...(usageLimit?.resetsAtMs != null && { usageLimitResetsAtMs: usageLimit.resetsAtMs }),
+                    ...(usageLimit && { usageLimitType: usageLimit.limitType }),
                   };
 
                   // No `complete` here -- finishTurn owns terminal completion,
@@ -1409,14 +1416,8 @@ export class ClaudeCodeProvider extends BaseAgentProvider {
               case 'rate_limit': {
                 const info = item.chunk.rate_limit_info;
                 if (info && info.status !== 'allowed') {
-                  const resetsAtUnix = info.resetsAt || null;
-                  const limitType = info.rateLimitType === 'five_hour' ? '5-hour session' : info.rateLimitType || 'unknown';
-                  const utilization = info.utilization != null ? Math.round(info.utilization * 100) : null;
-                  const isWarning = info.status === 'allowed_warning';
-                  const marker = isWarning ? '[RATE_LIMIT_WARNING]' : '[RATE_LIMIT]';
-                  const utilizationStr = utilization != null ? ` usage=${utilization}` : '';
-                  const modelStr = this.config.model ? ` model=${this.config.model}` : '';
-                  yield { type: 'text', content: `\n\n<!-- ${marker} limitType=${limitType} resetsAtUnix=${resetsAtUnix || 'unknown'}${utilizationStr}${modelStr} -->\n\n` };
+                  state.blockingUsageLimit = blockingUsageLimit(info) ?? state.blockingUsageLimit;
+                  yield { type: 'text', content: `\n\n${rateLimitMarker(info, this.config.model)}\n\n` };
                 }
                 break;
               }

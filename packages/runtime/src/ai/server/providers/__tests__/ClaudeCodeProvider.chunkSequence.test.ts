@@ -45,6 +45,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
 
 import os from 'os';
 import { ClaudeCodeProvider } from '../ClaudeCodeProvider';
+import { ClaudeCodeTranscriptAdapter } from '../claudeCode/ClaudeCodeTranscriptAdapter';
 import type { StreamChunk } from '../../types';
 import { AISessionsRepository } from '../../../../storage/repositories/AISessionsRepository';
 
@@ -341,6 +342,59 @@ describe('ClaudeCodeProvider.sendMessage chunk sequence', () => {
         contextFillTokens: 32,
       },
     ]);
+  });
+
+  it('attaches the usage limit reset to the error and saves it as a rate-limit card', async () => {
+    // Main schedules the auto-resume from these fields; the transcript row in
+    // marker form is what renders RateLimitWidget instead of a bare red error.
+    const { provider } = await makeProvider();
+    const systemMessage = vi.spyOn(ClaudeCodeTranscriptAdapter.prototype, 'systemMessage');
+    queryMock.mockImplementation(() =>
+      scriptQuery([
+        INIT_CHUNK,
+        {
+          type: 'rate_limit_event',
+          rate_limit_info: { status: 'rejected', resetsAt: 1772233200, rateLimitType: 'five_hour' },
+        },
+        {
+          type: 'result',
+          subtype: 'success',
+          is_error: true,
+          result: "You've hit your session limit · resets 11:40am (America/Los_Angeles)",
+        },
+      ]),
+    );
+
+    const chunks = await runTurn(provider, 'hi');
+
+    expect(chunks.find((c) => c.type === 'error')).toEqual({
+      type: 'error',
+      error: "You've hit your session limit · resets 11:40am (America/Los_Angeles)",
+      usageLimitResetsAtMs: 1772233200000,
+      usageLimitType: 'five_hour',
+    });
+    const saved = systemMessage.mock.calls.find((call) => call[1] === 'error')?.[0] ?? '';
+    expect(saved).toContain('[RATE_LIMIT] limitType=5-hour session resetsAtUnix=1772233200');
+    expect(saved).toContain("You've hit your session limit");
+    systemMessage.mockRestore();
+  });
+
+  it('attaches no usage limit when the turn saw only a warning', async () => {
+    const { provider } = await makeProvider();
+    queryMock.mockImplementation(() =>
+      scriptQuery([
+        INIT_CHUNK,
+        {
+          type: 'rate_limit_event',
+          rate_limit_info: { status: 'allowed_warning', resetsAt: 1772233200, rateLimitType: 'five_hour', utilization: 0.9 },
+        },
+        { type: 'result', subtype: 'error_during_execution', is_error: true, result: 'upstream exploded' },
+      ]),
+    );
+
+    const chunks = await runTurn(provider, 'hi');
+
+    expect(chunks.find((c) => c.type === 'error')).toEqual({ type: 'error', error: 'upstream exploded' });
   });
 
   it('yields error then complete when the SDK iterator throws mid-stream', async () => {
