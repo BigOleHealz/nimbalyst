@@ -118,7 +118,7 @@ describe('nim mcp over stdio', () => {
     expect(created).toBe(true);
     // The list is stable without a wiki, and every name but the local-only init is a contract name.
     const names = responses[1].result.tools.map((t: { name: string }) => t.name);
-    expect(names).toEqual(['initLocalWiki', ...LOCAL_TOOLS]);
+    expect(names).toEqual(['initLocalWiki', ...LOCAL_TOOLS, 'convertTypeStorage']);
     expect(LOCAL_TOOLS.every((n: string) => (PAGE_TOOL_NAMES as readonly string[]).includes(n))).toBe(true);
     expect(stderr).toContain('nim mcp');
   });
@@ -130,14 +130,16 @@ describe('nim mcp over stdio', () => {
       mkdirSync(path.join(project, '.nimbalyst', 'trackers'), { recursive: true });
       writeFileSync(
         path.join(project, '.nimbalyst', 'trackers', 'competitor.yaml'),
-        'type: competitor\ndisplayName: Competitor\nstorage: pages\nfields:\n  - name: title\n    type: string\n  - name: status\n    type: select\n',
+        'type: competitor\ndisplayName: Competitor\nstorage: pages\nfields:\n  - name: title\n    type: string\n  - name: status\n    type: select\n  - name: activity\n    type: select\n',
       );
+      writeFileSync(path.join(project, '.nimbalyst', 'trackers', 'partner.yaml'), 'type: partner\ndisplayNamePlural: Partners\nstorage: table # one CSV\nfields:\n  - name: tier\n    type: select\n');
       await initWiki(dir);
       const wiki = await openWiki(dir);
       const home = (await wiki.command({ type: 'register-document', title: 'Home', parentFolderId: null, body: 'Welcome.\n' })).id!;
       // A type without `storage:` keeps its items in the app database; an existing page of it stays editable.
       writeFileSync(path.join(project, '.nimbalyst', 'trackers', 'github-pr.yaml'), 'type: github-pr\ndisplayName: Pull request\n');
       const pr = (await wiki.command({ type: 'register-document', title: 'PR 1', parentFolderId: null, pageType: 'github-pr' })).id!;
+      writeFileSync(path.join(dir, 'Partners.csv'), 'id,title,tier\nP1,Globex,gold\n');
       wiki.close();
 
       const { stdout, code } = await runNimMcp([
@@ -154,6 +156,9 @@ describe('nim mcp over stdio', () => {
         call(11, 'createSharedDoc', { title: 'Flow', documentType: 'excalidraw', initialContent: '{"elements":[]}' }),
         call(12, 'applyCollabDocEdit', { filePath: 'Flow.excalidraw', replacements: [{ oldText: '[]', newText: '[1]' }] }),
         call(13, 'readCollabDoc', { filePath: 'Flow' }),
+        call(14, 'tracker_list_types', {}),
+        call(15, 'convertTypeStorage', { type: 'partner', storage: 'pages' }),
+        call(16, 'tracker_get', { id: 'P1' }),
       ], project);
       expect(code).toBe(0);
       const results = stdout.trim().split('\n').map((line) => JSON.parse(line).result);
@@ -178,6 +183,11 @@ describe('nim mcp over stdio', () => {
       expect(body(10)).toMatchObject({ path: 'Flow.excalidraw' });
       expect(body(12)).toMatchObject({ documentType: 'excalidraw', markdown: '{"elements":[1]}' });
       expect(readFileSync(path.join(dir, 'Flow.excalidraw'), 'utf8')).toBe('{"elements":[1]}');
+      // A field name the record model keeps for itself is called out where an agent checks its types.
+      expect(body(13).types.find((t: { type: string }) => t.type === 'competitor').problems).toEqual([expect.stringContaining('"activity"')]);
+      expect(body(14)).toMatchObject({ type: 'partner', storage: 'pages', converted: ['P1'] });
+      expect(body(15)).toMatchObject({ id: 'P1', title: 'Globex', storage: 'pages', path: 'Globex.md' });
+      expect(readFileSync(path.join(project, '.nimbalyst', 'trackers', 'partner.yaml'), 'utf8')).toContain('storage: pages # one CSV');
     } finally {
       rmSync(project, { recursive: true, force: true });
     }

@@ -4,12 +4,14 @@
  * the stale-write conflict, and a change event after an outside edit.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { initWiki, openWiki, type LocalWiki } from '@nimbalyst/local-wiki';
 import { startWikiServer, type WikiServer } from '../server.js';
+import { defaultSessionStore, startRememberedWikiServer } from '../session.js';
+import { createServer } from 'node:net';
 import { parseArgs } from '../../cli/parse.js';
 import { wantsOpen } from '../runWikiServe.js';
 
@@ -129,6 +131,91 @@ describe('nim wiki serve', () => {
     writeFileSync(path.join(root, 'wiki', 'Outside.md'), '---\nid: 01J9Z3K6V4C2W8N5QX7R1T0BHM\n---\nWritten by an editor\n');
     const change = await nextEvent('change');
     expect(change.changedIds).toContain('01J9Z3K6V4C2W8N5QX7R1T0BHM');
+    await reader.cancel();
+  });
+
+  it('keeps the port and token across a restart, so open tabs keep working', async () => {
+    const { root, wiki } = await serve();
+    const sessions = path.join(root, 'serve-sessions.json');
+    const start = (port?: number) => startRememberedWikiServer({ wiki, assetsDir: null, version: 'test', port }, { file: sessions });
+    const first = await start();
+    await first.close();
+    const second = await start();
+    cleanups.push(() => second.close());
+    expect([second.port, second.token]).toEqual([first.port, first.token]);
+    expect((await fetch(`${second.origin}/api/info`, { headers: { cookie: `nim_wiki_${first.port}=${first.token}` } })).status).toBe(200);
+    expect((statSync(sessions).mode & 0o777).toString(8)).toBe('600');
+
+    // The remembered port is taken: another free port, the same token.
+    await second.close();
+    const blocker = createServer().listen(first.port, '127.0.0.1');
+    await new Promise((resolve) => blocker.once('listening', resolve));
+    cleanups.push(() => new Promise<void>((resolve) => blocker.close(() => resolve())));
+    const third = await start();
+    cleanups.push(() => third.close());
+    expect(third.port).not.toBe(first.port);
+    expect(third.token).toBe(first.token);
+  });
+
+  it('remembers each wiki in its own owner-only file, so two servers never overwrite each other', async () => {
+    const config = realpathSync(mkdtempSync(path.join(tmpdir(), 'nim-serve-config-')));
+    cleanups.push(() => rmSync(config, { recursive: true, force: true }));
+    const [a, b] = [defaultSessionStore('/work/a/wiki', config), defaultSessionStore('/work/b/wiki', config)];
+    expect(a.file).not.toBe(b.file);
+    expect(defaultSessionStore('/work/a/wiki', config).file).toBe(a.file);
+    const { wiki } = await serve();
+    const first = await startRememberedWikiServer({ wiki, assetsDir: null, version: 'test' }, a);
+    await first.close();
+    expect((statSync(path.dirname(a.file)).mode & 0o777).toString(8)).toBe('700');
+    expect(JSON.parse(readFileSync(a.file, 'utf8'))).toEqual({ root: '/work/a/wiki', token: first.token, port: first.port });
+  });
+
+  it('converts a table type to pages over REST', async () => {
+    const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'nim-serve-convert-')));
+    cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+    mkdirSync(path.join(root, 'types'));
+    writeFileSync(path.join(root, 'types', 'partner.yaml'), 'type: partner\ndisplayNamePlural: Partners\nstorage: table\nfields:\n  - name: activity\n    type: string\n');
+    await initWiki(path.join(root, 'wiki'));
+    writeFileSync(path.join(root, 'wiki', 'Partners.csv'), 'id,title\nP1,Globex\n');
+    const wiki = await openWiki(path.join(root, 'wiki'), { typesDir: path.join(root, 'types') });
+    cleanups.push(() => wiki.close());
+    const server = await startWikiServer({ wiki, assetsDir: null, version: 'test' });
+    cleanups.push(() => server.close());
+    const post = (route: string, body: unknown) =>
+      fetch(`${server.origin}${route}`, { method: 'POST', headers: { Authorization: `Bearer ${server.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+    const types = await (await fetch(`${server.origin}/api/types`, { headers: { Authorization: `Bearer ${server.token}` } })).json();
+    expect(types.types[0].problems).toEqual([expect.stringContaining('"activity"')]);
+    expect((await post('/api/types/partner/convert', { storage: 'table' })).status).toBe(400);
+    const res = await post('/api/types/partner/convert', { storage: 'pages' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ converted: ['P1'] });
+    expect((await wiki.trackerSnapshot('partner')).items.map((item) => [item.id, item.storage])).toEqual([['P1', 'pages']]);
+  });
+
+  it('streams a types event when a type definition changes', async () => {
+    const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'nim-serve-types-')));
+    cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+    await initWiki(path.join(root, 'wiki'));
+    const typesDir = path.join(root, 'types');
+    const wiki = await openWiki(path.join(root, 'wiki'), { debounceMs: 20, typesDir, typesPollMs: 20 });
+    cleanups.push(() => wiki.close());
+    const server = await startWikiServer({ wiki, assetsDir: null, version: 'test' });
+    cleanups.push(() => server.close());
+    const res = await fetch(`${server.origin}/api/events`, { headers: { Authorization: `Bearer ${server.token}` } });
+    const reader = res.body!.pipeThrough(new TextDecoderStream()).getReader();
+    let buffer = '';
+    for (;;) {
+      if (buffer.includes('event: types\n')) break;
+      if (buffer.includes('event: ready\n') && !existsSync(typesDir)) {
+        // The types folder appears after the server started, as during setup.
+        mkdirSync(typesDir);
+        writeFileSync(path.join(typesDir, 'partner.yaml'), 'type: partner\nstorage: table\n');
+      }
+      const { value, done } = await reader.read();
+      if (done) throw new Error('stream ended');
+      buffer += value;
+    }
     await reader.cancel();
   });
 });

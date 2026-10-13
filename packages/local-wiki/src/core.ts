@@ -79,6 +79,8 @@ export class WikiCore {
   protected types = new Map<string, WikiTypeDef>();
   protected editorTypes: Map<string, string>;
   protected typeIssues: WikiIssue[] = [];
+  private typesSignature = '';
+  private notifiedTypesSignature: string | null = null;
   protected state!: ScanState;
   protected readonly cache: ScanCache = new Map();
   protected queue: Promise<unknown> = Promise.resolve();
@@ -171,6 +173,7 @@ export class WikiCore {
     const loaded = await loadTypeDefs(this.options.typesDir);
     this.types = loaded.types;
     this.typeIssues = loaded.issues;
+    this.typesSignature = loaded.signature;
     this.state = await scanWiki({
       root: this.root,
       types: this.types,
@@ -345,8 +348,10 @@ export class WikiCore {
     const first = !this.baselineRecorded;
     this.baselineRecorded = true;
     this.signatures = next;
-    if (first || (changedIds.length === 0 && removedIds.length === 0 && tableTypes.length === 0)) return;
-    const change: LocalWikiChange = { changedIds, removedIds, tableTypes };
+    const typesChanged = this.notifiedTypesSignature !== null && this.notifiedTypesSignature !== this.typesSignature;
+    this.notifiedTypesSignature = this.typesSignature;
+    if (first || (changedIds.length === 0 && removedIds.length === 0 && tableTypes.length === 0 && !typesChanged)) return;
+    const change: LocalWikiChange = { changedIds, removedIds, tableTypes, ...(typesChanged ? { typesChanged: true as const } : {}) };
     for (const listener of this.listeners) {
       try {
         listener(change);

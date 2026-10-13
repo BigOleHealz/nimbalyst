@@ -8,6 +8,7 @@
  *   GET  /api/pages/:id/body              wiki.readBody(id)
  *   PUT  /api/pages/:id/body              wiki.writeBody(id, markdown, expectedVersion); 409 on conflict
  *   GET  /api/types                       type definitions (the library's slice plus the raw YAML)
+ *   POST /api/types/:type/convert         wiki.convertTableToPages(type); body { storage: 'pages' }
  *   GET  /api/trackers/:type              wiki.trackerSnapshot(type)
  *   POST /api/trackers/:type/command      wiki.trackerCommand(type, LocalTrackerCommand)
  *   GET  /api/items/:id/activity          wiki.readActivity(id)
@@ -45,6 +46,7 @@ function segment(value: string): string {
 }
 
 async function typeDefinitions(wiki: LocalWiki) {
+  const issues = (await wiki.snapshot()).issues.filter((issue) => issue.code === 'reserved-field');
   return Promise.all(
     wiki.typeDefs().map(async (def) => {
       let definition: unknown = null;
@@ -53,8 +55,9 @@ async function typeDefinitions(wiki: LocalWiki) {
       } catch {
         // The library already reported a malformed type file in the snapshot's issues.
       }
-      const { sourcePath: _sourcePath, ...rest } = def;
-      return { ...rest, definition };
+      const { sourcePath, ...rest } = def;
+      // Problems in the type file someone has to fix, such as a reserved field name.
+      return { ...rest, definition, problems: issues.filter((issue) => issue.path === sourcePath).map((issue) => issue.message) };
     }),
   );
 }
@@ -112,6 +115,13 @@ export async function handleApi(ctx: ApiContext, req: IncomingMessage, res: Serv
       sendJson(res, result.ok ? 200 : 409, result);
       return true;
     }
+  }
+
+  if (method === 'POST' && parts.length === 3 && parts[0] === 'types' && parts[2] === 'convert') {
+    const body = await readJson<{ storage?: unknown }>(req);
+    if (body?.storage !== 'pages') throw new HttpError(400, 'bad-body', "Only conversion to { storage: 'pages' } is supported");
+    sendJson(res, 200, { converted: (await wiki.convertTableToPages(segment(parts[1]))).created });
+    return true;
   }
 
   if (parts.length >= 2 && parts[0] === 'trackers') {

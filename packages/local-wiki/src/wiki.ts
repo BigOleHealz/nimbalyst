@@ -1,5 +1,4 @@
 import { mkdir, readdir, readFile, rm, rmdir, unlink } from 'node:fs/promises';
-import { watch as fsWatchSync } from 'node:fs';
 import * as path from 'node:path';
 import yaml from 'js-yaml';
 import { contentVersion, idForFileName, ulid } from './ids.js';
@@ -30,6 +29,7 @@ import type {
 import type { WikiTypeDef } from './typeDefs.js';
 import { FORMAT_VERSION, LocalWikiError, MARKER_HEADER, type MarkerData } from './core.js';
 import { WikiTables } from './tables.js';
+import { defaultWatchFactory, watchWikiFolders } from './watch.js';
 import { normalizeEditorTypes, parseSidecar, sidecarName, suffixForDocumentType, SIDECAR_RESERVED_KEYS } from './sidecar.js';
 
 export { FORMAT_VERSION, LocalWikiError, type LocalWikiErrorCode } from './core.js';
@@ -57,14 +57,6 @@ export async function openWiki(root: string, options: OpenWikiOptions = {}): Pro
   const wiki = new LocalWiki(absRoot, marker, options);
   await wiki.rescan();
   return wiki;
-}
-
-function defaultWatchFactory(dir: string, onEvent: () => void): { close(): void } {
-  const watcher = fsWatchSync(dir, { recursive: true }, () => onEvent());
-  watcher.on('error', () => {
-    // A vanished folder ends the watch; the next explicit call rescans.
-  });
-  return { close: () => watcher.close() };
 }
 
 /** A local wiki folder. Every public call is serialized; see FORMAT.md for the file format. */
@@ -408,14 +400,9 @@ export class LocalWiki extends WikiTables {
           });
         }, this.options.debounceMs ?? 150);
       };
-      this.watchHandles.push(factory(this.root, schedule));
-      if (this.options.typesDir) {
-        try {
-          this.watchHandles.push(factory(this.options.typesDir, schedule));
-        } catch {
-          // no types folder yet
-        }
-      }
+      this.watchHandles.push(
+        watchWikiFolders({ root: this.root, typesDir: this.options.typesDir ?? null, factory, onEvent: schedule, pollMs: this.options.typesPollMs ?? 2000, catchUpMs: this.options.watchCatchUpMs }),
+      );
     }
     return () => {
       this.listeners.delete(onChange);

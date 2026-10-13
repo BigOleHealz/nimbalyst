@@ -50,8 +50,17 @@ export async function loadWikiSchema(types: readonly WikiTypeInfo[]): Promise<Br
     builtins: parseBuiltinTrackers(),
     reportError: (error, where) => console.error(`[wiki-web] ${where}`, error),
   });
-  for (const type of types) {
+  await applyWikiTypes(store, [], types);
+  return store;
+}
+
+/** Registers `next` and unregisters the types `previous` had that `next` does not. */
+export async function applyWikiTypes(store: BrowserTrackerSchemaStore, previous: readonly WikiTypeInfo[], next: readonly WikiTypeInfo[]): Promise<void> {
+  for (const type of next) {
     await store.schemaSync.applyRemote({ type: type.typeId, model: modelJson(type), syncId: 0 });
   }
-  return store;
+  const kept = new Set(next.map((type) => type.typeId));
+  for (const type of previous) {
+    if (!kept.has(type.typeId)) await store.schemaSync.applyRemote({ type: type.typeId, model: null, syncId: 0 });
+  }
 }

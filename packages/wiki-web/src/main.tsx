@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { loadTrackerPage } from '@nimbalyst/collab-bundle/trackers-ui';
 import { WIKI_API_VERSION, wikiApi } from './api/client';
 import { LocalTrackerDataSource } from './host/LocalTrackerDataSource';
-import { loadWikiSchema } from './host/schema';
+import { applyWikiTypes, loadWikiSchema } from './host/schema';
 import { initializeTheme } from './theme';
 import { App } from './app/App';
 
@@ -25,8 +25,8 @@ async function boot(): Promise<void> {
     return;
   }
   const [types, module] = await Promise.all([wikiApi.types(), loadTrackerPage()]);
-  await loadWikiSchema(types);
-  const trackers = new LocalTrackerDataSource(info.root, types);
+  const schema = await loadWikiSchema(types);
+  const trackers = new LocalTrackerDataSource(info.root, types, (previous, next) => applyWikiTypes(schema, previous, next));
   root.render(<App root={info.root} trackers={trackers} module={module} />);
 }
 

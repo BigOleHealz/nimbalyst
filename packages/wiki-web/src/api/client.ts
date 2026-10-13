@@ -36,6 +36,8 @@ export interface WikiTypeInfo {
   titleField: string;
   /** The type YAML as parsed, or null when it did not parse. */
   definition: Record<string, unknown> | null;
+  /** Problems in the type file to fix, such as a field name Nimbalyst reserves. Absent from older servers. */
+  problems?: string[];
 }
 
 export class WikiApiError extends Error {
@@ -74,6 +76,9 @@ export const wikiApi = {
   writeBody: async (pageId: string, markdown: string, expectedVersion: string | null) =>
     (await request<WriteBodyResult>('PUT', `/api/pages/${id(pageId)}/body`, { markdown, expectedVersion })).value,
   types: async () => (await request<{ types: WikiTypeInfo[] }>('GET', '/api/types')).value.types,
+  /** Table type to page storage: one page per row, ids kept. */
+  convertTypeToPages: async (typeId: string) =>
+    (await request<{ converted: string[] }>('POST', `/api/types/${id(typeId)}/convert`, { storage: 'pages' })).value.converted,
   trackerSnapshot: async (typeId: string) => (await request<LocalTrackerSnapshot>('GET', `/api/trackers/${id(typeId)}`)).value,
   trackerCommand: async (typeId: string, cmd: LocalTrackerCommand) =>
     (await request<LocalWikiCommandResult>('POST', `/api/trackers/${id(typeId)}/command`, cmd)).value,
@@ -82,7 +87,7 @@ export const wikiApi = {
     (await request<{ hits: LocalSearchHit[] }>('GET', `/api/search?q=${encodeURIComponent(q)}${limit ? `&limit=${limit}` : ''}`)).value.hits,
 };
 
-export type WikiFeedEvent = { type: 'change'; change: LocalWikiChange } | { type: 'ready' } | { type: 'down' };
+export type WikiFeedEvent = { type: 'change'; change: LocalWikiChange } | { type: 'types' } | { type: 'ready' } | { type: 'down' };
 
 /**
  * One EventSource for the whole tab. `ready` fires on every (re)connect, so
@@ -117,6 +122,8 @@ class WikiChangeFeed {
         // A frame that does not parse is skipped; the next one carries the state.
       }
     });
+    // A type file changed: definitions, not items, so listeners reread /api/types.
+    source.addEventListener('types', () => this.emit({ type: 'types' }));
     source.onerror = () => this.emit({ type: 'down' });
     this.source = source;
   }

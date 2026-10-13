@@ -21,9 +21,9 @@ import { hasLocalWiki, initLocalWiki, openLocalWiki } from '../localWiki/open.js
 import { buildTree, findPage, isTeamReference, positionBeside } from '../localWiki/tree.js';
 
 /** Verbs the local wiki has; `ls` is `list`. */
-const LOCAL_VERBS = new Set(['init', 'list', 'ls', 'read', 'write', 'move', 'search']);
+const LOCAL_VERBS = new Set(['init', 'list', 'ls', 'read', 'write', 'move', 'search', 'convert-type']);
 /** Local verbs with no team counterpart. */
-const LOCAL_ONLY = new Set(['init', 'write']);
+const LOCAL_ONLY = new Set(['init', 'write', 'convert-type']);
 
 const startDir = (args: ParsedArgs) => flagStr(args, 'workspace') ?? process.cwd();
 
@@ -111,6 +111,8 @@ export async function runLocalWiki(args: ParsedArgs): Promise<number> {
         return await runMove(args, wiki);
       case 'search':
         return await runSearch(args, wiki);
+      case 'convert-type':
+        return await runConvertType(args, wiki);
       default:
         throw usageError(`nim wiki: unknown local verb '${args.verb}'`);
     }
@@ -225,5 +227,16 @@ async function runSearch(args: ParsedArgs, wiki: Wiki): Promise<number> {
   for (const hit of hits) {
     process.stdout.write(`${bold(hit.title)}  ${dim(`${hit.id}  ${hit.path ?? ''}`)}\n  ${hit.snippet}\n`);
   }
+  return ExitCode.OK;
+}
+
+/** `nim wiki convert-type <type> --to pages`: one page per row; ids and field values are kept, the CSV goes to trash. */
+async function runConvertType(args: ParsedArgs, wiki: Wiki): Promise<number> {
+  const typeId = args.positionals[0];
+  if (!typeId) throw usageError('nim wiki convert-type needs a type id: nim wiki convert-type <type> --to pages');
+  if (flagStr(args, 'to') !== 'pages') throw usageError("nim wiki convert-type needs --to pages; only table types convert, to page storage");
+  const result = await wiki.convertTableToPages(typeId);
+  if (flagBool(args, 'json')) json({ type: typeId, storage: 'pages', converted: result.created });
+  else process.stdout.write(`Converted ${typeId} to pages: ${result.created.length} page${result.created.length === 1 ? '' : 's'}. The CSV is in the wiki trash.\n`);
   return ExitCode.OK;
 }

@@ -235,13 +235,12 @@ function ensureLocalOnlyIgnored(root, dir) {
 
 // packages/cli/src/localWiki/open.ts
 import { execFileSync as execFileSync2 } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync as existsSync2 } from "node:fs";
 import * as os from "node:os";
 import * as path10 from "node:path";
 
 // packages/local-wiki/src/wiki.ts
 import { mkdir as mkdir3, readdir as readdir4, readFile as readFile7, rm as rm2, rmdir, unlink as unlink2 } from "node:fs/promises";
-import { watch as fsWatchSync } from "node:fs";
 import * as path9 from "node:path";
 
 // node_modules/js-yaml/dist/js-yaml.mjs
@@ -4711,6 +4710,45 @@ async function acquireWriteLock(root, options) {
 // packages/local-wiki/src/typeDefs.ts
 import { readdir as readdir2, readFile as readFile4 } from "node:fs/promises";
 import * as path6 from "node:path";
+var RESERVED_FIELD_NAMES = [
+  "id",
+  "type",
+  "typeTags",
+  "issueNumber",
+  "issueKey",
+  "localKey",
+  "source",
+  "sourceRef",
+  "archived",
+  "archivedAt",
+  "syncStatus",
+  "content",
+  "module",
+  "lineNumber",
+  "workspace",
+  "lastIndexed",
+  "created",
+  "updated",
+  "authorIdentity",
+  "lastModifiedBy",
+  "createdByAgent",
+  "linkedSessions",
+  "linkedCommitSha",
+  "linkedCommits",
+  "linkedPullRequests",
+  "linkedIssues",
+  "documentId",
+  "activity",
+  "comments",
+  "origin",
+  "triagedAt",
+  "triagedBy",
+  "derivedSignals",
+  "assigneeId",
+  "reporterId",
+  "customFields"
+];
+var RESERVED_FIELDS = new Set(RESERVED_FIELD_NAMES);
 function str2(value) {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
 }
@@ -4734,19 +4772,22 @@ function readFields(raw) {
 async function loadTypeDefs(typesDir2) {
   const types2 = /* @__PURE__ */ new Map();
   const issues = [];
-  if (!typesDir2) return { types: types2, issues };
+  const texts = [];
+  if (!typesDir2) return { types: types2, issues, signature: "" };
   let names;
   try {
     names = await readdir2(typesDir2);
   } catch {
-    return { types: types2, issues };
+    return { types: types2, issues, signature: "" };
   }
   const raws = /* @__PURE__ */ new Map();
   for (const name of names.sort()) {
     if (!name.endsWith(".yaml") || name.includes(".patch.")) continue;
     const sourcePath = path6.join(typesDir2, name);
     try {
-      const raw = yaml.load(await readFile4(sourcePath, "utf8"), { schema: yaml.CORE_SCHEMA });
+      const text2 = await readFile4(sourcePath, "utf8");
+      texts.push(`${name}\0${text2}`);
+      const raw = yaml.load(text2, { schema: yaml.CORE_SCHEMA });
       const typeId = raw && typeof raw === "object" ? str2(raw.type) : null;
       if (!typeId) continue;
       raws.set(typeId, { raw, sourcePath });
@@ -4762,18 +4803,28 @@ async function loadTypeDefs(typesDir2) {
     for (const field of readFields(raw.fields)) fields.set(field.name, field);
     const displayName = str2(raw.displayName) ?? str2(parent?.displayName) ?? typeId;
     const roles = raw.roles && typeof raw.roles === "object" ? raw.roles : parent?.roles;
+    const wikiType = str2(raw.storage) === "table" || str2(raw.storage) === "pages";
+    for (const name of fields.keys()) {
+      if (wikiType && RESERVED_FIELDS.has(name)) {
+        issues.push({
+          code: "reserved-field",
+          path: sourcePath,
+          message: `Field "${name}" of type ${typeId} uses a name Nimbalyst keeps for an item's own metadata, so its values are saved but never shown; rename the field`
+        });
+      }
+    }
     types2.set(typeId, {
       typeId,
       displayName,
       displayNamePlural: str2(raw.displayNamePlural) ?? `${displayName}s`,
       storage: str2(raw.storage) === "table" ? "table" : "pages",
-      wikiType: str2(raw.storage) === "table" || str2(raw.storage) === "pages",
+      wikiType,
       fields: [...fields.values()],
       titleField: str2(roles?.title) ?? "title",
       sourcePath
     });
   }
-  return { types: types2, issues };
+  return { types: types2, issues, signature: contentVersion(texts.join("\0")) };
 }
 
 // packages/local-wiki/src/core.ts
@@ -4790,6 +4841,8 @@ var WikiCore = class {
   constructor(root, marker, options) {
     this.types = /* @__PURE__ */ new Map();
     this.typeIssues = [];
+    this.typesSignature = "";
+    this.notifiedTypesSignature = null;
     this.cache = /* @__PURE__ */ new Map();
     this.queue = Promise.resolve();
     this.listeners = /* @__PURE__ */ new Set();
@@ -4869,6 +4922,7 @@ var WikiCore = class {
     const loaded = await loadTypeDefs(this.options.typesDir);
     this.types = loaded.types;
     this.typeIssues = loaded.issues;
+    this.typesSignature = loaded.signature;
     this.state = await scanWiki({
       root: this.root,
       types: this.types,
@@ -5032,8 +5086,10 @@ var WikiCore = class {
     const first = !this.baselineRecorded;
     this.baselineRecorded = true;
     this.signatures = next;
-    if (first || changedIds.length === 0 && removedIds.length === 0 && tableTypes.length === 0) return;
-    const change = { changedIds, removedIds, tableTypes };
+    const typesChanged = this.notifiedTypesSignature !== null && this.notifiedTypesSignature !== this.typesSignature;
+    this.notifiedTypesSignature = this.typesSignature;
+    if (first || changedIds.length === 0 && removedIds.length === 0 && tableTypes.length === 0 && !typesChanged) return;
+    const change = { changedIds, removedIds, tableTypes, ...typesChanged ? { typesChanged: true } : {} };
     for (const listener of this.listeners) {
       try {
         listener(change);
@@ -5164,30 +5220,73 @@ import * as path8 from "node:path";
 var WikiTables = class extends WikiCore {
   /**
    * Splits a table type's CSV into one page per row, in the CSV's folder.
-   * Every page is written and read back before the CSV goes to trash; the type
-   * YAML's `storage: table` line is then changed to `storage: pages`.
+   * Every page is written and read back, then the type YAML's `storage: table`
+   * line is changed to `storage: pages`, then the CSV goes to trash. Ids and
+   * field values are kept.
    */
   async convertTableToPages(typeId) {
     return this.mutate(async () => {
       const def = this.types.get(typeId);
       const table = this.state.tables.get(typeId);
       if (!def || def.storage !== "table" || !table) throw new LocalWikiError("not-a-table", `${typeId} has no table in this wiki`);
+      const yamlText = await readFile6(def.sourcePath, "utf8");
+      const flipped = yamlText.replace(/^(storage:[ \t]*)(['"]?)table\2([ \t]*(?:#.*)?)$/m, "$1pages$3");
+      if (flipped === yamlText) {
+        throw new LocalWikiError("invalid", `${def.sourcePath} has no plain \`storage: table\` line to change; set \`storage: pages\` by hand after converting, or edit the line first`);
+      }
       const { header, rows } = await this.readTableRows(table);
+      const clash = header.slice(1).find((column) => column !== def.titleField && RESERVED_KEYS.includes(column));
+      if (clash) throw new LocalWikiError("invalid", `Column "${clash}" in ${table.path} cannot become a page field (${RESERVED_KEYS.join(", ")} are reserved); rename it first`);
       const parentId = this.state.byDir.get(nameKey(table.parentDir)) ?? null;
       const occupied = await this.occupiedNames(table.parentDir, null);
+      const rowIds = new Set(rows.map((row) => (row[0] ?? "").trim()));
+      const earlier = new Map(
+        [...this.state.pages.values()].filter((page) => page.type === typeId && rowIds.has(page.id) && page.path && page.bodySource === "file" && !page.sidecar && !page.malformed).map((page) => [page.id, page])
+      );
+      const conflicts = [];
+      for (const row of rows) {
+        const { id, fields } = decodeRow(header, row, def);
+        const previous = earlier.get(id);
+        if (!previous) continue;
+        const title = String(fields[def.titleField] ?? "") || id;
+        delete fields[def.titleField];
+        const names = [.../* @__PURE__ */ new Set([...Object.keys(fields), ...Object.keys(previous.fields)])].sort();
+        const differing = names.filter((name) => JSON.stringify(fields[name]) !== JSON.stringify(previous.fields[name]));
+        if (previous.title !== title) differing.unshift("title");
+        if (differing.length > 0) conflicts.push(`${previous.path} (${differing.join(", ")})`);
+      }
+      if (conflicts.length > 0) {
+        throw new LocalWikiError(
+          "exists",
+          `An earlier conversion of ${typeId} left pages that were edited since, so their title or fields no longer match ${table.path}: ${conflicts.join("; ")}. Make each page and its CSV row agree (or move the page aside), then convert again. Nothing was changed.`
+        );
+      }
       let order = this.nextOrder(table.parentDir);
       const created = [];
       for (const row of rows) {
         const { id, fields } = decodeRow(header, row, def);
         const title = String(fields[def.titleField] ?? "") || id;
         delete fields[def.titleField];
-        const stem = uniqueStem(fileStemForTitle(title), occupied);
-        occupied.add(nameKey(stem));
-        const rel = relJoin(table.parentDir, `${stem}.md`);
-        const data = { id, ...title !== stem ? { title } : {}, type: typeId, order, ...fields };
-        await atomicWrite(this.abs(rel), composeMarkdownFile(data, ""));
+        const previous = earlier.get(id);
+        let rel;
+        let stem;
+        let body = "";
+        let pageOrder = order;
+        if (previous?.path) {
+          rel = previous.path;
+          stem = previous.stem;
+          pageOrder = previous.order ?? order;
+          const parsed = parseMarkdownFile(await readFile6(this.abs(rel), "utf8"));
+          if (parsed.ok) body = parsed.body;
+        } else {
+          stem = uniqueStem(fileStemForTitle(title), occupied);
+          occupied.add(nameKey(stem));
+          rel = relJoin(table.parentDir, `${stem}.md`);
+        }
+        const data = { id, ...title !== stem ? { title } : {}, type: typeId, order: pageOrder, ...fields };
+        await atomicWrite(this.abs(rel), composeMarkdownFile(data, body));
         created.push({ id, rel, fields });
-        order += ORDER_STEP;
+        order = Math.max(order, pageOrder) + ORDER_STEP;
       }
       for (const page of created) {
         const back = parseMarkdownFile(await readFile6(this.abs(page.rel), "utf8"));
@@ -5195,20 +5294,21 @@ var WikiTables = class extends WikiCore {
         if (!ok) throw new LocalWikiError("invalid", `Converted page ${page.rel} did not read back as written; the CSV was left in place`);
       }
       const activityRel = this.tableActivityPath(table);
-      try {
-        const lines = (await readFile6(this.abs(activityRel), "utf8")).split("\n").filter((l) => l.trim());
-        for (const page of created) {
-          const mine = lines.filter((line) => {
-            try {
-              return JSON.parse(line).itemId === page.id;
-            } catch {
-              return false;
-            }
-          });
-          if (mine.length) await appendFile2(this.abs(page.rel.slice(0, -3) + ACTIVITY_SUFFIX), mine.join("\n") + "\n");
-        }
-      } catch {
+      const lines = (await readFileOr(this.abs(activityRel), "")).split("\n").filter((l) => l.trim());
+      for (const page of created) {
+        const target = this.abs(page.rel.slice(0, -3) + ACTIVITY_SUFFIX);
+        const have = new Set((await readFileOr(target, "")).split("\n"));
+        const mine = lines.filter((line) => {
+          if (have.has(line)) return false;
+          try {
+            return JSON.parse(line).itemId === page.id;
+          } catch {
+            return false;
+          }
+        });
+        if (mine.length) await appendFile2(target, mine.join("\n") + "\n");
       }
+      await atomicWrite(def.sourcePath, flipped);
       const trashedAt = this.now();
       const entryDir = relJoin(TRASH_DIR, `${trashedAt}-table-${typeId}`);
       const csvName = path8.posix.basename(table.path);
@@ -5227,15 +5327,8 @@ var WikiTables = class extends WikiCore {
       });
       await movePath(this.abs(table.path), this.abs(relJoin(entryDir, csvName)));
       if (hasActivity) await movePath(this.abs(activityRel), this.abs(relJoin(entryDir, activityName)));
-      let typeFileUpdated = false;
-      const yamlText = await readFile6(def.sourcePath, "utf8");
-      const updated = yamlText.replace(/^storage:[ \t]*['"]?table['"]?[ \t]*$/m, "storage: pages");
-      if (updated !== yamlText) {
-        await atomicWrite(def.sourcePath, updated);
-        typeFileUpdated = true;
-      }
       await this.refresh();
-      return { created: created.map((c) => c.id), typeFileUpdated };
+      return { created: created.map((c) => c.id), typeFileUpdated: true };
     });
   }
   csvFileName(def) {
@@ -5375,6 +5468,70 @@ var WikiTables = class extends WikiCore {
     await this.refresh();
   }
 };
+async function readFileOr(abs, fallback) {
+  try {
+    return await readFile6(abs, "utf8");
+  } catch (err) {
+    if (err.code === "ENOENT") return fallback;
+    throw err;
+  }
+}
+
+// packages/local-wiki/src/watch.ts
+import { existsSync, watch as fsWatchSync } from "node:fs";
+function defaultWatchFactory(dir, onEvent) {
+  const watcher = fsWatchSync(dir, { recursive: true }, () => onEvent());
+  watcher.on("error", () => {
+  });
+  return { close: () => watcher.close() };
+}
+var DEFAULT_WATCH_CATCH_UP_MS = [250, 1e3, 3e3];
+function watchWikiFolders(input) {
+  const timers = /* @__PURE__ */ new Set();
+  const catchUp = () => {
+    for (const ms of input.catchUpMs ?? DEFAULT_WATCH_CATCH_UP_MS) {
+      const timer = setTimeout(() => {
+        timers.delete(timer);
+        input.onEvent();
+      }, ms);
+      timer.unref?.();
+      timers.add(timer);
+    }
+  };
+  const handles = [input.factory(input.root, input.onEvent)];
+  catchUp();
+  let poll = null;
+  const typesDir2 = input.typesDir;
+  const attachTypes = () => {
+    if (!typesDir2 || !existsSync(typesDir2)) return false;
+    try {
+      handles.push(input.factory(typesDir2, input.onEvent));
+      catchUp();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (typesDir2 && !attachTypes()) {
+    poll = setInterval(() => {
+      if (!attachTypes()) return;
+      if (poll) clearInterval(poll);
+      poll = null;
+      input.onEvent();
+    }, input.pollMs);
+    poll.unref?.();
+  }
+  return {
+    close: () => {
+      if (poll) clearInterval(poll);
+      poll = null;
+      for (const timer of timers) clearTimeout(timer);
+      timers.clear();
+      for (const handle of handles) handle.close();
+      handles.length = 0;
+    }
+  };
+}
 
 // packages/local-wiki/src/wiki.ts
 async function initWiki(root) {
@@ -5398,12 +5555,6 @@ async function openWiki(root, options = {}) {
   const wiki = new LocalWiki(absRoot, marker, options);
   await wiki.rescan();
   return wiki;
-}
-function defaultWatchFactory(dir, onEvent) {
-  const watcher = fsWatchSync(dir, { recursive: true }, () => onEvent());
-  watcher.on("error", () => {
-  });
-  return { close: () => watcher.close() };
 }
 var LocalWiki = class extends WikiTables {
   // ---------------------------------------------------------------- reading
@@ -5724,13 +5875,9 @@ var LocalWiki = class extends WikiTables {
           });
         }, this.options.debounceMs ?? 150);
       };
-      this.watchHandles.push(factory(this.root, schedule));
-      if (this.options.typesDir) {
-        try {
-          this.watchHandles.push(factory(this.options.typesDir, schedule));
-        } catch {
-        }
-      }
+      this.watchHandles.push(
+        watchWikiFolders({ root: this.root, typesDir: this.options.typesDir ?? null, factory, onEvent: schedule, pollMs: this.options.typesPollMs ?? 2e3, catchUpMs: this.options.watchCatchUpMs })
+      );
     }
     return () => {
       this.listeners.delete(onChange);
@@ -6041,11 +6188,11 @@ function typesDir(projectRoot2) {
 async function openLocalWiki(startDir, location, cache) {
   const where = resolveWikiLocation(startDir, location);
   const cached = cache?.get(where.dir);
-  if (cached && existsSync(path10.join(where.dir, MARKER_FILE))) {
+  if (cached && existsSync2(path10.join(where.dir, MARKER_FILE))) {
     await cached.rescan();
     return { ...where, wiki: cached };
   }
-  if (!existsSync(path10.join(where.dir, MARKER_FILE))) throw new NoLocalWikiError(where.dir);
+  if (!existsSync2(path10.join(where.dir, MARKER_FILE))) throw new NoLocalWikiError(where.dir);
   try {
     const wiki = await openWiki(where.dir, { typesDir: typesDir(where.projectRoot), actor: actor() });
     cache?.set(where.dir, wiki);
@@ -6059,7 +6206,7 @@ var HOME_BODY = `This is the project's local wiki. Its pages are markdown files 
 `;
 async function initLocalWiki(startDir, location) {
   const where = resolveWikiLocation(startDir, location);
-  const created = !existsSync(path10.join(where.dir, MARKER_FILE));
+  const created = !existsSync2(path10.join(where.dir, MARKER_FILE));
   await initWiki(where.dir);
   writeLocationSetting(where.projectRoot, where.dir);
   const gitignoreUpdated = ensureLocalOnlyIgnored(where.projectRoot, where.dir);
@@ -7143,12 +7290,41 @@ async function updateItem(wiki, id, input) {
 }
 
 // packages/cli/src/mcp/trackerTools.ts
+var CONVERT_TOOL_NAME = "convertTypeStorage";
 var ITEM_REFS = { issueKeys: ["id"], refKeys: ["id"] };
 function fieldPatch(args) {
   const patch = { ...args.fields && typeof args.fields === "object" ? args.fields : {} };
   for (const key of ["status", "priority", "owner"]) if (typeof args[key] === "string") patch[key] = args[key];
   if (Array.isArray(args.tags)) patch.tags = args.tags;
   return patch;
+}
+function problems(issues, sourcePath) {
+  const mine = sourcePath ? issues.filter((issue) => issue.path === sourcePath).map((issue) => issue.message) : [];
+  return mine.length > 0 ? { problems: mine } : {};
+}
+function convertTool(context) {
+  return localTool(
+    {
+      name: CONVERT_TOOL_NAME,
+      description: "Convert a table type (all items in one CSV) to page storage: one markdown page per item, in the CSV's folder, each with a body and room for child pages. Item ids and field values are kept; the CSV goes to the wiki trash and the type file changes to `storage: pages`. Only table-to-pages is supported.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          type: { type: "string", description: "The type id, as in tracker_list_types." },
+          storage: { type: "string", enum: ["pages"], description: "The storage to convert to. Only 'pages'." }
+        },
+        required: ["type", "storage"]
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false }
+    },
+    context,
+    async ({ wiki }, args) => {
+      const typeId = requireStr2(args, "type");
+      if (requireStr2(args, "storage") !== "pages") throw usageError("Only conversion to 'pages' is supported; a page type is not turned back into a table.");
+      const result = await wiki.convertTableToPages(typeId);
+      return { type: typeId, storage: "pages", converted: result.created };
+    }
+  );
 }
 function trackerTools(context) {
   return [
@@ -7157,6 +7333,7 @@ function trackerTools(context) {
       context,
       async ({ wiki }, args) => {
         const defs = new Map(wiki.typeDefs().map((def) => [def.typeId, def]));
+        const issues = (await wiki.snapshot()).issues.filter((issue) => issue.code === "reserved-field");
         const search = str3(args, "search")?.toLowerCase();
         const types2 = [];
         for (const typeId of await wikiTypes(wiki)) {
@@ -7169,7 +7346,8 @@ function trackerTools(context) {
             storage: snapshot.storage,
             fields: def?.fields ?? [],
             defined: Boolean(def),
-            itemCount: snapshot.items.length
+            itemCount: snapshot.items.length,
+            ...problems(issues, def?.sourcePath)
           });
         }
         return { types: types2 };
@@ -7244,7 +7422,8 @@ function trackerTools(context) {
         return summarize(item, true);
       },
       ITEM_REFS
-    )
+    ),
+    convertTool(context)
   ];
 }
 

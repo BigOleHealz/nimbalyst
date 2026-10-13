@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 <!-- New features go here -->
+- A Local wiki table type can be converted to pages from its row in the browser view, with `nim wiki convert-type`, or by an agent, keeping item ids; table rows now show read-only instead of a body that ignored typing
+- Personal tracker types can be shared with the team from a type's right-click menu in the tracker sidebar or the Wiki's Personal Types table, and a notice shows when a project's team types are not syncing
 
 ### Changed
 <!-- Changes to existing functionality go here -->
@@ -19,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - On iPhone, hiding the session list in landscape now stays hidden after rotating to portrait and back, and after relaunching the app
 - Images an agent shows with display_to_user now appear in the iOS transcript instead of a broken image
 - Wide tables in documents no longer squeeze their columns until words break: they scroll sideways with the first column pinned, and on phone-width screens rows show as cards
+- New type no longer waits forever on "Creating...": it finishes, shows why the server refused, or says the type is still syncing, and Set type leaves the page in place when the type has not reached the server
+- `nim wiki serve` shows types created or edited after it starts without reloading the page, keeps the same address across restarts, and no longer misses an edit made just after it starts
+- Local wiki fields named `activity`, `comments` or another name the app reserves are now reported as a problem with the type instead of showing blank, and the wiki setup skill creates page types with table columns by default
 
 ### Removed
 <!-- Removed features go here -->

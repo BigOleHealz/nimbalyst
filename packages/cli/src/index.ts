@@ -119,6 +119,7 @@ Local wiki (a folder of markdown pages in this project):
                                              (body from --file or stdin; exit 7 if the page changed since V)
   nim wiki move <page> [--parent P | --root | --before P | --after P] [--title T]
   nim wiki search <words> [--limit N] [--json]
+  nim wiki convert-type <type> --to pages    (a table type becomes one page per row; ids and fields kept)
   nim wiki serve [--port N] [--no-open]      (opens the wiki in your browser to read and edit; loopback only)
   nim tracker list/get/show/create/update   use the local wiki for wiki types (storage: pages|table
                                              in the type's YAML) and items already there; --local forces it
