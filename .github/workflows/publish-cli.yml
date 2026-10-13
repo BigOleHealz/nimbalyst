@@ -377,9 +377,23 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: pnpm install --frozen-lockfile
 
+      # Same as the verify job: this runner rebuilds wiki-web, which needs the
+      # mind map extension's checkout.
+      - name: Checkout the mind map extension
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          repository: nimbalyst/nimbalyst-mindmap
+          path: extension-checkouts/nimbalyst-mindmap
+
+      - name: Install the mind map extension
+        working-directory: extension-checkouts/nimbalyst-mindmap
+        run: pnpm install --frozen-lockfile
+
       # `npm publish <tarball>` runs no lifecycle scripts, so the build that
       # `prepublishOnly` used to trigger happens here.
       - name: Build
+        env:
+          NIMBALYST_EXTENSION_CHECKOUTS: ${{ github.workspace }}/extension-checkouts
         run: |
           pnpm --filter @nimbalyst/tracker-core run build
           node scripts/run-validation.mjs workspace-deps
