@@ -66,6 +66,18 @@ export const INGESTED_ALWAYS = [
   // record of a one-way data move. Added here 2026-10-08; the PostHog
   // transformation must gain the same name before any of it arrives.
   'local_wiki_export',
+  // Storage migration and database recovery lifecycle: one decision per install
+  // per rollout configVersion, one terminal event per operation. The SQLite
+  // ramp gates refuse to read silence as success, so these must arrive at 100%.
+  // Dropped from 2026-09-04 until 2026-10-13 because the mapper names them
+  // indirectly; see EVENT_MAPPER_FILE in scripts/check-analytics-allowlist.mjs.
+  'migration_rollout_decision',
+  'migration_completed',
+  'migration_failed',
+  'migration_refused',
+  'database_recovery_started',
+  'database_recovery_succeeded',
+  'database_recovery_failed',
 ] as const;
 
 /**

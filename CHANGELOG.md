@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 <!-- Changes to existing functionality go here -->
+- Alpha installs whose database is under 256 MiB can be moved from PGLite to SQLite automatically at startup when the staged rollout reaches them; larger installs stay on PGLite
 
 ### Fixed
 <!-- Bug fixes go here -->
