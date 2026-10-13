@@ -26,10 +26,15 @@ final class WorkspaceNavigationState: ObservableObject {
     private var composeStates: [String: SessionComposeState] = [:]
     /// The sidebar choice made in the wide layout. Compact adaptation rewrites
     /// the split view's visibility, so rotating back restores this instead.
-    private(set) var wideColumnVisibility: NavigationSplitViewVisibility = .all
+    /// Persisted so the choice also survives relaunch.
+    private(set) var wideColumnVisibility: NavigationSplitViewVisibility
+    private let defaults: UserDefaults
+    private static let sidebarHiddenKey = "workspace.wideSidebarHidden"
 
-    init(project: Project? = nil) {
+    init(project: Project? = nil, defaults: UserDefaults = .standard) {
         self.project = project
+        self.defaults = defaults
+        wideColumnVisibility = defaults.bool(forKey: Self.sidebarHiddenKey) ? .detailOnly : .all
     }
 
     // Own this subscription outside View.body: a fresh AnyPublisher replays
@@ -96,7 +101,9 @@ final class WorkspaceNavigationState: ObservableObject {
 
     /// Only wide-layout writes are the user's; compact writes are SwiftUI collapsing columns.
     func recordColumnVisibility(_ visibility: NavigationSplitViewVisibility, isWide: Bool) {
-        if isWide { wideColumnVisibility = visibility }
+        guard isWide, visibility != wideColumnVisibility else { return }
+        wideColumnVisibility = visibility
+        defaults.set(visibility == .detailOnly, forKey: Self.sidebarHiddenKey)
     }
 
     func composeState(for sessionId: String) -> SessionComposeState {

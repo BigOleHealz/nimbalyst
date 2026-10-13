@@ -197,12 +197,15 @@ final class PendingSessionResolverTests: XCTestCase {
     }
 
     func testWideSidebarChoiceSurvivesCompactCollapse() {
-        let navigation = WorkspaceNavigationState()
+        let defaults = UserDefaults(suiteName: #function)!
+        defaults.removePersistentDomain(forName: #function)
+        let navigation = WorkspaceNavigationState(defaults: defaults)
         navigation.recordColumnVisibility(.detailOnly, isWide: true)
         navigation.recordColumnVisibility(.all, isWide: false)
         XCTAssertEqual(navigation.wideColumnVisibility, .detailOnly)
+        XCTAssertEqual(WorkspaceNavigationState(defaults: defaults).wideColumnVisibility, .detailOnly)
         navigation.recordColumnVisibility(.all, isWide: true)
-        XCTAssertEqual(navigation.wideColumnVisibility, .all)
+        XCTAssertEqual(WorkspaceNavigationState(defaults: defaults).wideColumnVisibility, .all)
     }
 
     func testDesktopSubmitClearsADraftItSyncedToTheComposer() {
