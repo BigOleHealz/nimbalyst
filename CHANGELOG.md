@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 <!-- Bug fixes go here -->
+- On iPhone, hiding the session list in landscape now stays hidden after rotating to portrait and back
 
 ### Removed
 <!-- Removed features go here -->

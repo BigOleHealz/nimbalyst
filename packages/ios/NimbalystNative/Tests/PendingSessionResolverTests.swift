@@ -196,6 +196,15 @@ final class PendingSessionResolverTests: XCTestCase {
         XCTAssertTrue(navigation.composeState(for: "session").text.isEmpty)
     }
 
+    func testWideSidebarChoiceSurvivesCompactCollapse() {
+        let navigation = WorkspaceNavigationState()
+        navigation.recordColumnVisibility(.detailOnly, isWide: true)
+        navigation.recordColumnVisibility(.all, isWide: false)
+        XCTAssertEqual(navigation.wideColumnVisibility, .detailOnly)
+        navigation.recordColumnVisibility(.all, isWide: true)
+        XCTAssertEqual(navigation.wideColumnVisibility, .all)
+    }
+
     func testDesktopSubmitClearsADraftItSyncedToTheComposer() {
         let compose = SessionComposeState()
         compose.applyRemoteDraft("Prompt typed on desktop", updatedAt: 500)

@@ -24,6 +24,9 @@ final class WorkspaceNavigationState: ObservableObject {
     private var hostSubscription: AnyCancellable?
     private weak var hostSource: AnyObject?
     private var composeStates: [String: SessionComposeState] = [:]
+    /// The sidebar choice made in the wide layout. Compact adaptation rewrites
+    /// the split view's visibility, so rotating back restores this instead.
+    private(set) var wideColumnVisibility: NavigationSplitViewVisibility = .all
 
     init(project: Project? = nil) {
         self.project = project
@@ -91,6 +94,11 @@ final class WorkspaceNavigationState: ObservableObject {
         compactColumn = .sidebar
     }
 
+    /// Only wide-layout writes are the user's; compact writes are SwiftUI collapsing columns.
+    func recordColumnVisibility(_ visibility: NavigationSplitViewVisibility, isWide: Bool) {
+        if isWide { wideColumnVisibility = visibility }
+    }
+
     func composeState(for sessionId: String) -> SessionComposeState {
         if let existing = composeStates[sessionId] { return existing }
         let state = SessionComposeState()
@@ -151,7 +159,7 @@ struct WorkspaceNavigationView: View {
             // Some iPhones remain compact in landscape despite having room
             // for both columns. Adapt the existing split view without replacing
             // its navigation tree or losing the selected session and draft.
-            splitView
+            splitView(isWide: isWide)
                 .environment(\.horizontalSizeClass, isWide ? .regular : horizontalSizeClass)
                 .task(id: isWide) {
                     guard isWide else { return }
@@ -159,16 +167,25 @@ struct WorkspaceNavigationView: View {
                     // before restoring the wide layout. A newer resize cancels this.
                     await Task.yield()
                     guard !Task.isCancelled else { return }
-                    columnVisibility = .all
+                    columnVisibility = navigation.wideColumnVisibility
                 }
         }
         #else
-        splitView
+        splitView(isWide: true)
         #endif
     }
 
-    private var splitView: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility, preferredCompactColumn: $navigation.compactColumn) {
+    private func splitView(isWide: Bool) -> some View {
+        // The size class override comes from the same render as `isWide`, so a
+        // compact collapse always writes through a binding that knows it is compact.
+        let visibility = Binding(
+            get: { columnVisibility },
+            set: { newValue in
+                navigation.recordColumnVisibility(newValue, isWide: isWide)
+                columnVisibility = newValue
+            }
+        )
+        return NavigationSplitView(columnVisibility: visibility, preferredCompactColumn: $navigation.compactColumn) {
             Group {
                 if let project = navigation.project {
                     SessionListView(
