@@ -15,6 +15,7 @@ packages:
   - packages/markdown-ydoc
   - packages/local-wiki
   - packages/wiki-web
+  - packages/web-editors
   - packages/ios
   - packages/android
   - packages/extension-sdk

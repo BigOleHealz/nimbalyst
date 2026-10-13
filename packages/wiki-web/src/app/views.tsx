@@ -16,6 +16,8 @@ import type { LocalSearchHit } from '@nimbalyst/local-wiki';
 import { wikiApi } from '../api/client';
 import type { WikiRoute } from '../host/LocalCollabHost';
 import type { LocalTrackerDataSource } from '../host/LocalTrackerDataSource';
+import { ExtensionPageEditor } from '../editors/ExtensionPageEditor';
+import { editorForFile } from '../editors/wikiEditors';
 import { PageEditor, saveStateLabel, type SaveState } from './PageEditor';
 import { typedPageEditing } from './typedPageEditing';
 
@@ -116,11 +118,13 @@ export function PageView({ pageId, filePath, navigate }: { pageId: string; fileP
     return <TrackerSurfaceMessage icon="search_off" message="This page is not in the wiki." hint="It may have been moved to the trash." testId="wiki-web-page-missing" />;
   }
   const markdown = document.documentType === 'markdown';
+  // An editor page's tree title carries its suffix (`Plan.excalidraw`), which is what picks the editor.
+  const editor = markdown ? null : editorForFile(document.title);
   return (
-    <article className="wiki-web-page flex min-h-full flex-col" data-testid="wiki-web-page" data-page-id={pageId}>
+    <article className={`wiki-web-page flex flex-col ${editor ? 'min-h-0 flex-1' : 'min-h-full'}`} data-testid="wiki-web-page" data-page-id={pageId}>
       <ViewHeader
         crumbs={crumbs}
-        actions={markdown ? (
+        actions={markdown || editor ? (
           <span className="wiki-web-save-state px-1 text-[11px] text-nim-faint" data-save-state={save.state} aria-live="polite" title={filePath ?? undefined}>
             {saveStateLabel(save.state, save.error)}
           </span>
@@ -128,8 +132,10 @@ export function PageView({ pageId, filePath, navigate }: { pageId: string; fileP
       />
       {markdown ? (
         <PageEditor key={pageId} pageId={pageId} onSaveState={onSaveState} />
+      ) : editor ? (
+        <ExtensionPageEditor key={pageId} pageId={pageId} fileName={document.title} filePath={filePath ?? document.title} editor={editor} onSaveState={onSaveState} />
       ) : (
-        // Drawings, mind maps and other editor pages need their extension's editor, which the browser app does not ship.
+        // A page type no editor in the browser view handles (a custom suffix mapped in the wiki's settings).
         <TrackerSurfaceMessage icon="open_in_new" message="Open this page in Nimbalyst" hint={filePath ?? undefined} testId="wiki-web-editor-page" />
       )}
     </article>

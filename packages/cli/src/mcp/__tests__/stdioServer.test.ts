@@ -18,6 +18,7 @@ import { handleMessage, runStdioServer } from '../stdioServer.js';
 import { TeamScopeRefusal, ToolMap, textResult } from '../toolMap.js';
 import { resolvePluginWorkspace } from '../pluginWorkspace.js';
 
+const EDITOR_TOOLS = ['mindmap_get_document', 'mindmap_apply_operations', 'excalidraw_get_elements', 'excalidraw_add_elements', 'excalidraw_add_arrows', 'excalidraw_remove_elements'];
 const packageDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const repoRoot = path.resolve(packageDir, '../..');
 let outDir = '';
@@ -118,7 +119,7 @@ describe('nim mcp over stdio', () => {
     expect(created).toBe(true);
     // The list is stable without a wiki, and every name but the local-only ones is a contract name.
     const names = responses[1].result.tools.map((t: { name: string }) => t.name);
-    expect(names).toEqual(['initLocalWiki', ...LOCAL_TOOLS, 'convertTypeStorage', 'openWikiInBrowser']);
+    expect(names).toEqual(['initLocalWiki', ...LOCAL_TOOLS, 'convertTypeStorage', ...EDITOR_TOOLS, 'openWikiInBrowser']);
     expect(LOCAL_TOOLS.every((n: string) => (PAGE_TOOL_NAMES as readonly string[]).includes(n))).toBe(true);
     expect(stderr).toContain('nim mcp');
   });

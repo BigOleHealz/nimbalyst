@@ -27,7 +27,7 @@ async function boot(): Promise<void> {
   const [types, module] = await Promise.all([wikiApi.types(), loadTrackerPage()]);
   const schema = await loadWikiSchema(types);
   const trackers = new LocalTrackerDataSource(info.root, types, (previous, next) => applyWikiTypes(schema, previous, next));
-  root.render(<App root={info.root} trackers={trackers} module={module} />);
+  root.render(<App root={info.root} projectRoot={info.projectRoot} trackers={trackers} module={module} />);
 }
 
 boot().catch((error: unknown) => {
