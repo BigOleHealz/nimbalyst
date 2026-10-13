@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 <!-- Bug fixes go here -->
+- On macOS, Cmd+` cycles to the next window again while an agent is driving a headless browser session
 - On iPhone, hiding the session list in landscape now stays hidden after rotating to portrait and back, and after relaunching the app
 - On iOS, swiping from the left edge of the session list returns to the project list again
 - Images an agent shows with display_to_user now appear in the iOS transcript instead of a broken image
