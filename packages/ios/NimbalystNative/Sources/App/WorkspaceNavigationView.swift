@@ -150,6 +150,7 @@ struct WorkspaceNavigationView: View {
     @ObservedObject var navigation: WorkspaceNavigationState
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.layoutDirection) private var layoutDirection
     #endif
     private var hosts: [DeviceInfo] { navigation.hosts }
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
@@ -200,6 +201,9 @@ struct WorkspaceNavigationView: View {
                         includeUnattributedSessions: navigation.includesUnattributedSessions
                     )
                         .id(project.id)
+                        #if os(iOS)
+                        .gesture(EdgeSwipeBackGesture(layoutDirection: layoutDirection) { navigation.chooseProject(nil) })
+                        #endif
                         .toolbar {
                             ToolbarItem(placement: .navigation) {
                                 Button {

@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 <!-- Bug fixes go here -->
 - On iPhone, hiding the session list in landscape now stays hidden after rotating to portrait and back, and after relaunching the app
+- On iOS, swiping from the left edge of the session list returns to the project list again
 - Images an agent shows with display_to_user now appear in the iOS transcript instead of a broken image
 - Wide tables in documents no longer squeeze their columns until words break: they scroll sideways with the first column pinned, and on phone-width screens rows show as cards
 - New type no longer waits forever on "Creating...": it finishes, shows why the server refused, or says the type is still syncing, and Set type leaves the page in place when the type has not reached the server
