@@ -111,7 +111,8 @@ jobs:
 
       # The browser view builds the mind map editor in, and that extension has
       # its own (public) repo. scripts/build.mjs finds it under
-      # NIMBALYST_EXTENSION_CHECKOUTS; its install ignores this repo's workspace.
+      # NIMBALYST_EXTENSION_CHECKOUTS. It has its own pnpm-workspace.yaml (which
+      # allows esbuild's build script), so its install never joins this repo's.
       - name: Checkout the mind map extension
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -120,7 +121,7 @@ jobs:
 
       - name: Install the mind map extension
         working-directory: extension-checkouts/nimbalyst-mindmap
-        run: pnpm install --ignore-workspace --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       # The wiki-web build ends with its size check (scripts/check-size.mjs), so
       # a build over budget fails here.
