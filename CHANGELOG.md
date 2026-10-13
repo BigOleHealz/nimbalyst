@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- Bug fixes go here -->
 - On iPhone, hiding the session list in landscape now stays hidden after rotating to portrait and back, and after relaunching the app
 - Images an agent shows with display_to_user now appear in the iOS transcript instead of a broken image
+- Wide tables in documents no longer squeeze their columns until words break: they scroll sideways with the first column pinned, and on phone-width screens rows show as cards
 
 ### Removed
 <!-- Removed features go here -->
