@@ -1,0 +1,17 @@
+#!/bin/sh
+set -eu
+
+# Refuse commits that stage nimbalyst-local/, agent-mistakes.md, force-added
+# gitignored paths, or more files than the policy limit. The same script backs
+# pre-merge-commit so an automatic `git merge --no-ff` is checked too, and the
+# pre-push hook re-checks every outgoing commit so `--no-verify` here is still
+# caught at push. See scripts/commit-safety-policy.mjs.
+if ! command -v node >/dev/null 2>&1; then
+  echo "[pre-commit] ERROR: node is not on PATH, so the commit-safety gate cannot run."
+  echo "[pre-commit] GUI git clients skip your shell config; commit from a terminal."
+  exit 1
+fi
+
+# $0 is the hook path git invoked, so this resolves whether core.hooksPath is
+# relative (.githooks) or absolute (a test sandbox pointing at this directory).
+exec node "$(dirname "$0")/../scripts/check-commit-safety.mjs"
