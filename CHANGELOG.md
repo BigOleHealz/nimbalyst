@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 <!-- Bug fixes go here -->
+- A prompt left at the bottom of the transcript (for example after a failed or retried send, such as `/compact`) no longer stays below later replies
 
 ### Removed
 <!-- Removed features go here -->
