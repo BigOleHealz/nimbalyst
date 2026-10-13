@@ -17,7 +17,7 @@
  */
 import { spawnSync } from 'node:child_process';
 import { build as esbuild } from 'esbuild';
-import { mkdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PINNED_EXTENSIONS, pinnedExtensionEnvPrefix } from '@nimbalyst/web-editors/pinned';
@@ -52,6 +52,13 @@ for (const slug of WIKI_EDITOR_SLUGS) {
   rmSync(outDir, { recursive: true, force: true });
   mkdirSync(outDir, { recursive: true });
   console.log(`[wiki-web] building ${pin.package} from ${root}`);
+  // The extension SDK's manifest check looks for manifest.main and .styles in the
+  // extension's own folder even when --outDir sends the build elsewhere, so a
+  // fresh checkout (CI) fails it. Build once in place first when they are missing.
+  const manifest = JSON.parse(readFileSync(path.join(root, 'manifest.json'), 'utf8'));
+  if ([manifest.main, manifest.styles].some((file) => file && !existsSync(path.join(root, file)))) {
+    run(pnpm, ['run', 'build'], { cwd: root, env: { ...process.env, NODE_ENV: 'production' }, label: `${pin.package} build in place` });
+  }
   // No `--` separator: pnpm would forward it and Vite would ignore --outDir.
   run(pnpm, ['run', 'build', '--outDir', outDir, '--emptyOutDir'], { cwd: root, env: { ...process.env, NODE_ENV: 'production' }, label: `${pin.package} build` });
   env[`${pinnedExtensionEnvPrefix(slug)}_BUNDLE_DIR`] = outDir;

@@ -119,15 +119,9 @@ jobs:
           repository: nimbalyst/nimbalyst-mindmap
           path: extension-checkouts/nimbalyst-mindmap
 
-      # Built once into its own dist/ as well: the extension SDK's manifest check
-      # looks for dist/index.js beside manifest.json even when the wiki-web build
-      # sends the output elsewhere with --outDir. The in-repo editors have that
-      # dist/ from the workspace-deps step above.
-      - name: Install and build the mind map extension
+      - name: Install the mind map extension
         working-directory: extension-checkouts/nimbalyst-mindmap
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm run build
+        run: pnpm install --frozen-lockfile
 
       # The wiki-web build ends with its size check (scripts/check-size.mjs), so
       # a build over budget fails here.
