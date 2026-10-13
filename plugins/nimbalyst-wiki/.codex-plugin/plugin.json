@@ -1,7 +1,7 @@
 {
   "name": "nimbalyst-wiki",
   "version": "0.3.0",
-  "description": "Your project's Nimbalyst Wiki from Codex: the team's pages on the Nimbalyst server, or a local wiki of plain files in the repository. Read pages as context, and record what people decided in the page it affects.",
+  "description": "A local wiki your Codex agents write for you, so you can think, organize, and set direction. Run setup to build the wiki, capture decisions at the end of sessions, track things with types, read and edit it in your local browser, and optionally share it with your team.",
   "author": {
     "name": "Nimbalyst",
     "url": "https://nimbalyst.com"
@@ -20,7 +20,7 @@
   "mcpServers": "./.codex-mcp.json",
   "interface": {
     "displayName": "Nimbalyst Wiki",
-    "shortDescription": "Read and update your project's wiki",
+    "shortDescription": "A local wiki your agents write for you",
     "developerName": "Nimbalyst",
     "category": "Productivity",
     "capabilities": [

@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 <!-- New features go here -->
+- The nimbalyst-wiki plugin has a `/nimbalyst-wiki:start` tour, describes itself as a local wiki your agents write for you, and ships with an MIT license so it can be submitted to the Claude plugin directory
 - A Local wiki table type can be converted to pages from its row in the browser view, with `nim wiki convert-type`, or by an agent, keeping item ids; table rows now show read-only instead of a body that ignored typing
 - Personal tracker types can be shared with the team from a type's right-click menu in the tracker sidebar or the Wiki's Personal Types table, and a notice shows when a project's team types are not syncing
 

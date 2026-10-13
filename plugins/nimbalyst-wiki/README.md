@@ -1,6 +1,6 @@
 # Nimbalyst Wiki
 
-A project wiki that people and coding agents write together. It holds what the team decided and why, in the page each decision affects, with the person's own words cited. Agents read it for context before they work and record what was settled when they finish.
+A local wiki your agents write for you, so you can think, organize, and set direction. It holds what the team decided and why, in the page each decision affects, with the person's own words cited. Agents read it for context before they work and record what was settled when they finish.
 
 There are two kinds of wiki, and you can use either or both:
 
@@ -28,6 +28,14 @@ In Claude Code:
 /plugin install nimbalyst-wiki@nimbalyst
 ```
 
+Claude Code only reports that the install succeeded; it does not start any onboarding. Next, run:
+
+```
+/nimbalyst-wiki:setup
+```
+
+Your agent builds the first version of the wiki: Home, a writing guide, and starter pages based on this repository. Later, use `/nimbalyst-wiki:capture` at the end of sessions to record what you decided. For a short tour instead, run `/nimbalyst-wiki:start`.
+
 The plugin brings three MCP servers. `/mcp` lists them:
 
 - `nimbalyst-local`: the local wiki. Runs on your machine and needs nothing else installed.
@@ -36,6 +44,7 @@ The plugin brings three MCP servers. `/mcp` lists them:
 
 ### Skills
 
+- `/nimbalyst-wiki:start` is a short tour: what the plugin does, which skills exist, and how to begin with a local or team wiki.
 - `/nimbalyst-wiki:setup` builds a wiki that is useful from day one: it asks a few questions about who the wiki is for, then writes a Home page, the writing guide ("How we write this wiki") and a handful of starter pages from your project's README and docs. It can also define types (below). Running it again fills gaps and never duplicates or overwrites what people wrote.
 - `/nimbalyst-wiki:capture` records what this session decided. Claude lists the decisions, answered questions and open questions from the conversation, finds the page each one affects, and writes it there. If nothing is worth keeping, it says so.
 - `/nimbalyst-wiki:update` is the writing guide Claude follows for every wiki edit. You rarely call it yourself.
@@ -77,7 +86,7 @@ codex plugin marketplace add nimbalyst/nimbalyst
 codex plugin add nimbalyst-wiki@nimbalyst
 ```
 
-It brings the same skills (`nimbalyst-wiki:setup`, `capture`, `update`, `connect`) and the same three MCP servers; `codex mcp list` shows them. Sign in to the team wiki with `codex mcp login nimbalyst-team`.
+It brings the same skills (`nimbalyst-wiki:start`, `setup`, `capture`, `update`, `connect`) and the same three MCP servers; `codex mcp list` shows them. Sign in to the team wiki with `codex mcp login nimbalyst-team`.
 
 Two differences from Claude Code:
 
