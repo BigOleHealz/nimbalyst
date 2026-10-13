@@ -10,25 +10,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 <!-- New features go here -->
-- The nimbalyst-wiki plugin has a `/nimbalyst-wiki:start` tour, can open the local wiki in your browser with nothing else to install, describes itself as a local wiki your agents write for you, and ships with an MIT license so it can be submitted to the Claude plugin directory
-- The Local wiki's browser view opens, edits and creates drawings, mind maps, CSV spreadsheets, calc sheets, data models, mockups and project canvases, and agents outside the app can build drawing and mind map pages through `nim mcp`
-- A Local wiki table type can be converted to pages from its row in the browser view, with `nim wiki convert-type`, or by an agent, keeping item ids; table rows now show read-only instead of a body that ignored typing
-- Personal tracker types can be shared with the team from a type's right-click menu in the tracker sidebar or the Wiki's Personal Types table, and a notice shows when a project's team types are not syncing
 
 ### Changed
 <!-- Changes to existing functionality go here -->
-- Alpha installs whose database is under 256 MiB can be moved from PGLite to SQLite automatically at startup when the staged rollout reaches them; larger installs stay on PGLite
 
 ### Fixed
 <!-- Bug fixes go here -->
-- On macOS, Cmd+` cycles to the next window again while an agent is driving a headless browser session
-- On iPhone, hiding the session list in landscape now stays hidden after rotating to portrait and back, and after relaunching the app
-- On iOS, swiping from the left edge of the session list returns to the project list again
-- Images an agent shows with display_to_user now appear in the iOS transcript instead of a broken image
-- Wide tables in documents no longer squeeze their columns until words break: they scroll sideways with the first column pinned, and on phone-width screens rows show as cards
-- New type no longer waits forever on "Creating...": it finishes, shows why the server refused, or says the type is still syncing, and Set type leaves the page in place when the type has not reached the server
-- `nim wiki serve` shows types created or edited after it starts without reloading the page, keeps the same address across restarts, and no longer misses an edit made just after it starts
-- Local wiki fields named `activity`, `comments` or another name the app reserves are now reported as a problem with the type instead of showing blank, and the wiki setup skill creates page types with table columns by default
+
+### Removed
+<!-- Removed features go here -->
+
+## [0.81.2] - 2026-10-13
+
+
+### Added
+<!-- New features go here -->
+- nimbalyst-wiki plugin: `/nimbalyst-wiki:start` tour, opens the local wiki in the browser with nothing to install, MIT license.
+- Local wiki browser view opens, edits and creates drawings, mind maps, spreadsheets, data models, mockups and canvases.
+- `nim mcp` gains mind map and Excalidraw tools so agents can build those pages without the app.
+- Local wiki table types convert to pages from the browser view, `nim wiki convert-type`, or an agent, keeping item ids.
+- Share a personal tracker type with the team from the tracker sidebar or the Wiki's Personal Types table.
+
+### Changed
+<!-- Changes to existing functionality go here -->
+- Alpha installs under 256 MiB can migrate from PGLite to SQLite automatically at startup as the staged rollout reaches them.
+- Local wiki table rows are read-only; the wiki setup skill creates page types with table columns by default.
+
+### Fixed
+<!-- Bug fixes go here -->
+- macOS Cmd+` cycles windows again while an agent drives a headless browser session.
+- iPhone keeps the landscape session list hidden across rotation and relaunch.
+- iOS left-edge swipe from the session list returns to the project list again.
+- display_to_user images render in the iOS transcript instead of a broken image.
+- Wide document tables scroll sideways with the first column pinned; phone-width screens show rows as cards.
+- New type no longer hangs on "Creating..."; it finishes, shows the server's refusal, or says the type is still syncing.
+- Set type leaves the page in place when the type has not reached the server.
+- Notice shown when a project's team tracker types are not syncing.
+- `nim wiki serve` picks up type changes live, keeps its address across restarts, and catches edits made right after start.
+- Local wiki fields with reserved names (`activity`, `comments`) are reported as a type problem instead of showing blank.
+- Git baseline reads no longer return another file's content after a git helper process restarts.
 
 ### Removed
 <!-- Removed features go here -->
