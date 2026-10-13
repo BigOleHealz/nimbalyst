@@ -8497,7 +8497,7 @@ var pluginRoot = path18.dirname(path18.dirname(fileURLToPath2(import.meta.url)))
 var workspace = resolvePluginWorkspace(process.env, process.cwd(), pluginRoot);
 var webDir = path18.join(pluginRoot, "web");
 var flags = existsSync5(path18.join(webDir, "index.html")) ? { workspace, assets: webDir } : { workspace };
-runMcp("0.2.0", { noun: "mcp", positionals: [], flags }).catch((err) => {
+runMcp("0.3.0", { noun: "mcp", positionals: [], flags }).catch((err) => {
   process.stderr.write(`nimbalyst-local: ${err.stack ?? err}
 `);
   process.exit(1);
