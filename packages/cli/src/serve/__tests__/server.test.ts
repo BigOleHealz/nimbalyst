@@ -14,6 +14,8 @@ import { defaultSessionStore, startRememberedWikiServer } from '../session.js';
 import { createServer } from 'node:net';
 import { parseArgs } from '../../cli/parse.js';
 import { wantsOpen } from '../runWikiServe.js';
+import { initLocalWiki } from '../../localWiki/open.js';
+import { serveTool } from '../../mcp/serveTool.js';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -217,5 +219,32 @@ describe('nim wiki serve', () => {
       buffer += value;
     }
     await reader.cancel();
+  });
+
+  it('openWikiInBrowser starts one server for the session, reuses it, and stops it on close', async () => {
+    const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'nim-serve-tool-')));
+    cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+    process.env.NIM_CONFIG_DIR = path.join(root, 'config');
+    cleanups.push(() => void delete process.env.NIM_CONFIG_DIR);
+    const assets = path.join(root, 'web');
+    mkdirSync(assets);
+    writeFileSync(path.join(assets, 'index.html'), '<!doctype html><title>wiki</title>');
+    const opened: string[] = [];
+    const tool = serveTool({ startDir: root, assetsDir: assets, version: 'test', openUrl: (url) => opened.push(url) });
+    cleanups.push(() => tool.close());
+
+    const missing = await tool.call({});
+    expect(missing.isError).toBe(true);
+    expect(missing.content[0].text).toContain('initLocalWiki');
+
+    (await initLocalWiki(root)).wiki.close();
+    const first = JSON.parse((await tool.call({})).content[0].text) as { url: string };
+    const second = JSON.parse((await tool.call({ open: false })).content[0].text) as { url: string };
+    expect(second.url).toBe(first.url);
+    expect(opened).toEqual([first.url]);
+    expect((await fetch(first.url, { redirect: 'manual' })).status).toBe(302);
+
+    await tool.close();
+    await expect(fetch(first.url)).rejects.toThrow();
   });
 });

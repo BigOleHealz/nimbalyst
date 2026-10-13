@@ -64,15 +64,17 @@ export const SESSION_INPUTS_TOOL = 'list_session_inputs';
 /** The `nimbalyst-local` server's tools outside the shared contract. */
 export const LOCAL_INIT_TOOL = 'initLocalWiki';
 export const LOCAL_CONVERT_TOOL = 'convertTypeStorage';
+export const LOCAL_SERVE_TOOL = 'openWikiInBrowser';
 
 /** Every tool the remote server offers, plus the plugin's local servers. */
-const REMOTE_TOOLS = new Set([...PAGE_TOOL_CONTRACT.map((tool) => tool.name), SESSION_INPUTS_TOOL, LOCAL_INIT_TOOL, LOCAL_CONVERT_TOOL]);
+const REMOTE_TOOLS = new Set([...PAGE_TOOL_CONTRACT.map((tool) => tool.name), SESSION_INPUTS_TOOL, LOCAL_INIT_TOOL, LOCAL_CONVERT_TOOL, LOCAL_SERVE_TOOL]);
 /** Tools only a terminal agent has. */
 const TERMINAL_ONLY_TOOLS = new Set([
   ...PAGE_TOOL_CONTRACT.filter((tool) => tool.availability === 'remoteOnly').map((tool) => tool.name),
   SESSION_INPUTS_TOOL,
   LOCAL_INIT_TOOL,
   LOCAL_CONVERT_TOOL,
+  LOCAL_SERVE_TOOL,
 ]);
 /**
  * Desktop agent tools a skill could name that the remote server does not

@@ -15,7 +15,9 @@ You can work with the wiki from these places, all on the same pages:
 | Codex (this plugin) | yes | yes |
 | Nimbalyst app | Wiki mode, Local section | Wiki mode, Team section |
 | `nim` command line | `nim wiki ...` | `nim wiki ...` |
-| Browser | `nim wiki serve` | the Nimbalyst web console |
+| Browser | ask your agent to open it, or `nim wiki serve` | the Nimbalyst web console |
+
+You don't need the Nimbalyst app for any of this. The plugin needs Node.js 22 or later on your `PATH`.
 
 ## Claude Code
 
@@ -24,8 +26,8 @@ You can work with the wiki from these places, all on the same pages:
 In Claude Code:
 
 ```
-/plugin marketplace add nimbalyst/nimbalyst
-/plugin install nimbalyst-wiki@nimbalyst
+/plugin marketplace add nimbalyst/nimbalyst-wiki
+/plugin install nimbalyst-wiki@nimbalyst-wiki
 ```
 
 Claude Code only reports that the install succeeded; it does not start any onboarding. Next, run:
@@ -38,7 +40,7 @@ Your agent builds the first version of the wiki: Home, a writing guide, and star
 
 The plugin brings three MCP servers. `/mcp` lists them:
 
-- `nimbalyst-local`: the local wiki. Runs on your machine and needs nothing else installed.
+- `nimbalyst-local`: the local wiki, plus the browser view of it. Runs on your machine and needs nothing else installed.
 - `nimbalyst-team`: the team wiki on the Nimbalyst server. It asks you to sign in to Nimbalyst the first time you connect it in `/mcp`. Leave it disconnected if you only use a local wiki.
 - `nimbalyst-session`: lets Claude cite what you typed in this session when it records a decision. It reads only this session's transcript, on your machine.
 
@@ -49,7 +51,11 @@ The plugin brings three MCP servers. `/mcp` lists them:
 - `/nimbalyst-wiki:capture` records what this session decided. Claude lists the decisions, answered questions and open questions from the conversation, finds the page each one affects, and writes it there. If nothing is worth keeping, it says so.
 - `/nimbalyst-wiki:update` is the writing guide Claude follows for every wiki edit. You rarely call it yourself.
 
-You can also just ask: "start a wiki for this repo", "what does the wiki say about auth?", "add a page about our deploy process".
+You can also just ask: "start a wiki for this repo", "what does the wiki say about auth?", "add a page about our deploy process", "open the wiki in my browser".
+
+### Reading the wiki in your browser
+
+Ask Claude to open the wiki in your browser. It starts a server on your machine and opens a tab with the page tree, the page editor, typed pages and type tables. Edits save straight to the files, and pages Claude writes show up while you watch. The server only accepts connections from this machine, with the token in the link, and stops when the session ends.
 
 ### Which wiki Claude uses
 
@@ -82,16 +88,32 @@ Inside the Nimbalyst app, agents already have the wiki tools, and the plugin sta
 The same plugin installs in the Codex CLI:
 
 ```sh
-codex plugin marketplace add nimbalyst/nimbalyst
-codex plugin add nimbalyst-wiki@nimbalyst
+codex plugin marketplace add nimbalyst/nimbalyst-wiki
+codex plugin add nimbalyst-wiki@nimbalyst-wiki
 ```
 
-It brings the same skills (`nimbalyst-wiki:start`, `setup`, `capture`, `update`, `connect`) and the same three MCP servers; `codex mcp list` shows them. Sign in to the team wiki with `codex mcp login nimbalyst-team`.
+It brings the same skills (`nimbalyst-wiki:start`, `setup`, `capture`, `update`, `connect`), the same three MCP servers (`codex mcp list` shows them) and the same browser view. Sign in to the team wiki with `codex mcp login nimbalyst-team`.
 
 Two differences from Claude Code:
 
 - Codex does not run hooks that come with a plugin, so there is no reminder to capture decisions at the end of a session. Ask for it ("record what we decided in the wiki").
 - `nimbalyst-session` reads Claude Code transcripts only, so decisions recorded from Codex are marked with your name but carry no quote from the session.
+
+## Other agents
+
+Cursor, VS Code, the Claude desktop app and any other MCP client use the wiki through `nim mcp`, the same local server the plugin bundles. Install the `nim` command line (Node.js 22 or later):
+
+```sh
+npm install -g @nimbalyst/cli
+```
+
+Then add the server to the agent's MCP settings:
+
+- **Cursor**, in `.cursor/mcp.json`: `{ "mcpServers": { "nimbalyst-wiki": { "command": "nim", "args": ["mcp", "--workspace", "${workspaceFolder}"] } } }`
+- **VS Code** (Copilot in agent mode), in `.vscode/mcp.json`: `{ "servers": { "nimbalyst-wiki": { "command": "nim", "args": ["mcp", "--workspace", "${workspaceFolder}"] } } }`
+- **Claude desktop app**: the same `mcpServers` entry with the project's full path in place of `${workspaceFolder}`. If the app cannot find `nim`, use the path `which nim` prints.
+
+Then ask the agent to start a wiki for this repo. These agents get the wiki tools but not the plugin's skills (`setup`, `capture` and the writing guide), so ask for what you want in your own words. To open the wiki in the browser from these agents, also install the browser app: `npm install -g @nimbalyst/wiki-web`.
 
 ## Nimbalyst app
 
@@ -110,7 +132,7 @@ The app and `nim` find the wiki the same way: the folder named in `.nimbalyst/lo
 npm install -g @nimbalyst/cli
 ```
 
-Requires Node.js 22 or later. `nim wiki` works on both wikis.
+You don't need `nim` to use the plugin. It is for working with the wiki from scripts and your own terminal. Requires Node.js 22 or later. `nim wiki` works on both wikis.
 
 ```sh
 nim wiki init                         # create the local wiki (nimbalyst-local/wiki, ignored by git)
@@ -131,7 +153,7 @@ nim wiki serve                        # open the wiki in your browser
 
 ### `nim wiki serve`
 
-Opens the local wiki in your browser to read and edit: the page tree, pages in the same editor as the app, typed pages with their fields, and type tables. Edits save straight to the files, and changes made in your editor or by an agent show up live.
+The same browser view as the plugin's, from a terminal. It opens the local wiki in your browser to read and edit: the page tree, pages in the same editor as the app, typed pages with their fields, and type tables. Edits save straight to the files, and changes made in your editor or by an agent show up live.
 
 The server listens on this machine only and requires the token in the URL it opens. The browser app is a separate package; the first time, `nim` prints the command to install it:
 

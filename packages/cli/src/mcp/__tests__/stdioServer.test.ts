@@ -116,9 +116,9 @@ describe('nim mcp over stdio', () => {
     ]);
     // The agent made the wiki itself; no `nim wiki init` step for the user.
     expect(created).toBe(true);
-    // The list is stable without a wiki, and every name but the local-only init is a contract name.
+    // The list is stable without a wiki, and every name but the local-only ones is a contract name.
     const names = responses[1].result.tools.map((t: { name: string }) => t.name);
-    expect(names).toEqual(['initLocalWiki', ...LOCAL_TOOLS, 'convertTypeStorage']);
+    expect(names).toEqual(['initLocalWiki', ...LOCAL_TOOLS, 'convertTypeStorage', 'openWikiInBrowser']);
     expect(LOCAL_TOOLS.every((n: string) => (PAGE_TOOL_NAMES as readonly string[]).includes(n))).toBe(true);
     expect(stderr).toContain('nim mcp');
   });

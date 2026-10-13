@@ -6,6 +6,7 @@
  * expands no variables in a plugin's MCP args, so its manifest starts the
  * server in the plugin's own directory and forwards the project as `PWD`.
  */
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runMcp } from '../commands/mcp.js';
@@ -16,7 +17,10 @@ declare const __NIM_VERSION__: string;
 // The bundle is <plugin>/scripts/nim-local-mcp.mjs.
 const pluginRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const workspace = resolvePluginWorkspace(process.env, process.cwd(), pluginRoot);
-runMcp(__NIM_VERSION__, { noun: 'mcp', positionals: [], flags: { workspace } }).catch((err) => {
+// The published plugin ships the browser app in web/; a monorepo checkout finds packages/wiki-web instead.
+const webDir = path.join(pluginRoot, 'web');
+const flags: Record<string, string> = existsSync(path.join(webDir, 'index.html')) ? { workspace, assets: webDir } : { workspace };
+runMcp(__NIM_VERSION__, { noun: 'mcp', positionals: [], flags }).catch((err) => {
   process.stderr.write(`nimbalyst-local: ${(err as Error).stack ?? err}\n`);
   process.exit(1);
 });

@@ -21,7 +21,7 @@ export interface WikiServeContext {
   err?: (text: string) => void;
 }
 
-function openBrowser(url: string): void {
+export function openBrowser(url: string): void {
   const [command, args] =
     process.platform === 'darwin' ? ['open', [url]] : process.platform === 'win32' ? ['cmd', ['/c', 'start', '""', url]] : ['xdg-open', [url]];
   try {

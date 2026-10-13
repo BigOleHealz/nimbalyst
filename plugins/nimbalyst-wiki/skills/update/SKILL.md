@@ -130,3 +130,4 @@ When the `connect` skill chose the local wiki, use only the `nimbalyst-local` se
 - **Diagrams**: a fenced `mermaid` block in the page. A drawing or other editor page is created with `createSharedDoc` and `documentType`, and its body is the file's own text.
 - **Deletes** go to the wiki's `.trash/` folder and can be restored. Ask before deleting a page someone else wrote.
 - Pages are ordinary files: a person may edit them in any editor or commit them. Read before every edit; a write with a stale `expectedVersion` is refused, so re-read and apply your change again.
+- **To read it in a browser**, call `openWikiInBrowser` and give the person the URL it returns. It serves the wiki on this machine for the rest of the session, with the same pages, types and tables, and saves edits to the files.
