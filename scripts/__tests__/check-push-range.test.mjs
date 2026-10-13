@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { evaluateCommits, parseRevListParents } from '../check-push-range.mjs';
-import { LARGE_COMMIT_FILE_LIMIT } from '../commit-safety-policy.mjs';
+import { LARGE_COMMIT_FILE_LIMIT, SIZE_LIMIT_CONFIG_KEY } from '../commit-safety-policy.mjs';
 import { assertInSandbox, commitFiles, makeScratchRepo, sandboxEnv, writeFile } from './helpers/gitSandbox.mjs';
 
 const CHECK_SCRIPT = fileURLToPath(new URL('../check-push-range.mjs', import.meta.url));
@@ -33,6 +33,7 @@ test('evaluateCommits applies the policy per commit against the first parent', (
   const problems = evaluateCommits(commits, {});
   assert.deepEqual(problems.map(({ sha, kind }) => [sha[0], kind]), [['b', 'forbidden'], ['c', 'size'], ['d', 'parents']]);
   assert.deepEqual(evaluateCommits(commits, { NIMBALYST_LARGE_COMMIT: '1' }).map(({ kind }) => kind), ['forbidden', 'parents']);
+  assert.deepEqual(evaluateCommits(commits, {}, false).map(({ kind }) => kind), ['forbidden', 'parents']);
   assert.deepEqual(parseRevListParents('aaa bbb ccc\nddd\n'), [{ sha: 'aaa', parents: ['bbb', 'ccc'] }, { sha: 'ddd', parents: [] }]);
 });
 
@@ -58,6 +59,9 @@ test('CLI refuses a range whose commits leak local files or exceed the limit, in
   git(['checkout', '-q', clean, '-b', 'landing']);
   git(['merge', '--no-ff', '-q', '--no-verify', '-m', 'wide merge', 'wide']);
   const merge = git(['rev-parse', 'HEAD']).trim();
+  // A contributor clone has not opted in, so the size of their merge is their business.
+  assert.match(runCheck(repo, `${base}..HEAD`), /OK: 4 outgoing commit/);
+  git(['config', SIZE_LIMIT_CONFIG_KEY, 'true']);
   expectRefusal(() => runCheck(repo, `${base}..HEAD`), new RegExp(`${merge.slice(0, 9)} size: ${half * 2} files changed`));
   assert.match(runCheck(repo, `${base}..HEAD`, { NIMBALYST_LARGE_COMMIT: '1' }), /OK: 4 outgoing commit/);
 });

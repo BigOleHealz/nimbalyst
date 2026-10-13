@@ -2,7 +2,8 @@
 // Pre-commit / pre-merge-commit gate. Refuses a commit when the index:
 //   - stages anything under nimbalyst-local/ or any agent-mistakes.md
 //   - stages a NEW path that matches a .gitignore rule (it had to be force-added)
-//   - stages more than LARGE_COMMIT_FILE_LIMIT files (NIMBALYST_LARGE_COMMIT=1 overrides)
+//   - stages more than LARGE_COMMIT_FILE_LIMIT files, on clones that opted in with
+//     `git config nimbalyst.commitSizeLimit true` (NIMBALYST_LARGE_COMMIT=1 overrides)
 //
 // It diffs the whole index against HEAD, so a merge in progress is measured by
 // what the merge commit will actually contain, not by the files the user
@@ -16,6 +17,7 @@ import {
   LARGE_COMMIT_OVERRIDE_ENV,
   exceedsFileLimit,
   findForbiddenPaths,
+  readSizeLimitEnforced,
   splitNul,
 } from './commit-safety-policy.mjs';
 
@@ -45,7 +47,7 @@ export function parseNameStatus(output) {
  * Pure decision over the staged entries. `ignoredAdded` is the subset of newly
  * added paths that `git check-ignore` matched.
  */
-export function evaluateStagedCommit({ entries, ignoredAdded, env = process.env }) {
+export function evaluateStagedCommit({ entries, ignoredAdded, env = process.env, sizeLimitEnforced = true }) {
   const landing = entries.filter((entry) => entry.status !== 'D');
   const forbidden = findForbiddenPaths(landing.map((entry) => entry.path));
   const ignoredSet = new Set(ignoredAdded);
@@ -54,7 +56,7 @@ export function evaluateStagedCommit({ entries, ignoredAdded, env = process.env 
     .filter((entry) => entry.status === 'A' && ignoredSet.has(entry.path) && !forbiddenSet.has(entry.path))
     .map((entry) => ({ path: entry.path, reason: 'matches a .gitignore rule and was force-added' }));
   const fileCount = entries.length;
-  const tooLarge = exceedsFileLimit(fileCount, env);
+  const tooLarge = exceedsFileLimit(fileCount, env, sizeLimitEnforced);
   return {
     ok: forbidden.length === 0 && ignored.length === 0 && !tooLarge,
     forbidden: [...forbidden, ...ignored],
@@ -120,7 +122,11 @@ export function formatRefusal(result, { merging }) {
 
 function main() {
   const entries = readStagedEntries();
-  const result = evaluateStagedCommit({ entries, ignoredAdded: readIgnoredAdded(entries) });
+  const result = evaluateStagedCommit({
+    entries,
+    ignoredAdded: readIgnoredAdded(entries),
+    sizeLimitEnforced: readSizeLimitEnforced(),
+  });
   if (result.ok) return;
   const merging = spawnSync('git', ['rev-parse', '--verify', '-q', 'MERGE_HEAD'], { encoding: 'utf8' }).status === 0;
   console.error(formatRefusal(result, { merging }));

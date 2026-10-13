@@ -3,8 +3,9 @@
 // skips pre-commit, so this re-applies the same policy to the range about to
 // leave the machine:
 //   - no commit may touch nimbalyst-local/ or any agent-mistakes.md
-//   - no commit may change more than LARGE_COMMIT_FILE_LIMIT files
-//     (a merge is measured against its first parent, which is what GitHub shows)
+//   - no commit may change more than LARGE_COMMIT_FILE_LIMIT files, on clones
+//     that opted in with `git config nimbalyst.commitSizeLimit true` (a merge is
+//     measured against its first parent, which is what GitHub shows)
 //   - no commit may have more than two parents
 // NIMBALYST_LARGE_COMMIT=1 lifts the file-count limit for one deliberate push.
 //
@@ -17,6 +18,7 @@ import {
   LARGE_COMMIT_OVERRIDE_ENV,
   exceedsFileLimit,
   findForbiddenPaths,
+  readSizeLimitEnforced,
   splitNul,
 } from './commit-safety-policy.mjs';
 
@@ -37,7 +39,7 @@ export function parseRevListParents(output) {
  * Pure decision over a list of commits, each with its parents and the paths
  * it changes relative to its first parent.
  */
-export function evaluateCommits(commits, env = process.env) {
+export function evaluateCommits(commits, env = process.env, sizeLimitEnforced = true) {
   const problems = [];
   for (const { sha, parents, paths } of commits) {
     if (parents.length > MAX_PARENTS) {
@@ -47,7 +49,7 @@ export function evaluateCommits(commits, env = process.env) {
     if (forbidden.length > 0) {
       problems.push({ sha, kind: 'forbidden', detail: forbidden.map(({ path }) => path).join(', ') });
     }
-    if (exceedsFileLimit(paths.length, env)) {
+    if (exceedsFileLimit(paths.length, env, sizeLimitEnforced)) {
       problems.push({ sha, kind: 'size', detail: `${paths.length} files changed (limit ${LARGE_COMMIT_FILE_LIMIT})` });
     }
   }
@@ -79,7 +81,7 @@ function resolveRange() {
 function main() {
   const range = resolveRange();
   const commits = readCommits(range);
-  const problems = evaluateCommits(commits);
+  const problems = evaluateCommits(commits, process.env, readSizeLimitEnforced());
   if (problems.length === 0) {
     console.log(`[check-push-range] OK: ${commits.length} outgoing commit(s) in ${range} pass the commit-safety policy.`);
     return;

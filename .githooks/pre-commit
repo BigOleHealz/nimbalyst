@@ -6,10 +6,11 @@ set -eu
 # pre-merge-commit so an automatic `git merge --no-ff` is checked too, and the
 # pre-push hook re-checks every outgoing commit so `--no-verify` here is still
 # caught at push. See scripts/commit-safety-policy.mjs.
+# Without node (GUI git clients skip shell config) the commit goes through with
+# a warning; pre-push re-applies the same policy before anything leaves the machine.
 if ! command -v node >/dev/null 2>&1; then
-  echo "[pre-commit] ERROR: node is not on PATH, so the commit-safety gate cannot run."
-  echo "[pre-commit] GUI git clients skip your shell config; commit from a terminal."
-  exit 1
+  echo "[pre-commit] WARNING: node is not on PATH; skipping the commit-safety gate (pre-push still enforces it)."
+  exit 0
 fi
 
 # $0 is the hook path git invoked, so this resolves whether core.hooksPath is

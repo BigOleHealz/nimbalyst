@@ -8,12 +8,30 @@
 // nimbalyst-local/ working files onto public main. Every check here exists to
 // make that shape of commit impossible to create and, failing that, impossible
 // to push.
+import { spawnSync } from 'node:child_process';
 
 /** A commit (or merge) that touches more files than this is refused. */
 export const LARGE_COMMIT_FILE_LIMIT = 200;
 
 /** Set to '1' to let one deliberate oversized commit or push through. */
 export const LARGE_COMMIT_OVERRIDE_ENV = 'NIMBALYST_LARGE_COMMIT';
+
+/**
+ * The file-count limit is opt-in per clone, like the push allowlist in
+ * check-push-destination.mjs. It guards against an agent on the maintainer's
+ * checkout; a contributor running `git merge main` on their own branch would
+ * otherwise hit it for a normal workflow. Enable it once on a maintainer machine:
+ *
+ *   git config nimbalyst.commitSizeLimit true
+ *
+ * The forbidden-path checks apply everywhere; they cost contributors nothing.
+ */
+export const SIZE_LIMIT_CONFIG_KEY = 'nimbalyst.commitSizeLimit';
+
+export function readSizeLimitEnforced(cwd = process.cwd()) {
+  const result = spawnSync('git', ['config', '--get', '--type=bool', SIZE_LIMIT_CONFIG_KEY], { cwd, encoding: 'utf8' });
+  return result.status === 0 && result.stdout.trim() === 'true';
+}
 
 /** Repo-relative directory prefixes that must never be committed. */
 const FORBIDDEN_PREFIXES = ['nimbalyst-local/'];
@@ -46,9 +64,9 @@ export function isLargeCommitOverridden(env = process.env) {
   return env[LARGE_COMMIT_OVERRIDE_ENV] === '1';
 }
 
-/** True when `count` files is more than the gate allows without the override. */
-export function exceedsFileLimit(count, env = process.env) {
-  return count > LARGE_COMMIT_FILE_LIMIT && !isLargeCommitOverridden(env);
+/** True when the limit is enforced here and `count` exceeds it without the override. */
+export function exceedsFileLimit(count, env = process.env, enforced = true) {
+  return enforced && count > LARGE_COMMIT_FILE_LIMIT && !isLargeCommitOverridden(env);
 }
 
 /** Split a NUL-delimited git output into entries, dropping the trailing empty one. */

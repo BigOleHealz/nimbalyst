@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { evaluateStagedCommit, parseNameStatus } from '../check-commit-safety.mjs';
-import { LARGE_COMMIT_FILE_LIMIT } from '../commit-safety-policy.mjs';
+import { LARGE_COMMIT_FILE_LIMIT, SIZE_LIMIT_CONFIG_KEY } from '../commit-safety-policy.mjs';
 import { assertInSandbox, commitFiles, makeScratchRepo, sandboxEnv, writeFile } from './helpers/gitSandbox.mjs';
 
 const CHECK_SCRIPT = fileURLToPath(new URL('../check-commit-safety.mjs', import.meta.url));
@@ -31,7 +31,12 @@ function seedRepo(t) {
   writeFile(repo, '.gitignore', 'agent-mistakes.md\nnimbalyst-local/\n*.log\n');
   commitFiles(repo, git, 'seed', ['.gitignore', 'src/app.ts']);
   git(['config', 'core.hooksPath', HOOKS_DIR]);
+  git(['config', SIZE_LIMIT_CONFIG_KEY, 'true']);
   return { repo, git };
+}
+
+function wideFiles(prefix) {
+  return Array.from({ length: LARGE_COMMIT_FILE_LIMIT + 1 }, (_, i) => `${prefix}/f${i}.ts`);
 }
 
 test('parseNameStatus handles renames and plain entries', () => {
@@ -58,7 +63,24 @@ test('evaluateStagedCommit flags forbidden paths, force-added ignored paths, and
   const many = Array.from({ length: LARGE_COMMIT_FILE_LIMIT + 1 }, (_, i) => ({ status: 'A', path: `f${i}.ts` }));
   assert.equal(evaluateStagedCommit({ entries: many, ignoredAdded: [], env: {} }).tooLarge, true);
   assert.equal(evaluateStagedCommit({ entries: many, ignoredAdded: [], env: { NIMBALYST_LARGE_COMMIT: '1' } }).ok, true);
+  assert.equal(evaluateStagedCommit({ entries: many, ignoredAdded: [], env: {}, sizeLimitEnforced: false }).ok, true);
   assert.equal(evaluateStagedCommit({ entries: many.slice(1), ignoredAdded: [], env: {} }).ok, true);
+});
+
+test('a contributor clone without the opt-in can merge a wide main into its branch but still cannot commit local-only paths', (t) => {
+  const { repo, git } = seedRepo(t);
+  git(['config', '--unset', SIZE_LIMIT_CONFIG_KEY]);
+  git(['checkout', '-q', '-b', 'feat/thing']);
+  commitFiles(repo, git, 'feature', ['src/feature.ts']);
+  git(['checkout', '-q', 'main']);
+  commitFiles(repo, git, 'main moved a lot', wideFiles('gen'));
+  git(['checkout', '-q', 'feat/thing']);
+  git(['merge', '-q', '--no-ff', '-m', 'Merge main into feat/thing', 'main']);
+  assert.equal(git(['log', '-1', '--format=%s']).trim(), 'Merge main into feat/thing');
+
+  writeFile(repo, 'nimbalyst-local/x.md');
+  git(['add', '-f', 'nimbalyst-local/x.md']);
+  expectRefusal(() => git(['commit', '-q', '-m', 'leak']), /nimbalyst-local\/x\.md/);
 });
 
 test('refuses force-added nimbalyst-local, agent-mistakes.md, and gitignored paths with a restore command', (t) => {
@@ -93,9 +115,9 @@ test('unstaging a tracked agent-mistakes.md (a deletion) is allowed', (t) => {
   git(['commit', '-q', '-m', 'stop tracking the log']);
 });
 
-test('refuses a commit over the file limit unless NIMBALYST_LARGE_COMMIT=1', (t) => {
+test('an opted-in clone refuses a commit over the file limit unless NIMBALYST_LARGE_COMMIT=1', (t) => {
   const { repo, git } = seedRepo(t);
-  const files = Array.from({ length: LARGE_COMMIT_FILE_LIMIT + 1 }, (_, i) => writeFile(repo, `gen/f${i}.ts`));
+  const files = wideFiles('gen').map((file) => writeFile(repo, file));
   git(['add', '--', ...files]);
   expectRefusal(() => runCheck(repo), new RegExp(`touches ${LARGE_COMMIT_FILE_LIMIT + 1} files; the limit is ${LARGE_COMMIT_FILE_LIMIT}`));
   expectRefusal(() => git(['commit', '-q', '-m', 'huge']), /NIMBALYST_LARGE_COMMIT=1/);
@@ -138,8 +160,17 @@ test('a normal --no-ff merge passes while a merge that drags in nimbalyst-local 
   assert.equal(git(['log', '--format=%s', '-1']).trim(), 'Merge pull request #1 from ada/feature');
 });
 
-test('the hooks directory wires both commit hooks to the same script', () => {
+test('the commit hooks run the shared script and let a commit through when node is missing', (t) => {
   for (const hook of ['pre-commit', 'pre-merge-commit']) {
     assert.match(readFileSync(path.join(HOOKS_DIR, hook), 'utf8'), /scripts\/check-commit-safety\.mjs/);
+  }
+  // A GUI git client without node on PATH must still be able to commit;
+  // pre-push re-applies the policy before anything leaves the machine.
+  const { repo, git } = seedRepo(t);
+  writeFile(repo, 'nimbalyst-local/x.md');
+  git(['add', '-f', 'nimbalyst-local/x.md']);
+  for (const hook of ['pre-commit', 'pre-merge-commit']) {
+    const output = execFileSync('/bin/sh', [path.join(HOOKS_DIR, hook)], { cwd: repo, encoding: 'utf8', env: sandboxEnv({ PATH: '/nonexistent-bin' }) });
+    assert.match(output, /WARNING: node is not on PATH/);
   }
 });
