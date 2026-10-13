@@ -3,6 +3,7 @@ import type { AgentMessage } from '../ai/server/types';
 import type { EncryptedMessage } from './collabV3WireTypes';
 import type { PreparedSessionMessage } from './sessionPayloadChannel';
 import { truncateContentForSync } from './syncContentTruncator';
+import { inlineDisplayImagesForSync } from './syncDisplayImages';
 import { encodeSessionPayload } from './sessionPayloadCodec';
 
 export async function encryptSessionMessage(
@@ -16,10 +17,12 @@ export async function encryptSessionMessage(
       message.content,
       message.source,
     );
+    // display_to_user images are desktop paths; the phone needs the bytes.
+    const syncContent = await inlineDisplayImagesForSync(truncatedContent);
 
     // Include hidden flag in encrypted content so it syncs to mobile
     const content = JSON.stringify({
-      content: truncatedContent,
+      content: syncContent,
       metadata: message.metadata,
       hidden: message.hidden ?? false,
     });
