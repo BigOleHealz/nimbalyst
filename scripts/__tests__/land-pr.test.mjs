@@ -6,7 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { LANDING_FILE_MARGIN, LandingError, evaluatePreview, landPr, parseArgs } from '../land-pr.mjs';
 import { LARGE_COMMIT_FILE_LIMIT } from '../commit-safety-policy.mjs';
-import { assertInSandbox, commitFiles, makeGit, makeScratchRepo, sandboxEnv, writeFile } from './helpers/gitSandbox.mjs';
+import { FIXTURE_AUTHOR, assertInSandbox, commitFiles, makeGit, makeScratchRepo, sandboxEnv, writeFile } from './helpers/gitSandbox.mjs';
 
 const PR_NUMBER = 7;
 
@@ -50,8 +50,13 @@ function makeWorld(t, { prFiles = ['src/feature.ts', 'src/feature.test.ts'], prC
     baseRefName: 'main', changedFiles: git(['diff', '--name-only', originMain, prHead], { env: sandboxEnv() }).trim().split('\n').length,
   };
   const logs = [];
+  // The script commits the merge with its own git; a CI runner has no identity to infer, unlike a laptop.
+  const identity = {
+    GIT_AUTHOR_NAME: FIXTURE_AUTHOR.name, GIT_AUTHOR_EMAIL: FIXTURE_AUTHOR.email,
+    GIT_COMMITTER_NAME: FIXTURE_AUTHOR.name, GIT_COMMITTER_EMAIL: FIXTURE_AUTHOR.email,
+  };
   const land = (overrides = {}, flags = {}) => landPr({
-    prNumber: PR_NUMBER, cwd: local, env: sandboxEnv(), gh: () => ({ ...pr, ...overrides }), log: (line) => logs.push(line), ...flags,
+    prNumber: PR_NUMBER, cwd: local, env: sandboxEnv(identity), gh: () => ({ ...pr, ...overrides }), log: (line) => logs.push(line), ...flags,
   });
   return { origin, originMain, contributor, contribGit, local, git, pr, prHead, land, logs };
 }
