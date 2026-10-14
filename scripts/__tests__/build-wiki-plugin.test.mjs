@@ -175,6 +175,8 @@ test('nudge blocks once per session, and only after substantive work', (t) => {
   const first = runNudge(root, { session_id: 's1', transcript_path: edits, stop_hook_active: false });
   assert.equal(first.decision, 'block');
   assert.match(first.reason, /3 file edits.*\/nimbalyst-wiki:capture.*"nothing to record"/);
+  // The reason is shown to the agent and the user as one sentence; joined parts keep their spaces.
+  assert.doesNotMatch(first.reason, /\S(?:to record|If nothing)/);
   assert.equal(runNudge(root, { session_id: 's1', transcript_path: edits }), null);
 
   // The threshold is overridable, and below it nothing happens.

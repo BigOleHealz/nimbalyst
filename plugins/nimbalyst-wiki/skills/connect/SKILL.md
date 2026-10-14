@@ -23,7 +23,8 @@ Decide once per session which one you use, then call only that server's tools fo
 1. If the user names one ("our team wiki", "a local wiki", "the wiki in docs/"), use it.
 2. If `.nimbalyst/local-wiki.json` at the repository root has `migratedTo` (`{ orgId, projectId, at }`), the local wiki was moved to that team project. Use the team wiki, and tell the user in one line: "This project's wiki moved to the team project; using it." Pass `project: { orgId, projectId }` from `migratedTo` when there is no `.nimbalyst/wiki.json` pin. Do not write to the local wiki: its files are kept only as the copy it was moved from. If `pages_status` says the user cannot reach that project, say so and ask whether to use the local copy for this session.
 3. If `nimbalyst-local`'s `listPages` returns pages, a local wiki exists. If the repository is also bound to a team project (below), ask the user which this session should use; otherwise use the local one.
-4. Otherwise follow "Start of a task" below. When it ends without a bound team project (no `origin`, `unbound` and the user declined or cannot connect, sign-in declined, `teams` empty), go to "Starting a local wiki".
+4. If this session has no `nimbalyst-team` tools (no `pages_status`), the team server is not signed in or is turned off, which is the normal state for someone who only uses a local wiki. Go to "Starting a local wiki". Do not ask the user to sign in or mention the team server unless they ask for team pages; then tell them to sign in from `/mcp` (in Codex, `codex mcp login nimbalyst-team`) or load the `team` skill.
+5. Otherwise follow "Start of a task" below. When it ends without a bound team project (no `origin`, `unbound` and the user declined or cannot connect, sign-in declined, `teams` empty), go to "Starting a local wiki".
 
 ## Moving to Nimbalyst Teams
 

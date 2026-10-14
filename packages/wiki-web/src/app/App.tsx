@@ -21,7 +21,7 @@ import {
 import { createTrackerReferenceResolver, TrackersUIProvider } from '@nimbalyst/collab-bundle/trackers-ui';
 import { PageEditorServicesContext, type PageEditorServices } from './pageEditorServices';
 import { setWorkspaceFileLinkOpener } from '@nimbalyst/collab-bundle/editor';
-import { wikiApi } from '../api/client';
+import { wikiApi, wikiChanges } from '../api/client';
 import { LocalCollabHost, routePath } from '../host/LocalCollabHost';
 import type { LocalTrackerDataSource } from '../host/LocalTrackerDataSource';
 import { DraftStore, DraftStoreContext, prepareToLeave, resolveLeave, type LeaveChoice, type LeaveDecision } from './drafts';
@@ -51,6 +51,13 @@ function pathOf(route: Route): string {
 }
 
 type Leaving = { reason: 'conflict' | 'error'; proceed: () => void };
+
+/** Whether the wiki server answers; it stops when the agent session that started it ends. */
+function useServerReachable(): boolean {
+  const [reachable, setReachable] = useState(() => wikiChanges.isReachable());
+  useEffect(() => wikiChanges.subscribe(() => setReachable(wikiChanges.isReachable())), []);
+  return reachable;
+}
 
 function useRoute(drafts: DraftStore): [Route, (route: Route, options?: { newTab?: boolean }) => void, Leaving | null, (choice: LeaveChoice) => void] {
   const [route, setRoute] = useState<Route>(parseLocation);
@@ -219,6 +226,7 @@ function Shell({
   const typeResolver = module.useBrowserTypeResolver('team');
   const { documents } = useCollabPagesState();
   const [createMenu, setCreateMenu] = useState<CollabSidebarCreateMenu | null>(null);
+  const reachable = useServerReachable();
 
   // Home is the first top-level page, as `nim wiki init` writes one.
   const home = useMemo(
@@ -272,6 +280,11 @@ function Shell({
         </div>
       </aside>
       <main className="wiki-web-main flex min-w-0 flex-1 flex-col overflow-auto select-text">
+        {reachable ? null : (
+          <div className="wiki-web-server-down border-b border-nim bg-nim-secondary px-4 py-2 text-xs text-nim" role="alert">
+            The wiki server stopped, so changes made here are not saved. Ask your agent to open the wiki in the browser again, or run <code>nim wiki serve</code>; this page reconnects on its own.
+          </div>
+        )}
         {notice ? (
           <div className="wiki-web-notice flex items-start gap-2 border-b border-nim bg-nim-secondary px-4 py-2 text-xs text-nim" role="alert">
             <span className="flex-1">{notice}</span>

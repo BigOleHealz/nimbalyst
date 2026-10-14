@@ -3,7 +3,7 @@
 
 // packages/cli/src/mcp/pluginEntry.ts
 import { existsSync as existsSync6 } from "node:fs";
-import path22 from "node:path";
+import path24 from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // packages/cli/src/cli/exitCodes.ts
@@ -3618,7 +3618,7 @@ function encodeLinkPath(relPath) {
 function formatPageLink(text2, relPath, fragment, id) {
   return `[${text2}](${encodeLinkPath(relPath)}${fragment} "id=${id}")`;
 }
-function rewriteFileLinks(body, replace) {
+function rewriteFileLinks(body, replace, options = {}) {
   const excluded = excludedRanges(body);
   let out = "";
   let cursor = 0;
@@ -3637,7 +3637,7 @@ function rewriteFileLinks(body, replace) {
     if (match[1] !== "!" && (/\.md$/i.test(pathPart) || pathPart.endsWith("/"))) continue;
     const next = replace(safeDecode(pathPart));
     if (next === null) continue;
-    const dest = encodeLinkPath(next) + (hash >= 0 ? rawDest.slice(hash) : "");
+    const dest = (options.raw ? next : encodeLinkPath(next)) + (hash >= 0 ? rawDest.slice(hash) : "");
     const destStart = body.indexOf(match[3], start + match[1].length + match[2].length + 2);
     out += body.slice(cursor, destStart) + dest;
     cursor = destStart + match[3].length;
@@ -6438,6 +6438,8 @@ var stringArray = (description) => ({ type: "array", items: { type: "string" }, 
 var PAGES_IMPORT_MAX_PAGES = 50;
 var PAGES_IMPORT_MAX_BODY_BYTES = 900 * 1024;
 var PAGES_IMPORT_MAX_TYPES = 20;
+var PAGES_IMPORT_TOKEN_TTL_SECONDS = 15 * 60;
+var PAGES_IMPORT_PAGE_KINDS = ["page", "typedPage", "editorPage"];
 var TEAM_INVITE_MAX_EMAILS = 20;
 var ORG_INVITE_ROLE = {
   type: "string",
@@ -6484,7 +6486,7 @@ var PAGE_TOOL_CONTRACT = [
     name: "pages_import",
     availability: "remoteOnly",
     readOnly: false,
-    description: `Import a local wiki into the bound team project in batches: pages, typed pages and their types in one call. Editors and above. Upserts by (project, source.wikiId, localId): a re-run updates the pages it already created and an interrupted move resumes, never duplicates. A parentLocalId may name a page imported in an earlier batch. Types are ensured before typed pages. At most ${PAGES_IMPORT_MAX_PAGES} pages and ${PAGES_IMPORT_MAX_BODY_BYTES} bytes of bodies per call; send parents before children. Bodies are stored verbatim (decision marks included); to rewrite links, call again with the rewritten bodies for the same localIds. A body a person has edited since the import wrote it is not overwritten (error body_edited). Returns idMap (localId to nodeId, id, issueKey, link, uri), created, updated and per-page errors.`,
+    description: `Import a local wiki into the bound team project in batches: pages, typed pages and their types in one call. Editors and above. Upserts by (project, source.wikiId, localId): a re-run updates the pages it already created and an interrupted move resumes, never duplicates. A parentLocalId may name a page imported in an earlier batch. Types are ensured before typed pages. At most ${PAGES_IMPORT_MAX_PAGES} pages and ${PAGES_IMPORT_MAX_BODY_BYTES} bytes of bodies per call; send parents before children. Bodies are stored verbatim (decision marks included); to rewrite links, call again with the rewritten bodies for the same localIds. A body a person has edited since the import wrote it is not overwritten (error body_edited). An editorPage (drawing, spreadsheet, data model, ...) is registered with its documentType, fileExtension and editorId and an empty room; the move client writes its content into the room itself with a pages_import_token credential. Returns idMap (localId to nodeId, id, issueKey, link, uri), created, updated and per-page errors.`,
     inputSchema: {
       type: "object",
       properties: {
@@ -6514,10 +6516,13 @@ var PAGE_TOOL_CONTRACT = [
               parentLocalId: { type: ["string", "null"], description: "Parent localId, or null for the top of the wiki." },
               title: { type: "string" },
               order: { type: "number", description: "Sort order among its siblings." },
-              kind: { type: "string", enum: ["page", "typedPage"] },
+              kind: { type: "string", enum: [...PAGES_IMPORT_PAGE_KINDS] },
               typeId: { type: "string", description: "The type, for a typed page." },
+              documentType: { type: "string", description: "The editor page's document type (e.g. 'excalidraw'), for an editorPage." },
+              fileExtension: { type: "string", description: "The editor page's file extension with its leading dot (e.g. '.excalidraw'), for an editorPage." },
+              editorId: { type: "string", description: "The extension id of the editor that opens it (e.g. 'com.nimbalyst.excalidraw'), for an editorPage." },
               fields: { type: "object", description: "A page's fields, or a typed page's field values." },
-              body: { type: "string", description: "Markdown body, verbatim." }
+              body: { type: "string", description: "Markdown body, verbatim. Empty for an editorPage." }
             },
             required: ["localId", "parentLocalId", "title", "kind", "body"]
           }
@@ -6525,6 +6530,13 @@ var PAGE_TOOL_CONTRACT = [
       },
       required: ["source", "pages"]
     }
+  },
+  {
+    name: "pages_import_token",
+    availability: "remoteOnly",
+    readOnly: false,
+    description: `For the local client's wiki move only. A credential, good for ${PAGES_IMPORT_TOKEN_TTL_SECONDS / 60} minutes, that opens the sync channel of this project's documents and uploads images into them, so the move client can write the editor pages and attachments pages_import registered. Editors and above. Returns token, expiresAt (epoch ms), orgId, projectId and memberId.`,
+    inputSchema: { type: "object", properties: { repo: PAGE_TOOL_REPO_ARG } }
   },
   {
     name: "team_create",
@@ -8352,7 +8364,7 @@ function serveTool(options) {
 import { existsSync as existsSync5 } from "node:fs";
 import path16 from "node:path";
 import { pathToFileURL } from "node:url";
-var EDITOR_MODELS_VERSION = 1;
+var EDITOR_MODELS_VERSION = 2;
 var EditorModelsUnavailable = class extends Error {
 };
 function editorModelsFromWikiWeb(options) {
@@ -8988,6 +9000,9 @@ async function fetchUserInfo(server) {
   return body;
 }
 
+// packages/cli/src/localWiki/moveToTeam.ts
+import * as path21 from "node:path";
+
 // packages/cli/src/cloud/pagesClient.ts
 var nextId = 1;
 var PagesToolError = class extends CliError {
@@ -9145,9 +9160,153 @@ function resolveTeamsTarget(startDir, opts = {}) {
   return { root, repo, project, projectSource: project ? "wiki.json" : void 0 };
 }
 
+// packages/cli/src/cloud/teamContent.ts
+import { createHash as createHash3 } from "node:crypto";
+import { readFile as readFile10, stat as stat5 } from "node:fs/promises";
+import * as path19 from "node:path";
+var MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+var CONNECT_TIMEOUT_MS = 15e3;
+var FLUSH_TIMEOUT_MS = 15e3;
+var TOKEN_REFRESH_MARGIN_MS = 6e4;
+var ASSET_HEADER_WIRE_FORMAT = "X-Collab-Asset-Format";
+var ASSET_WIRE_FORMAT_PLAINTEXT = "plaintext.v1";
+var ASSET_HEADER_FILE_NAME = "X-Collab-Asset-File-Name";
+var ASSET_HEADER_MIME = "X-Collab-Asset-Mime-Type";
+var ASSET_HEADER_PLAINTEXT_SIZE = "X-Collab-Asset-Plaintext-Size";
+var MIME_TYPES = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".svg": "image/svg+xml",
+  ".avif": "image/avif",
+  ".pdf": "application/pdf",
+  ".txt": "text/plain",
+  ".json": "application/json"
+};
+function assetIdFor(bytes) {
+  return createHash3("sha256").update(bytes).digest("hex").slice(0, 32);
+}
+function syncUrlFor(server) {
+  return server.replace(/^http(s?):\/\//, (_match, secure) => `ws${secure}://`);
+}
+function createTeamContentWriter(options) {
+  const fetchImpl = options.fetch ?? fetch;
+  const now = options.now ?? Date.now;
+  let credential = null;
+  const currentCredential = async (forceRefresh = false) => {
+    if (!forceRefresh && credential && credential.expiresAt - now() > TOKEN_REFRESH_MARGIN_MS) return credential;
+    const issued = await options.call("pages_import_token", options.base);
+    if (!issued?.token || !issued.memberId || !issued.orgId || typeof issued.expiresAt !== "number") {
+      throw new Error("pages_import_token returned no credential");
+    }
+    credential = issued;
+    return credential;
+  };
+  return {
+    async writeEditorPage(page) {
+      const models = options.models;
+      if (!models) return { ok: false, code: "editor_code_unavailable", message: "The editors' document code is not installed." };
+      const issued = await currentCredential();
+      let resolveFirstSync;
+      const firstSync = new Promise((resolve7) => {
+        resolveFirstSync = resolve7;
+      });
+      const provider = new models.DocumentSyncProvider({
+        serverUrl: syncUrlFor(options.server),
+        getJwt: async (opts) => (await currentCredential(opts?.forceRefresh === true)).token,
+        orgId: issued.orgId,
+        teamMemberId: issued.memberId,
+        documentId: page.documentId,
+        onFirstSyncComplete: (isEmpty) => resolveFirstSync(isEmpty)
+      });
+      let timer;
+      try {
+        await provider.connect();
+        const serverEmpty = await Promise.race([
+          firstSync,
+          new Promise((resolve7) => {
+            timer = setTimeout(() => resolve7(null), options.connectTimeoutMs ?? CONNECT_TIMEOUT_MS);
+          })
+        ]);
+        if (serverEmpty === null) {
+          const status = provider.getLastAuthRejectionStatus();
+          return {
+            ok: false,
+            code: status === null ? "room_unavailable" : "room_refused",
+            message: status === null ? "Timed out opening the team document." : `The server refused the team document (status ${status}).`
+          };
+        }
+        if (provider.hasUndecodedContent()) {
+          return { ok: false, code: "room_unreadable", message: "Part of the team document could not be read, so the move did not write it." };
+        }
+        const outcome = models.editorCodecs.writeDoc(page.documentType, provider.getYDoc(), page.text, { roomHadState: !serverEmpty });
+        if (outcome === "edited") {
+          return { ok: false, code: "body_edited", message: "Someone has changed this page in the team since the move wrote it (or it already had other content), so it was not overwritten." };
+        }
+        if (outcome !== "unchanged" && !await provider.flushWithAck(FLUSH_TIMEOUT_MS)) {
+          return { ok: false, code: "write_unconfirmed", message: "The server did not confirm the page content was saved; run the move again." };
+        }
+        return { ok: true, outcome };
+      } catch (err) {
+        return { ok: false, code: "write_failed", message: err instanceof Error ? err.message : String(err) };
+      } finally {
+        if (timer) clearTimeout(timer);
+        try {
+          provider.destroy();
+        } catch {
+        }
+      }
+    },
+    async uploadFile(file) {
+      const size = (await stat5(file.abs)).size;
+      if (size > MAX_UPLOAD_BYTES) {
+        return { ok: false, code: "file_too_large", message: `${Math.round(size / (1024 * 1024))} MB, over the ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB a team page attachment can be; the link is left as written.` };
+      }
+      const bytes = await readFile10(file.abs);
+      const assetId = assetIdFor(bytes);
+      const name = path19.basename(file.abs);
+      const url = `${options.server}/api/collab/docs/${encodeURIComponent(file.documentId)}/assets/${assetId}`;
+      const put = async (token) => fetchImpl(url, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          [ASSET_HEADER_WIRE_FORMAT]: ASSET_WIRE_FORMAT_PLAINTEXT,
+          // Header values are latin-1 on the wire; percent-encoded so any file name survives.
+          [ASSET_HEADER_FILE_NAME]: encodeURIComponent(name.slice(0, 200)),
+          [ASSET_HEADER_MIME]: MIME_TYPES[path19.extname(name).toLowerCase()] ?? "application/octet-stream",
+          [ASSET_HEADER_PLAINTEXT_SIZE]: String(bytes.byteLength)
+        },
+        body: bytes
+      });
+      try {
+        let res = await put((await currentCredential()).token);
+        if (res.status === 401) res = await put((await currentCredential(true)).token);
+        if (!res.ok) {
+          const detail = await res.text().catch(() => "");
+          return { ok: false, code: `upload_http_${res.status}`, message: `The upload was refused (HTTP ${res.status})${detail ? `: ${detail.slice(0, 200)}` : ""}.` };
+        }
+        return { ok: true, uri: `collab-asset://doc/${encodeURIComponent(file.documentId)}/asset/${encodeURIComponent(assetId)}` };
+      } catch (err) {
+        return { ok: false, code: "upload_failed", message: err instanceof Error ? err.message : String(err) };
+      }
+    }
+  };
+}
+
 // packages/cli/src/localWiki/teamExport.ts
 import * as fs5 from "node:fs";
-import * as path19 from "node:path";
+import * as path20 from "node:path";
+var EDITOR_IDS = {
+  excalidraw: "com.nimbalyst.excalidraw",
+  mindmap: "com.nimbalyst.mindmap",
+  datamodel: "com.nimbalyst.datamodellm",
+  "mockup.html": "com.nimbalyst.mockuplm",
+  csv: "com.nimbalyst.csv-spreadsheet",
+  "calc.md": "com.nimbalyst.calc-sheets",
+  canvas: "com.nimbalyst.canvas"
+};
 function relationIds(value) {
   const one = (v) => typeof v === "string" && v ? v : v && typeof v === "object" && typeof v.itemId === "string" ? v.itemId : void 0;
   if (Array.isArray(value)) return value.map(one).filter((id) => Boolean(id));
@@ -9181,14 +9340,23 @@ function readTypeDefinition(file) {
     return null;
   }
 }
-async function collectLocalWiki(wiki) {
+function editorSkipReason(page, editorTypes) {
+  if (page.documentType === "markdown") return null;
+  if (!EDITOR_IDS[page.documentType]) return `${page.documentType} page (no team editor for this type)`;
+  if (!editorTypes) return `${page.documentType} page (the editors' document code is not available)`;
+  if ("unavailable" in editorTypes) return `${page.documentType} page (${editorTypes.unavailable})`;
+  return editorTypes.has(page.documentType) ? null : `${page.documentType} page (no team import for this type)`;
+}
+async function collectLocalWiki(wiki, options = {}) {
   const snapshot = await wiki.snapshot();
   const live2 = livePages(snapshot);
   const byId = new Map(live2.map((page) => [page.id, page]));
   const skipped = [];
-  const included = (page) => page.documentType === "markdown";
+  const skipReasons = new Map(live2.map((page) => [page.id, editorSkipReason(page, options.editorTypes)]));
+  const included = (page) => skipReasons.get(page.id) === null;
   for (const page of live2) {
-    if (!included(page)) skipped.push({ localId: page.id, title: page.title, reason: `${page.documentType} page (no team import yet)` });
+    const reason = skipReasons.get(page.id);
+    if (reason) skipped.push({ localId: page.id, title: page.title, reason });
   }
   const importedParent = (parentId) => {
     const seen = /* @__PURE__ */ new Set();
@@ -9203,6 +9371,9 @@ async function collectLocalWiki(wiki) {
     return null;
   };
   const pages = [];
+  const editorFiles = /* @__PURE__ */ new Map();
+  const linkedFiles = /* @__PURE__ */ new Map();
+  const pagePaths = new Set(live2.flatMap((page) => page.path ? [page.path.toLowerCase()] : []));
   const locations = /* @__PURE__ */ new Map();
   const usedTypes = /* @__PURE__ */ new Set();
   const relationFieldsByType = new Map(
@@ -9236,8 +9407,26 @@ async function collectLocalWiki(wiki) {
     const page = byId.get(node.id);
     if (!page || !included(page)) continue;
     const { markdown } = await wiki.readBody(page.id);
-    if (page.type) usedTypes.add(page.type);
     locations.set(page.id, { path: page.path, dir: page.dir });
+    if (page.documentType !== "markdown") {
+      editorFiles.set(page.id, { documentType: page.documentType, text: markdown });
+      pages.push({
+        localId: page.id,
+        parentLocalId: importedParent(page.parentId),
+        title: page.title,
+        ...page.order !== null ? { order: page.order } : {},
+        kind: "editorPage",
+        documentType: page.documentType,
+        fileExtension: page.fileExtension,
+        editorId: EDITOR_IDS[page.documentType],
+        ...withFields(page.id, null, page.fields),
+        body: ""
+      });
+      continue;
+    }
+    const files = await linkedFilesOf(wiki, page.id, markdown, { path: page.path, dir: page.dir }, pagePaths);
+    if (files.length) linkedFiles.set(page.id, files);
+    if (page.type) usedTypes.add(page.type);
     pages.push({
       localId: page.id,
       parentLocalId: importedParent(page.parentId),
@@ -9256,14 +9445,36 @@ async function collectLocalWiki(wiki) {
   }
   const roots = pages.filter((page) => page.parentLocalId === null && page.kind === "page");
   const home = roots.find((page) => page.title.trim().toLowerCase() === "home") ?? roots[0] ?? null;
-  return { pages, types: types2, skipped, homeLocalId: home?.localId ?? null, locations, relations };
+  return {
+    pages,
+    editorFiles,
+    linkedFiles,
+    wikiPrefix: options.wikiPrefix ?? "",
+    wikiDir: options.wikiDir ?? null,
+    types: types2,
+    skipped,
+    homeLocalId: home?.localId ?? null,
+    locations,
+    relations
+  };
+}
+async function linkedFilesOf(wiki, pageId, body, from, pagePaths) {
+  const linkPaths = /* @__PURE__ */ new Set();
+  rewriteFileLinks(body, (linkPath) => {
+    const resolved = resolveRelative(linkBase(from), linkPath);
+    if (resolved === null || !pagePaths.has(resolved)) linkPaths.add(linkPath);
+    return null;
+  });
+  const files = [];
+  for (const linkPath of linkPaths) files.push({ linkPath, abs: await wiki.resolvePageFile(pageId, linkPath) });
+  return files;
 }
 function linkBase(location) {
-  return location.path ? path19.posix.dirname(location.path).replace(/^\.$/, "") : location.dir;
+  return location.path ? path20.posix.dirname(location.path).replace(/^\.$/, "") : location.dir;
 }
 function resolveRelative(base, linkPath) {
-  const joined = path19.posix.normalize(path19.posix.join(base === "" ? "." : base, linkPath));
-  if (joined === ".." || joined.startsWith("../") || path19.posix.isAbsolute(joined)) return null;
+  const joined = path20.posix.normalize(path20.posix.join(base === "" ? "." : base, linkPath));
+  if (joined === ".." || joined.startsWith("../") || path20.posix.isAbsolute(joined)) return null;
   return (joined === "." ? "" : joined).replace(/\/$/, "").toLowerCase();
 }
 function pathIndex(locations) {
@@ -9292,6 +9503,63 @@ function rewriteWikiLinks(body, from, byPath, linkFor) {
     rewritten++;
   }
   return rewritten ? { body: out + body.slice(cursor), rewritten } : { body, rewritten: 0 };
+}
+function rewriteFileLinksForTeam(body, from, byPath, linkFor, assetUri) {
+  let rewritten = 0;
+  const next = rewriteFileLinks(body, (linkPath) => {
+    const resolved = resolveRelative(linkBase(from), linkPath);
+    const targetId = resolved === null ? void 0 : byPath.get(resolved);
+    const href = assetUri(linkPath) ?? (targetId ? linkFor(targetId) : void 0);
+    if (href) rewritten++;
+    return href ?? null;
+  }, { raw: true });
+  return { body: next, rewritten };
+}
+var CANVAS_NAMESPACE = "x-nimbalyst";
+function canvasCardTarget(href, canvasPath, wikiPrefix, wikiDir) {
+  if (/^[a-z][a-z0-9+.-]*:/i.test(href) && !/^file:/i.test(href)) return null;
+  let decoded = href.split("?")[0].split("#")[0].replace(/^file:\/\//i, "");
+  try {
+    decoded = decodeURIComponent(decoded);
+  } catch {
+    return null;
+  }
+  if (!decoded) return null;
+  if (path20.isAbsolute(decoded)) {
+    if (!wikiDir) return null;
+    const rel = path20.relative(wikiDir, path20.normalize(decoded));
+    if (!rel || rel.startsWith("..") || path20.isAbsolute(rel)) return null;
+    return rel.split(path20.sep).join("/").toLowerCase();
+  }
+  if (decoded.startsWith("./") || decoded.startsWith("../")) return resolveRelative(path20.posix.dirname(canvasPath).replace(/^\.$/, ""), decoded);
+  const fromRoot = path20.posix.normalize(decoded);
+  if (!wikiPrefix) return resolveRelative("", fromRoot);
+  return fromRoot.startsWith(`${wikiPrefix}/`) ? resolveRelative("", fromRoot.slice(wikiPrefix.length + 1)) : null;
+}
+function shareCanvasCards(text2, canvasPath, wiki, byPath, teamDocument) {
+  let canvas;
+  try {
+    canvas = JSON.parse(text2);
+  } catch {
+    return { text: text2, shared: 0 };
+  }
+  if (!Array.isArray(canvas?.nodes)) return { text: text2, shared: 0 };
+  let shared = 0;
+  const nodes = canvas.nodes.map((node) => {
+    const extension = node?.[CANVAS_NAMESPACE] ?? {};
+    const reference = extension.reference;
+    const href = reference?.kind === "file" ? reference.path : node?.type === "file" && typeof node.file === "string" ? node.file : null;
+    if (typeof href !== "string") return node;
+    const target = canvasCardTarget(href, canvasPath, wiki.prefix, wiki.dir);
+    const localId = target === null ? void 0 : byPath.get(target);
+    const doc = localId ? teamDocument(localId) : void 0;
+    if (!doc) return node;
+    shared++;
+    const uri = `nimbalyst://doc/${encodeURIComponent(doc.orgId)}/${encodeURIComponent(doc.documentId)}`;
+    const fileReference = reference?.kind === "file" ? reference : { kind: "file", path: href };
+    return { ...node, [CANVAS_NAMESPACE]: { ...extension, reference: { ...fileReference, sharedAs: { uri } } } };
+  });
+  return shared ? { text: JSON.stringify({ ...canvas, nodes }, null, 2), shared } : { text: text2, shared: 0 };
 }
 
 // packages/cli/src/cloud/teamImport.ts
@@ -9379,7 +9647,10 @@ function asResult(value) {
     errors: Array.isArray(value?.errors) ? value.errors : []
   };
 }
-async function importToTeam(exported, target, call) {
+function bodyDocumentId(entry) {
+  return entry.nodeId.startsWith("item:") ? `tracker-content/${entry.id}` : entry.id;
+}
+async function importToTeam(exported, target, call, content) {
   const base = {
     ...target.repo ? { repo: target.repo } : {},
     project: target.project,
@@ -9387,6 +9658,7 @@ async function importToTeam(exported, target, call) {
   };
   const idMap = {};
   const errors = [];
+  const warnings = [];
   let created = 0;
   let updated = 0;
   let batches = 0;
@@ -9430,7 +9702,48 @@ async function importToTeam(exported, target, call) {
     updated += result.updated;
     for (const page of batch) if (!result.idMap[page.localId]) notImported.add(page.localId);
   }
+  let editorPagesWritten = 0;
+  let filesUploaded = 0;
+  const assetUris = /* @__PURE__ */ new Map();
+  if ((exported.editorFiles.size || exported.linkedFiles.size) && !content) {
+    throw new Error("importToTeam: editor pages and linked files need a TeamContentWriter");
+  }
   const byPath = pathIndex(exported.locations);
+  const teamDocument = (localId) => {
+    const entry = idMap[localId];
+    return entry?.nodeId.startsWith("document:") ? { orgId: target.project.orgId, documentId: entry.id } : void 0;
+  };
+  const typeMismatch = new Set(errors.filter((error) => error.code === "document_type_mismatch").map((error) => error.localId));
+  for (const [localId, file] of exported.editorFiles) {
+    const entry = idMap[localId];
+    if (!entry || typeMismatch.has(localId)) continue;
+    const canvasPath = file.documentType === "canvas" ? exported.locations.get(localId)?.path : void 0;
+    const text2 = canvasPath ? shareCanvasCards(file.text, canvasPath, { prefix: exported.wikiPrefix, dir: exported.wikiDir }, byPath, teamDocument).text : file.text;
+    const written = await content.writeEditorPage({ localId, documentId: entry.id, documentType: file.documentType, text: text2 });
+    if (written.ok) editorPagesWritten++;
+    else errors.push({ localId, code: written.code, message: written.message });
+  }
+  for (const [localId, files] of exported.linkedFiles) {
+    const entry = idMap[localId];
+    if (!entry) continue;
+    const uris = /* @__PURE__ */ new Map();
+    for (const file of files) {
+      if (!file.abs) {
+        warnings.push({ localId, code: "linked_file_missing", message: `${file.linkPath} is not a file in the wiki, so the link is left as written.` });
+        continue;
+      }
+      const uploaded = await content.uploadFile({ documentId: bodyDocumentId(entry), abs: file.abs });
+      if (uploaded.ok) {
+        uris.set(file.linkPath, uploaded.uri);
+        filesUploaded++;
+      } else if (uploaded.code === "file_too_large") {
+        warnings.push({ localId, code: uploaded.code, message: `${file.linkPath}: ${uploaded.message}` });
+      } else {
+        errors.push({ localId, code: uploaded.code, message: `${file.linkPath}: ${uploaded.message}` });
+      }
+    }
+    if (uris.size) assetUris.set(localId, uris);
+  }
   const linkFor = (localId) => idMap[localId]?.link;
   const teamId = (localId) => idMap[localId]?.id;
   const changed = [];
@@ -9438,7 +9751,10 @@ async function importToTeam(exported, target, call) {
   for (const page of exported.pages) {
     if (!idMap[page.localId]) continue;
     const location = exported.locations.get(page.localId);
-    const next = location && page.body ? rewriteWikiLinks(page.body, location, byPath, linkFor) : { body: page.body, rewritten: 0 };
+    const pageLinks = location && page.body ? rewriteWikiLinks(page.body, location, byPath, linkFor) : { body: page.body, rewritten: 0 };
+    const uris = assetUris.get(page.localId);
+    const fileLinks = location && pageLinks.body ? rewriteFileLinksForTeam(pageLinks.body, location, byPath, linkFor, (linkPath) => uris?.get(linkPath)) : { body: pageLinks.body, rewritten: 0 };
+    const next = { body: fileLinks.body, rewritten: pageLinks.rewritten + fileLinks.rewritten };
     const relations = exported.relations.get(page.localId);
     const remapped = {};
     const missing = [];
@@ -9464,7 +9780,7 @@ async function importToTeam(exported, target, call) {
   errors.push(...secondPass.tooLarge.map(tooLargeError));
   for (const batch of secondPass.batches) await send(batch);
   const complete = errors.length === 0 && created + updated === exported.pages.length && exported.pages.every((page) => idMap[page.localId]);
-  return { batches, created, updated, linksRewritten, idMap, errors, complete };
+  return { batches, created, updated, linksRewritten, editorPagesWritten, filesUploaded, idMap, errors, warnings, complete };
 }
 
 // packages/cli/src/localWiki/moveToTeam.ts
@@ -9475,13 +9791,26 @@ var MoveRefusal = class extends CliError {
     this.name = "MoveRefusal";
   }
 };
+async function editorModels(opened, load2) {
+  if (!load2) return { models: null, editorTypes: { unavailable: "the editors' document code is not available here" } };
+  try {
+    const models = await load2(opened);
+    return { models, editorTypes: new Set(models.editorCodecs.documentTypes) };
+  } catch (err) {
+    return { models: null, editorTypes: { unavailable: err instanceof Error ? err.message : String(err) } };
+  }
+}
 async function moveLocalWikiToTeam(opened, options, deps = {}) {
-  const exported = await collectLocalWiki(opened.wiki);
+  const { models, editorTypes } = await editorModels(opened, deps.loadEditorModels);
+  const wikiPrefix = path21.relative(opened.projectRoot, opened.dir).split(path21.sep).join("/");
+  const exported = await collectLocalWiki(opened.wiki, { editorTypes, wikiPrefix, wikiDir: opened.dir });
   const typedPages = exported.pages.filter((page) => page.kind === "typedPage").length;
+  const editorPages = exported.editorFiles.size;
+  const files = [...exported.linkedFiles.values()].reduce((n, list) => n + list.filter((file) => file.abs).length, 0);
   const report = {
     dryRun: options.dryRun === true,
     project: null,
-    counts: { pages: exported.pages.length - typedPages, typedPages, types: exported.types.length, skipped: exported.skipped.length },
+    counts: { pages: exported.pages.length - typedPages - editorPages, editorPages, typedPages, types: exported.types.length, files, skipped: exported.skipped.length },
     skipped: exported.skipped.map(({ title, reason }) => ({ title, reason })),
     batches: planTypeBatches(exported.types).batches.length + planBatches(exported.pages).batches.length
   };
@@ -9510,7 +9839,9 @@ async function moveLocalWikiToTeam(opened, options, deps = {}) {
   }
   if (report.dryRun) return { ...report, homeLink: typeof status.homeLink === "string" ? status.homeLink : void 0 };
   const wikiId = await opened.wiki.wikiId();
-  const outcome = await importToTeam(exported, { repo: target.repo, project, wikiId }, call);
+  const needsContent = exported.editorFiles.size > 0 || exported.linkedFiles.size > 0;
+  const content = deps.content ?? (needsContent ? createTeamContentWriter({ server, call, base: { ...base, project }, models }) : void 0);
+  const outcome = await importToTeam(exported, { repo: target.repo, project, wikiId }, call, content);
   const titles = new Map(exported.pages.map((page) => [page.localId, page.title]));
   const home = exported.homeLocalId ? outcome.idMap[exported.homeLocalId] : void 0;
   const homeLink = home?.link ?? (typeof status.homeLink === "string" ? status.homeLink : void 0);
@@ -9519,7 +9850,10 @@ async function moveLocalWikiToTeam(opened, options, deps = {}) {
     created: outcome.created,
     updated: outcome.updated,
     linksRewritten: outcome.linksRewritten,
+    editorPagesWritten: outcome.editorPagesWritten,
+    filesUploaded: outcome.filesUploaded,
     errors: outcome.errors.map((error) => ({ ...error, title: titles.get(error.localId) })),
+    warnings: outcome.warnings.map((warning) => ({ ...warning, title: titles.get(warning.localId) })),
     homeLink
   });
   let verified = outcome.complete;
@@ -9728,26 +10062,27 @@ async function runMcp(version, args, takeNotice) {
   const context = localWikiContext(startDir, location);
   const assetsDir = flagStr(args, "assets");
   const serve = serveTool({ startDir, location, assetsDir, version });
-  const editors = editorTools(context, editorModelsFromWikiWeb({ assetsDir, version }));
+  const loadEditorModels = editorModelsFromWikiWeb({ assetsDir, version });
+  const editors = editorTools(context, loadEditorModels);
   process.stderr.write(`nim mcp ${version}: serving on stdio
 `);
-  await runStdioServer({ tools: createLocalToolMap(context, [...editors, serve, ...teamTools(context)]), serverInfo: { name: "nimbalyst-local", version }, takeNotice });
+  await runStdioServer({ tools: createLocalToolMap(context, [...editors, serve, ...teamTools(context, { moveDeps: { loadEditorModels } })]), serverInfo: { name: "nimbalyst-local", version }, takeNotice });
   await serve.close();
   return 0;
 }
 
 // packages/cli/src/mcp/pluginWorkspace.ts
-import path20 from "node:path";
+import path22 from "node:path";
 function resolvePluginWorkspace(env, cwd, pluginRoot2) {
   if (env.CLAUDE_PROJECT_DIR) return env.CLAUDE_PROJECT_DIR;
-  if (env.PWD && path20.resolve(cwd) === path20.resolve(pluginRoot2)) return env.PWD;
+  if (env.PWD && path22.resolve(cwd) === path22.resolve(pluginRoot2)) return env.PWD;
   return cwd;
 }
 
 // packages/cli/src/mcp/updateCheck.ts
 import { mkdirSync as mkdirSync5, readFileSync as readFileSync7, writeFileSync as writeFileSync5 } from "node:fs";
 import os3 from "node:os";
-import path21 from "node:path";
+import path23 from "node:path";
 var UPDATE_CHECK_OPT_OUT = "NIMBALYST_WIKI_NO_UPDATE_CHECK";
 var CHECK_INTERVAL_MS = 24 * 60 * 60 * 1e3;
 var FETCH_TIMEOUT_MS = 5e3;
@@ -9763,14 +10098,14 @@ var MANIFEST_URLS = {
   }
 };
 function detectPluginInstall(env, cwd, pluginRoot2) {
-  const parts = path21.resolve(pluginRoot2).split(path21.sep);
+  const parts = path23.resolve(pluginRoot2).split(path23.sep);
   const n = parts.length;
   if (n < 5 || parts[n - 5] !== "plugins" || parts[n - 4] !== "cache" || parts[n - 2] !== PLUGIN_NAME) return null;
   const marketplace = parts[n - 3];
   const urls = MANIFEST_URLS[marketplace];
   if (!urls) return null;
-  const agent = !env.CLAUDE_PROJECT_DIR && path21.resolve(cwd) === path21.resolve(pluginRoot2) ? "codex" : "claude";
-  const manifest = path21.join(pluginRoot2, agent === "codex" ? ".codex-plugin" : ".claude-plugin", "plugin.json");
+  const agent = !env.CLAUDE_PROJECT_DIR && path23.resolve(cwd) === path23.resolve(pluginRoot2) ? "codex" : "claude";
+  const manifest = path23.join(pluginRoot2, agent === "codex" ? ".codex-plugin" : ".claude-plugin", "plugin.json");
   let version;
   try {
     version = JSON.parse(readFileSync7(manifest, "utf8")).version;
@@ -9797,7 +10132,7 @@ function updateNotice(install2, latest) {
   const steps = install2.agent === "codex" ? `run \`codex plugin marketplace upgrade ${install2.marketplace}\`` : `run \`claude plugin marketplace update ${install2.marketplace}\` and then \`claude plugin update ${PLUGIN_NAME}@${install2.marketplace}\``;
   return `Nimbalyst Wiki ${latest} is available (installed: ${install2.version}). To update, ${steps}, then start a new session. Tell the user this once, briefly, and do not repeat it. Set ${UPDATE_CHECK_OPT_OUT}=1 to stop these notices.`;
 }
-var defaultUpdateCacheFile = () => path21.join(os3.homedir(), ".nimbalyst-wiki", "update-check.json");
+var defaultUpdateCacheFile = () => path23.join(os3.homedir(), ".nimbalyst-wiki", "update-check.json");
 function readCache(file) {
   try {
     const parsed = JSON.parse(readFileSync7(file, "utf8"));
@@ -9829,7 +10164,7 @@ function startUpdateCheck(options) {
         const version = (await response.json())?.version;
         if (typeof version !== "string" || !parseVersion(version)) throw new Error("manifest has no version");
         latest = version;
-        mkdirSync5(path21.dirname(cacheFile), { recursive: true });
+        mkdirSync5(path23.dirname(cacheFile), { recursive: true });
         writeFileSync5(cacheFile, `${JSON.stringify({ checkedAt: now(), latestVersion: version })}
 `);
       } catch (err) {
@@ -9848,10 +10183,10 @@ function startUpdateCheck(options) {
 }
 
 // packages/cli/src/mcp/pluginEntry.ts
-var pluginRoot = path22.dirname(path22.dirname(fileURLToPath2(import.meta.url)));
+var pluginRoot = path24.dirname(path24.dirname(fileURLToPath2(import.meta.url)));
 var workspace = resolvePluginWorkspace(process.env, process.cwd(), pluginRoot);
-var webDir = path22.join(pluginRoot, "web");
-var flags = existsSync6(path22.join(webDir, "index.html")) ? { workspace, assets: webDir } : { workspace };
+var webDir = path24.join(pluginRoot, "web");
+var flags = existsSync6(path24.join(webDir, "index.html")) ? { workspace, assets: webDir } : { workspace };
 var install = detectPluginInstall(process.env, process.cwd(), pluginRoot);
 var updateCheck = install ? startUpdateCheck({ install }) : null;
 runMcp("0.4.0", { noun: "mcp", positionals: [], flags }, updateCheck?.takeNotice).catch((err) => {
