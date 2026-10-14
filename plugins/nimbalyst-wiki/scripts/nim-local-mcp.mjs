@@ -9854,7 +9854,7 @@ var webDir = path22.join(pluginRoot, "web");
 var flags = existsSync6(path22.join(webDir, "index.html")) ? { workspace, assets: webDir } : { workspace };
 var install = detectPluginInstall(process.env, process.cwd(), pluginRoot);
 var updateCheck = install ? startUpdateCheck({ install }) : null;
-runMcp("0.3.0", { noun: "mcp", positionals: [], flags }, updateCheck?.takeNotice).catch((err) => {
+runMcp("0.4.0", { noun: "mcp", positionals: [], flags }, updateCheck?.takeNotice).catch((err) => {
   process.stderr.write(`nimbalyst-local: ${err.stack ?? err}
 `);
   process.exit(1);
