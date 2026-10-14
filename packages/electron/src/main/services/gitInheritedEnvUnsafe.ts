@@ -29,6 +29,7 @@ export const GIT_INHERITED_ENV_UNSAFE: SimpleGitOptions['unsafe'] = {
   allowUnsafeConfigEnvCount: true,
   allowUnsafeCredentialHelper: true,
   allowUnsafeEditor: true,
+  allowUnsafeExec: true,
   allowUnsafeMergeDriver: true,
   allowUnsafePager: true,
   allowUnsafeProtocolOverride: true,
