@@ -525,15 +525,14 @@ function renderScatterChart(config: ChartConfig, colors: string[], isDark: boole
   );
 }
 
+type ReadFile = (path: string) => Promise<{ success: boolean; content?: string; error?: string }>;
+
 /**
- * Component for displaying a single image with loading state
+ * Resolve an image to a loadable src. The thumbnail and the lightbox must share
+ * this: `nim-asset://` only serves workspace roots, so a path elsewhere (e.g.
+ * /tmp) only renders through the bytes `readFile` returns.
  */
-const ImageDisplay: React.FC<{
-  image: ImageContent;
-  description?: string;
-  readFile?: (path: string) => Promise<{ success: boolean; content?: string; error?: string }>;
-  className?: string;
-}> = ({ image, description, readFile, className }) => {
+function useImageSource(image: ImageContent, readFile?: ReadFile) {
   const [imageData, setImageData] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -603,6 +602,20 @@ const ImageDisplay: React.FC<{
 
     loadImage();
   }, [image.path, image.data, image.mimeType, readFile]);
+
+  return { imageData, loading, error, setError };
+}
+
+/**
+ * Component for displaying a single image with loading state
+ */
+const ImageDisplay: React.FC<{
+  image: ImageContent;
+  description?: string;
+  readFile?: ReadFile;
+  className?: string;
+}> = ({ image, description, readFile, className }) => {
+  const { imageData, loading, error, setError } = useImageSource(image, readFile);
 
   if (loading) {
     return (
@@ -722,8 +735,9 @@ const Lightbox: React.FC<{
   selectedIndex: number;
   onClose: () => void;
   onNavigate: (index: number) => void;
-  readFile?: (path: string) => Promise<{ success: boolean; content?: string; error?: string }>;
+  readFile?: ReadFile;
 }> = ({ images, selectedIndex, onClose, onNavigate, readFile }) => {
+  const { imageData } = useImageSource(images[selectedIndex].image!, readFile);
   return (
     <FullscreenModal
       isOpen={true}
@@ -731,8 +745,8 @@ const Lightbox: React.FC<{
       ariaLabel="Image lightbox"
       contentClassName="h-[92dvh] w-[96vw] max-w-[1400px] overflow-hidden rounded-lg border border-nim bg-nim"
     >
-      <ZoomableImageSurface
-        src={imageSrc(images[selectedIndex].image!)}
+      {imageData ? <ZoomableImageSurface
+        src={imageData}
         alt={images[selectedIndex].description}
         copyFilePath={images[selectedIndex].image!.path}
         toolbarLabel={(
@@ -775,7 +789,7 @@ const Lightbox: React.FC<{
             </button>
           </>
         )}
-      />
+      /> : null}
     </FullscreenModal>
   );
 };
