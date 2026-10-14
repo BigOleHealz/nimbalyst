@@ -23,9 +23,10 @@ export async function runMcp(version: string, args: ParsedArgs, takeNotice?: () 
   const context = localWikiContext(startDir, location);
   const assetsDir = flagStr(args, 'assets');
   const serve = serveTool({ startDir, location, assetsDir, version });
-  const editors = editorTools(context, editorModelsFromWikiWeb({ assetsDir, version }));
+  const loadEditorModels = editorModelsFromWikiWeb({ assetsDir, version });
+  const editors = editorTools(context, loadEditorModels);
   process.stderr.write(`nim mcp ${version}: serving on stdio\n`);
-  await runStdioServer({ tools: createLocalToolMap(context, [...editors, serve, ...teamTools(context)]), serverInfo: { name: 'nimbalyst-local', version }, takeNotice });
+  await runStdioServer({ tools: createLocalToolMap(context, [...editors, serve, ...teamTools(context, { moveDeps: { loadEditorModels } })]), serverInfo: { name: 'nimbalyst-local', version }, takeNotice });
   // A browser server left listening would keep this process alive after the agent hangs up.
   await serve.close();
   return 0;

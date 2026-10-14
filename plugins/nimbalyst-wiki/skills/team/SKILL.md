@@ -54,7 +54,7 @@ Call `teamSignIn` on `nimbalyst-local`.
 
 ## 6. Move the local wiki
 
-Call `moveLocalWikiToTeam` with `dryRun: true` (and `project` when there is a pin). Show the user, in a few lines: how many pages, typed pages and types will move, into which project, and anything listed in `skipped` (those stay in the local wiki only). Ask with the host's question tool: move now, or not now.
+Call `moveLocalWikiToTeam` with `dryRun: true` (and `project` when there is a pin). Show the user, in a few lines: how many pages, editor pages, typed pages, types and linked files will move, into which project, and anything listed in `skipped` with its reason (those stay in the local wiki only). Ask with the host's question tool: move now, or not now.
 
 On "move now", call `moveLocalWikiToTeam` without `dryRun`. It sends the pages in batches, rewrites links between pages to their team pages, and returns counts, `homeLink` and `errors`. Page text never comes back to you; do not read local pages to check the move.
 

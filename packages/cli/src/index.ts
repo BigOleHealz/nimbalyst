@@ -185,7 +185,7 @@ export async function main(argv: string[]): Promise<number> {
         return await runWhoami(args);
       case 'wiki':
         if (args.verb === 'serve') return await runWikiServe(args, { version: VERSION });
-        return isLocalWikiCall(args) ? await runLocalWiki(args) : await runPages(args);
+        return isLocalWikiCall(args) ? await runLocalWiki(args, VERSION) : await runPages(args);
       case 'mcp':
         return await runMcp(VERSION, args);
       default:

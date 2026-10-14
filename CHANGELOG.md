@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 <!-- Bug fixes go here -->
 - A local wiki created outside the desktop app, for example with `nim wiki init` or the nimbalyst-wiki plugin, now shows up in Pages mode without reloading the project.
+- Moving a local wiki to a team (`/nimbalyst-wiki:team` or `nim wiki move-to-team`) now also moves drawings, mind maps, spreadsheets and the other editor pages, plus the images and attachments pages link to, when `@nimbalyst/wiki-web` is installed. Before, they stayed in the local wiki and links to them broke.
 
 ### Removed
 <!-- Removed features go here -->
