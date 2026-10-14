@@ -82,6 +82,13 @@ describe('move and rename', () => {
     await wiki!.command({ type: 'move-document', documentId: 'Q', parentFolderId: 'R' });
     expect(await read('Archive/Q4 Plan.md')).toContain('![shot](Q4%20Plan/.assets/shot.png) and [spec](Q4%20Plan/.assets/spec%20v2.pdf) and [web](https://x.test/Q3%20Plan/a)');
     expect(await exists(path.join(root, 'Archive/Q4 Plan/.assets/spec v2.pdf'))).toBe(true);
+
+    // A page's links resolve to files inside the wiki, never its bookkeeping or anything outside.
+    expect(await wiki!.resolvePageFile('Q', 'Q4 Plan/.assets/spec v2.pdf')).toBe(path.join(root, 'Archive/Q4 Plan/.assets/spec v2.pdf'));
+    expect(await wiki!.resolvePageFile('R', 'Archive/Q4 Plan/.assets/spec v2.pdf')).toBe(path.join(root, 'Archive/Q4 Plan/.assets/spec v2.pdf'));
+    expect(await wiki!.resolvePageFile('Q', '../../outside.txt')).toBeNull();
+    expect(await wiki!.resolvePageFile('Q', '../.nimbalyst-wiki.yaml')).toBeNull();
+    expect(await wiki!.resolvePageFile('Q', 'Q4 Plan/.assets/missing.png')).toBeNull();
   });
 });
 

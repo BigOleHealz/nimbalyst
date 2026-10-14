@@ -7,7 +7,7 @@ import csv from '../../../../extensions/csv-spreadsheet/manifest.json';
 import datamodel from '../../../../extensions/datamodellm/manifest.json';
 import excalidraw from '../../../../extensions/excalidraw/manifest.json';
 import mockup from '../../../../extensions/mockuplm/manifest.json';
-import { editorPageDescriptors, matchEditor, WIKI_EDITOR_PAGE_TYPES } from '../editorPageTypes';
+import { editorPageDescriptors, embeddableSuffixes, matchEditor, WIKI_EDITOR_PAGE_TYPES } from '../editorPageTypes';
 
 // The mind map editor has its own repo; the live check covers it.
 const manifests = [calcSheets, csv, datamodel, excalidraw, mockup] as unknown as BrowserExtensionManifest[];
@@ -26,5 +26,10 @@ describe('editor page types', () => {
       .map(([suffix, documentType]) => [suffix, documentType, matchEditor(manifests, `x${suffix}`)?.component]);
     expect(created.sort()).toEqual(expected.sort());
     for (const [, , component] of created) expect(component).toBeTruthy();
+  });
+
+  it('declares every file a built-in editor opens as embeddable, so an embed link in a page loads as an embed', () => {
+    expect(embeddableSuffixes(manifests)).toEqual(expect.arrayContaining(['.excalidraw', '.mockup.html', '.prisma', '.csv', '.calc.md']));
+    expect(embeddableSuffixes(manifests)).not.toContain('.md');
   });
 });

@@ -1,11 +1,11 @@
-import { mkdir, readdir, readFile, rm, rmdir, unlink } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, rmdir, stat, unlink } from 'node:fs/promises';
 import * as path from 'node:path';
 import yaml from 'js-yaml';
 import { contentVersion, idForFileName, ulid } from './ids.js';
 import { composeMarkdownFile, flattenLegacy, parseMarkdownFile, RESERVED_KEYS } from './frontmatter.js';
 import { fileStemForTitle, nameKey, uniqueStem } from './names.js';
 import { atomicWrite, movePath, pathExists, relJoin } from './fsutil.js';
-import { ACTIVITY_SUFFIX, linkBaseDir, MARKER_FILE, TRASH_DIR, TRASH_MANIFEST, type PageRecord, type TrashManifest } from './scan.js';
+import { ACTIVITY_SUFFIX, linkBaseDir, MARKER_FILE, resolveLinkPath, TRASH_DIR, TRASH_MANIFEST, type PageRecord, type TrashManifest } from './scan.js';
 import { ATTACHMENTS_DIR, rebaseChildFolderLinks, writeAttachment } from './attachments.js';
 import { encodeLinkPath } from './links.js';
 import { decodeRow } from './tableCodec.js';
@@ -246,6 +246,28 @@ export class LocalWiki extends WikiTables {
       const name = await writeAttachment(assetsAbs, fileName, bytes, await readdir(assetsAbs));
       const rel = relJoin(assetsRel, name);
       return { path: rel, link: encodeLinkPath(path.posix.relative(linkBaseDir(page), rel)) };
+    });
+  }
+
+  /**
+   * The absolute path of a file a page links to (an image or attachment),
+   * resolved against the folder the page's links are written relative to.
+   * Null when the link leaves the wiki, names no file, or names the wiki's own
+   * bookkeeping (any dot-named segment other than `.assets`).
+   */
+  async resolvePageFile(id: string, linkPath: string): Promise<string | null> {
+    return this.exclusive(async () => {
+      const page = this.state.pages.get(id);
+      if (!page) throw new LocalWikiError('not-found', `No page ${id}`);
+      const rel = resolveLinkPath(linkBaseDir(page), linkPath);
+      if (!rel || rel.includes('\0')) return null;
+      if (rel.split('/').some((part) => part.startsWith('.') && part !== ATTACHMENTS_DIR)) return null;
+      const abs = this.abs(rel);
+      try {
+        return (await stat(abs)).isFile() ? abs : null;
+      } catch {
+        return null;
+      }
     });
   }
 

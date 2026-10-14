@@ -5,7 +5,8 @@
  */
 import { listBrowserExtensions, registerBrowserExtension, type BrowserExtensionManifest } from '@nimbalyst/web-editors/registry';
 import { PINNED_EXTENSION_MANIFESTS, PINNED_EXTENSION_SLUGS, loadPinnedExtensionBundle } from '@nimbalyst/web-editors/bundles';
-import { matchEditor, type WikiEditorMatch } from './editorPageTypes';
+import { registerEmbeddableExtension } from '@nimbalyst/collab-bundle/editor';
+import { embeddableSuffixes, matchEditor, type WikiEditorMatch } from './editorPageTypes';
 
 export { editorPageDescriptors, type WikiEditorMatch } from './editorPageTypes';
 
@@ -34,6 +35,8 @@ export function registerWikiEditors(): void {
   for (const slug of PINNED_EXTENSION_SLUGS) {
     registerBrowserExtension({ manifest: PINNED_EXTENSION_MANIFESTS[slug], load: () => loadPinnedExtensionBundle(slug) });
   }
+  // As on desktop, every file an editor here opens can be embedded in a page.
+  for (const suffix of embeddableSuffixes(listBrowserExtensions().map((entry) => entry.manifest))) registerEmbeddableExtension(suffix);
 }
 
 export function builtInManifests(): BrowserExtensionManifest[] {

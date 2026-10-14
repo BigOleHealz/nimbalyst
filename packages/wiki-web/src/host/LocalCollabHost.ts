@@ -14,7 +14,10 @@ import {
 } from '@nimbalyst/collab-bundle/docs-ui';
 import { builtInManifests, editorForFile, editorPageDescriptors } from '../editors/wikiEditors';
 import { ulidLike } from './ids';
+import type { PageLinkSource } from '@nimbalyst/collab-bundle/editor';
+import { wikiApi } from '../api/client';
 import { resolveWikiLink, type LinkTarget } from './links';
+import { pageLinkOption, pageLinkOptions } from './pageLinks';
 import { LocalPagesDataSource } from './LocalPagesDataSource';
 
 type DocsHost = Parameters<typeof createCollabDocsScopeLifecycle>[0];
@@ -90,6 +93,29 @@ export class LocalCollabHost implements DocsHost {
   /** A relative link in page `fromId`'s body, resolved to a page in the wiki or a file outside it. */
   resolveLink(fromId: string, href: string): LinkTarget {
     return resolveWikiLink(this.currentSource?.allPages() ?? [], this.pagePath(fromId), href);
+  }
+
+  /**
+   * The `@` picker's pages for page `fromId`. A page created from it goes next
+   * to the linking page, as a sibling, and is linked once it exists on disk.
+   */
+  pageLinkSource(fromId: string): PageLinkSource {
+    return {
+      list: () => pageLinkOptions(this.currentSource?.allPages() ?? [], fromId),
+      createPage: async (title) => {
+        const from = this.currentSource?.page(fromId) ?? null;
+        const { id } = await wikiApi.command({
+          type: 'register-document',
+          title,
+          parentFolderId: from?.parentId ?? null,
+          ...(from?.parentKind ? { parentKind: from.parentKind } : {}),
+        });
+        const created = (await wikiApi.snapshot()).pages.find((page) => page.id === id);
+        if (!created) throw new Error(`The page "${title}" was not created`);
+        return pageLinkOption(from, created);
+      },
+      onError: (error) => this.onError(`Could not create the page: ${error instanceof Error ? error.message : String(error)}`),
+    };
   }
 
   /** Wiki-relative file of a page, from the last snapshot read. */

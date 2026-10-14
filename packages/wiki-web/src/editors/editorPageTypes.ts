@@ -81,3 +81,16 @@ export function editorPageDescriptors(manifests: readonly BrowserExtensionManife
     };
   });
 }
+
+/** `.excalidraw`, `.mockup.html`, ... from the editors' `*.<suffix>` file patterns. */
+export function embeddableSuffixes(manifests: readonly BrowserExtensionManifest[]): string[] {
+  const suffixes = new Set<string>();
+  for (const manifest of manifests) {
+    for (const editor of manifest.contributions?.customEditors ?? []) {
+      for (const pattern of editor.filePatterns ?? []) {
+        if (/^\*\.[^*/]+$/.test(pattern)) suffixes.add(pattern.slice(1).toLowerCase());
+      }
+    }
+  }
+  return [...suffixes];
+}

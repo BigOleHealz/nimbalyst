@@ -85,7 +85,30 @@ export const wikiApi = {
   activity: async (itemId: string) => (await request<{ entries: ActivityEntry[] }>('GET', `/api/items/${id(itemId)}/activity`)).value.entries,
   search: async (q: string, limit?: number) =>
     (await request<{ hits: LocalSearchHit[] }>('GET', `/api/search?q=${encodeURIComponent(q)}${limit ? `&limit=${limit}` : ''}`)).value.hits,
+  /** Stores a file in the page's `.assets/` folder; `link` is what the page body writes. */
+  storeAttachment: async (pageId: string, name: string, file: Blob): Promise<{ path: string; link: string }> => {
+    const res = await fetch(`/api/pages/${id(pageId)}/attachments?name=${encodeURIComponent(name)}`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: file,
+    });
+    const value = (await res.json().catch(() => null)) as { path: string; link: string; error?: { code?: string; message?: string } } | null;
+    if (!res.ok || !value) throw new WikiApiError(res.status, value?.error?.code ?? 'http', value?.error?.message ?? `Attaching ${name} failed with ${res.status}`);
+    return value;
+  },
+  /** URL of a file a page links to, given the link as written in the page (relative, possibly percent-encoded). */
+  pageFileUrl: (pageId: string, linkPath: string) =>
+    `/api/pages/${id(pageId)}/file?path=${encodeURIComponent(linkPath.split('/').map(safeDecode).join('/'))}`,
 };
+
+function safeDecode(part: string): string {
+  try {
+    return decodeURIComponent(part);
+  } catch {
+    return part;
+  }
+}
 
 export type WikiFeedEvent = { type: 'change'; change: LocalWikiChange } | { type: 'types' } | { type: 'ready' } | { type: 'down' };
 

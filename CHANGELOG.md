@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- New features go here -->
 - nimbalyst-wiki plugin: `/nimbalyst-wiki:team` moves a local wiki to a new or existing Nimbalyst team from Claude Code, opens it in the browser and invites teammates by email or invite link, with no desktop app needed.
 - nimbalyst-wiki plugin: in Claude Code and Codex, the agent tells you when a newer plugin version is out and which commands install it (turn off with `NIMBALYST_WIKI_NO_UPDATE_CHECK=1`).
+- Local wiki browser view (`nim wiki serve`): markdown pages store pasted and dropped files in the page's `.assets/` folder, link other pages or create one from `@`, insert references to the wiki's typed pages from `#`, show linked drawings and other editor pages live, and find and replace with Cmd+F.
 
 ### Changed
 <!-- Changes to existing functionality go here -->

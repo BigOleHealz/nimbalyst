@@ -111,6 +111,38 @@ describe('nim wiki serve', () => {
     expect((await call('GET', '/api/pages/nope/body')).status).toBe(404);
   });
 
+  it('stores an uploaded attachment beside the page and serves the files a page links to', async () => {
+    const { root, server } = await serve();
+    const bearer = { Authorization: `Bearer ${server.token}` };
+    const created = await fetch(`${server.origin}/api/command`, {
+      method: 'POST',
+      headers: { ...bearer, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'register-document', title: 'Q3 Plan', parentFolderId: null, body: '' }),
+    });
+    const id = ((await created.json()) as { id: string }).id;
+    const upload = (name: string, bytes: Uint8Array, type = 'application/octet-stream') =>
+      fetch(`${server.origin}/api/pages/${id}/attachments?name=${encodeURIComponent(name)}`, { method: 'POST', headers: { ...bearer, 'Content-Type': type }, body: bytes });
+
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+    const stored = await upload('shot one.png', png);
+    expect(stored.status).toBe(200);
+    expect(await stored.json()).toEqual({ path: 'Q3 Plan/.assets/shot one.png', link: 'Q3%20Plan/.assets/shot%20one.png' });
+    expect(readFileSync(path.join(root, 'wiki', 'Q3 Plan/.assets/shot one.png'))).toEqual(Buffer.from(png));
+
+    // A cross-site form can only send simple content types; those never reach the wiki.
+    expect((await upload('x.txt', png, 'text/plain')).status).toBe(415);
+    expect((await upload('big.bin', new Uint8Array(25 * 1024 * 1024 + 1))).status).toBe(413);
+
+    const file = (link: string) => fetch(`${server.origin}/api/pages/${id}/file?path=${encodeURIComponent(link)}`, { headers: bearer });
+    const served = await file('Q3 Plan/.assets/shot one.png');
+    expect(served.status).toBe(200);
+    expect(served.headers.get('content-type')).toBe('image/png');
+    expect(served.headers.get('content-security-policy')).toContain('sandbox');
+    expect(Buffer.from(await served.arrayBuffer())).toEqual(Buffer.from(png));
+    expect((await file('../../secret')).status).toBe(404);
+    expect((await file('.nimbalyst-wiki.yaml')).status).toBe(404);
+  });
+
   it('streams a change event when a page file is edited outside the server', async () => {
     const { root, server } = await serve();
     const res = await fetch(`${server.origin}/api/events`, { headers: { Authorization: `Bearer ${server.token}` } });

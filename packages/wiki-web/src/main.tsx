@@ -8,8 +8,11 @@ import { LocalTrackerDataSource } from './host/LocalTrackerDataSource';
 import { applyWikiTypes, loadWikiSchema } from './host/schema';
 import { initializeTheme } from './theme';
 import { App } from './app/App';
+import { registerWikiEditors } from './editors/wikiEditors';
 
 initializeTheme();
+// Before any page body is read: embed links only load as embeds once their file types are known.
+registerWikiEditors();
 
 const container = document.getElementById('root')!;
 const root = createRoot(container);
