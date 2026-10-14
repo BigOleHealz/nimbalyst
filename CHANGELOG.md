@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 <!-- Bug fixes go here -->
+- A local wiki created outside the desktop app, for example with `nim wiki init` or the nimbalyst-wiki plugin, now shows up in Pages mode without reloading the project.
 
 ### Removed
 <!-- Removed features go here -->

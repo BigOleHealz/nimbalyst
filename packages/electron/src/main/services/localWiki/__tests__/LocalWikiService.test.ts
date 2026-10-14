@@ -15,6 +15,7 @@ vi.mock('../personalPagesExportIpc', () => ({ registerPersonalPagesExportIpc: vi
 const mainCheckoutOf = new Map<string, string>();
 vi.mock('../../../utils/workspaceDetection', () => ({ resolveProjectPath: (p: string) => mainCheckoutOf.get(p) ?? p }));
 
+import { initWiki } from '@nimbalyst/local-wiki';
 import { LocalWikiService } from '../LocalWikiService';
 import { resolveLocalWikiLocation } from '../localWikiLocation';
 import {
@@ -171,5 +172,34 @@ describe('LocalWikiService', () => {
     const items = (await service.trackerSnapshot(project, 'competitor')).items.map((item) => item.title).sort();
     expect(items).toEqual(['Acme', 'Globex']);
     expect(fs.readFileSync(path.join(project, 'nimbalyst-local', 'wiki', 'Globex.md'), 'utf8')).toMatch(new RegExp(`^---\\nid: ${created.id}\\ntype: competitor\\n`));
+  });
+
+  // `nim wiki init` or the wiki plugin creates the wiki in another process
+  // after the window already read an empty snapshot.
+  it('announces a wiki another process creates after an empty read, at the default or a newly configured location', async () => {
+    const watching = new LocalWikiService({ broadcast, watch: true });
+    // macOS fs.watch can drop an event that lands right after the watch starts;
+    // in the app the watch is armed long before another process writes.
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 150));
+    try {
+      expect((await watching.snapshot(project)).exists).toBe(false);
+      await settle();
+      await initWiki(path.join(project, 'nimbalyst-local', 'wiki'));
+      await vi.waitFor(() => expect(broadcast).toHaveBeenCalledWith(project), { timeout: 3000 });
+      expect((await watching.snapshot(project)).exists).toBe(true);
+
+      const other = fs.mkdtempSync(path.join(os.tmpdir(), 'local-wiki-service-'));
+      try {
+        fs.mkdirSync(path.join(other, '.nimbalyst'));
+        expect((await watching.snapshot(other)).exists).toBe(false);
+        await settle();
+        fs.writeFileSync(path.join(other, '.nimbalyst', 'local-wiki.json'), JSON.stringify({ location: 'docs/wiki' }));
+        await vi.waitFor(() => expect(broadcast).toHaveBeenCalledWith(other), { timeout: 3000 });
+      } finally {
+        fs.rmSync(other, { recursive: true, force: true });
+      }
+    } finally {
+      watching.dispose();
+    }
   });
 });
