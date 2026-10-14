@@ -112,7 +112,9 @@ export function createWikiFileEditorHost(options: WikiFileEditorHostOptions): Wi
 
   const requestSave = async () => {
     cancelAutosave();
-    if (state.conflict) return;
+    // A clean page has nothing to write; asking anyway rewrites the file from
+    // whatever the editor holds, which on the way out can be a torn-down scene.
+    if (state.conflict || !state.dirty) return;
     await Promise.all([...saveListeners].map((listener) => Promise.resolve(listener()).catch(noop)));
   };
 

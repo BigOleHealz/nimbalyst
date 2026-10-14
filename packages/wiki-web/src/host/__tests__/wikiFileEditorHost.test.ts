@@ -83,6 +83,26 @@ describe('createWikiFileEditorHost', () => {
     host.dispose();
   });
 
+  it('does not ask the editor to save a page with no edits', async () => {
+    const wiki = fakeWiki('{"elements":[1]}');
+    const host = createWikiFileEditorHost({ pageId: 'p1', fileName: 'x.excalidraw', filePath: 'x.excalidraw', theme: 'dark', api: wiki.api, changes: wiki.changes });
+    await host.loadContent();
+    const save = vi.fn(async () => {
+      await host.saveContent('{"elements":[]}');
+    });
+    host.onSaveRequested(save);
+
+    // Opening a page and leaving it (Cmd+S, pagehide, unmount) writes nothing.
+    await host.requestSave();
+    expect(save).not.toHaveBeenCalled();
+    expect(wiki.text()).toBe('{"elements":[1]}');
+
+    host.setDirty(true);
+    await host.requestSave();
+    expect(save).toHaveBeenCalledTimes(1);
+    host.dispose();
+  });
+
   it('turns a stale save into a conflict and loads the file on "theirs"', async () => {
     const wiki = fakeWiki('a');
     const host = createWikiFileEditorHost({ pageId: 'p1', fileName: 'x.mindmap', filePath: 'x.mindmap', theme: 'light', api: wiki.api, changes: { subscribe: () => () => {} } });

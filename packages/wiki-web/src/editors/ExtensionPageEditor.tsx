@@ -8,7 +8,7 @@
  * after a short pause, on Cmd+S, and before the page closes; an outside write
  * under unsaved edits shows a bar to load the file or keep these edits.
  */
-import { Component, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Component, useContext, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from 'react';
 import { loadBrowserExtension } from '@nimbalyst/web-editors/registry';
 import type { ExtensionEditorComponent } from '@nimbalyst/collab-bundle/editor';
 import { wikiApi, wikiChanges } from '../api/client';
@@ -109,10 +109,17 @@ export function ExtensionPageEditor({
       detach();
       unsubscribeTheme();
       unsubscribeState();
-      // Last edits are written on the way out; the host stops listening after.
-      void host.requestSave().finally(() => host.dispose());
     };
   }, [drafts, host, pageId]);
+
+  // Last edits are written on the way out; the host stops listening after. This
+  // is a layout cleanup because it must run before the editor unmounts: React
+  // runs a class editor's `componentWillUnmount` before any passive cleanup, and
+  // Excalidraw empties its scene there, so a save from `useEffect` wrote an
+  // empty drawing over the file.
+  useLayoutEffect(() => () => {
+    void host.requestSave().finally(() => host.dispose());
+  }, [host]);
 
   useEffect(() => {
     const save = editorSaveState(state);
