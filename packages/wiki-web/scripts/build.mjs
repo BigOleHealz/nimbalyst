@@ -84,6 +84,7 @@ await esbuild({
     '@nimbalyst/excalidraw-layout': path.join(roots.excalidraw, 'src/layout/LayoutEngine.ts'),
     '@nimbalyst/mindmap-codec': path.join(roots.mindmap, 'src/collab/codec.ts'),
     '@nimbalyst/canvas-codec': path.join(packageRoot, '../runtime/src/canvas/canvasCollabCodec.ts'),
+    '@nimbalyst/html-page-codec': path.join(packageRoot, '../runtime/src/ui/htmlEmbed/htmlPageCodec.ts'),
     '@nimbalyst/document-sync': path.join(packageRoot, '../runtime/src/sync/DocumentSync.ts'),
     // One yjs for every codec. The mind map checkout has its own node_modules,
     // and a Y.Map from a second copy fails inside a Y.Doc from the first.

@@ -29,6 +29,8 @@ import { PageView, SearchView, TypedPageView, TypesView, TypeTableView, type Pag
 import { WikiCreateMenu } from './WikiCreateMenu';
 import { setWikiCanvasContext } from '../editors/canvas/WikiCanvasCard';
 import { renderWikiFileEmbed } from '../editors/WikiFileEmbed';
+import { setWikiHtmlNavigator } from '../editors/html/htmlPages';
+import { openWikiHtmlLink } from '../editors/html/wikiHtmlNavigation';
 
 type Route = ViewRoute;
 
@@ -165,6 +167,27 @@ export function App({ root, projectRoot, trackers, module }: AppProps) {
     }),
     [host, trackerReferences, drafts],
   );
+
+  // A link clicked inside an HTML page; with no embedding page, the open page.
+  const routeRef = useRef(route);
+  routeRef.current = route;
+  useEffect(() => {
+    setWikiHtmlNavigator((fromPageId, href, options) => {
+      const current = routeRef.current;
+      const from = fromPageId ?? (current.kind === 'page' || current.kind === 'item' ? current.id : null);
+      openWikiHtmlLink(href, options, from, {
+        resolveLink: (pageId, link) => host.resolveLink(pageId, link),
+        navigate,
+        itemIdForKey: (key) => {
+          const resolved = trackerReferences.resolve(key);
+          return resolved.state === 'resolved' ? resolved.item.id : null;
+        },
+        openExternal: (link) => window.open(link, '_blank', 'noopener'),
+        notice: setNotice,
+      });
+    });
+    return () => setWikiHtmlNavigator(null);
+  }, [host, navigate, trackerReferences]);
 
   useEffect(() => setWikiCanvasContext({
     wikiRoot: root,

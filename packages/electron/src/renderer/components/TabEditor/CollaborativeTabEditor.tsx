@@ -91,7 +91,7 @@ import { closeActiveTabRequestAtom } from '../../store/atoms/appCommands';
 // React root (one per tab), so the app-root DialogProvider context is not
 // reachable through the tree. The module-level ref is the cross-root path.
 import { dialogRef } from '../../contexts/DialogContext';
-import { customEditorRegistry } from '../CustomEditors';
+import { findPageEditorRegistration } from '../HtmlPage/htmlPageRegistration';
 import type { CustomEditorRegistration } from '../CustomEditors/types';
 import {
   resolveCollabEditorAvailability,
@@ -1261,7 +1261,7 @@ export const CollaborativeTabEditor: React.FC<CollaborativeTabEditorProps> = ({
       fileExtension: activeConfig.fileExtension,
       title: activeConfig.title,
       editorId: activeConfig.editorId,
-      findRegistration: (name) => customEditorRegistry.findRegistrationForFile(name),
+      findRegistration: (name) => findPageEditorRegistration(name, { documentType, editorId: activeConfig.editorId }),
     });
   }, [documentType, fileName, activeConfig.editorId, activeConfig.fileExtension, activeConfig.title]);
 

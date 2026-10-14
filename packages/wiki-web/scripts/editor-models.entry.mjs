@@ -24,6 +24,7 @@ import { MockupHtmlCollabContentAdapter } from '@nimbalyst/mockuplm/collab-adapt
 import { CalcSheetCollabContentAdapter } from '@nimbalyst/extension-calc-sheets/collab-adapter';
 import { mindmapCodec } from '@nimbalyst/mindmap-codec';
 import { canvasCollabCodec } from '@nimbalyst/canvas-codec';
+import { HtmlPageCollabContentAdapter } from '@nimbalyst/html-page-codec';
 export { DocumentSyncProvider } from '@nimbalyst/document-sync';
 
 /** The editors' collaboration codecs, for moving editor pages into a team project (`nim wiki move-to-team`). */
@@ -35,6 +36,7 @@ export const editorCodecs = createEditorCodecs([
   CalcSheetCollabContentAdapter,
   mindmapCodec,
   canvasCollabCodec,
+  HtmlPageCollabContentAdapter,
 ]);
 
 export const EDITOR_MODELS_VERSION = 2;

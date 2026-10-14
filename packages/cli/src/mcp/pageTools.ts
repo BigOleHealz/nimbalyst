@@ -5,7 +5,7 @@
  * localTools.ts for the plumbing.
  */
 import type { LocalPage, LocalWiki } from '@nimbalyst/local-wiki';
-import { orderBetween } from '@nimbalyst/local-wiki';
+import { DEFAULT_EDITOR_TYPES, orderBetween } from '@nimbalyst/local-wiki';
 import { usageError } from '../cli/exitCodes.js';
 import { buildTree, findPage, livePages, localPageUri, positionBeside, type TreeNode } from '../localWiki/tree.js';
 import { applyReplacements, ensureFolderPath, type Replacement } from '../localWiki/writes.js';
@@ -14,7 +14,21 @@ import type { McpTool } from './toolMap.js';
 
 const PAGE_REFS = ['filePath', 'itemId', 'pageId', 'parentFolderId', 'newParentFolderId', 'before', 'after', 'root'];
 
-const stripNodePrefix = (ref: string) => ref.replace(/^(document|item|page):/, '');
+const LOCAL_DOCUMENT_TYPES = ['markdown', ...Object.values(DEFAULT_EDITOR_TYPES)];
+
+const LOCAL_CREATE_DOC_ARGS = {
+  documentType: {
+    type: 'string',
+    enum: LOCAL_DOCUMENT_TYPES,
+    description: `The page's editor: ${LOCAL_DOCUMENT_TYPES.map((type) => `'${type}'`).join(', ')}. Defaults to 'markdown'.`,
+  },
+  initialContent: {
+    type: 'string',
+    description: "The page's whole file text in its editor's format: markdown for a markdown page, the .excalidraw JSON for a drawing, the Prisma schema for a data model, and so on. Empty gives that editor's empty file.",
+  },
+};
+
+const stripNodePrefix =(ref: string) => ref.replace(/^(document|item|page):/, '');
 
 async function resolveParent(wiki: LocalWiki, args: Args, idKey: string): Promise<string | null> {
   const folderPath = str(args, 'folderPath');
@@ -140,6 +154,8 @@ export function pageTools(context: LocalWikiContext): McpTool[] {
       contractDefinition(
         'createSharedDoc',
         'Create a local wiki page, at the top of the wiki, under a page (parentFolderId), under a path of titles (folderPath, missing pages are created), or beside a sibling (before/after). A markdown page by default; documentType (excalidraw, mindmap, datamodel, mockup.html, csv...) makes an editor file, whose initialContent is the whole file. Returns documentId, uri and path.',
+        // The contract's wording is the remote server's, which creates markdown only.
+        { extra: LOCAL_CREATE_DOC_ARGS },
       ),
       context,
       async ({ wiki }, args) => {

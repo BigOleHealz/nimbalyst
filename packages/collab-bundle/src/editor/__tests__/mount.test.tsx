@@ -69,11 +69,11 @@ describe('in-memory collaborative editor harness', () => {
       withHeadlessLexicalBridge(yDocument, { nodes: HeadlessBodyNodes }, ({ editor }) => {
         editor.update(() => $getRoot().append($createEmbeddedFileNode({
           src: `nimbalyst://doc/preview-${scope}?orgId=org-${scope}`,
-          label: `Preview ${scope}`, attrs: { embedType: '.mockup.html' },
+          label: `Preview ${scope}`, attrs: { embedType: '.mockup.html', width: '640', height: '480' },
         })), { discrete: true });
       });
       const element = document.createElement('div'); document.body.append(element);
-      const render = vi.fn((_key: string, artifact: string) => <div data-testid="live-subject-preview">{scope}: {artifact}</div>);
+      const render = vi.fn((_key: string, artifact: string, _embed?: unknown) => <div data-testid="live-subject-preview">{scope}: {artifact}</div>);
       const handle = mountCollabEditor({ element, source: { kind: 'in-memory', document: yDocument }, user: { memberId: asTeamMemberId(scope), name: scope }, renderDecisionArtifact: render });
       mountedHandles.push(handle);
       return { element, handle, render, scope };
@@ -83,6 +83,8 @@ describe('in-memory collaborative editor harness', () => {
       await waitFor(() => expect(element.querySelector('[data-testid="live-subject-preview"]')?.textContent).toBe(`${scope}: collab://org:org-${scope}:doc:preview-${scope}`));
       expect(element.querySelector('[data-testid="embed-frame-placeholder"]')).toBeNull();
     }
+    // The host sizes the preview from the link title, as the desktop embed does.
+    expect(mounts[0]!.render.mock.calls[0]?.[2]).toEqual({ label: 'Preview one', attrs: { embedType: '.mockup.html', width: '640', height: '480' } });
     await act(async () => mounts[0]!.handle.destroy());
     await act(async () => mounts[1]!.handle.setReadOnly(true));
     await settle();

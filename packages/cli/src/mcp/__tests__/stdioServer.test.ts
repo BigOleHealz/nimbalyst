@@ -122,6 +122,11 @@ describe('nim mcp over stdio', () => {
     const names = responses[1].result.tools.map((t: { name: string }) => t.name);
     expect(names).toEqual(['initLocalWiki', ...LOCAL_TOOLS, 'convertTypeStorage', ...EDITOR_TOOLS, 'openWikiInBrowser', 'teamSignIn', 'moveLocalWikiToTeam', 'openUrl']);
     expect(LOCAL_TOOLS.every((n: string) => (PAGE_TOOL_NAMES as readonly string[]).includes(n))).toBe(true);
+    // createSharedDoc makes editor pages locally, so it must not inherit the remote server's markdown-only wording.
+    const createDoc = responses[1].result.tools.find((t: { name: string }) => t.name === 'createSharedDoc');
+    expect(createDoc.inputSchema.properties.documentType.description).not.toContain("Only 'markdown'");
+    expect(createDoc.inputSchema.properties.documentType.enum).toEqual(expect.arrayContaining(['markdown', 'excalidraw', 'csv', 'calc.md', 'canvas']));
+    expect(createDoc.inputSchema.properties.initialContent.description).not.toMatch(/^Markdown body/);
     expect(stderr).toContain('nim mcp');
   });
 

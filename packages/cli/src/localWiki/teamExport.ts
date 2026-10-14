@@ -45,6 +45,8 @@ export const EDITOR_IDS: Readonly<Record<string, string>> = {
   csv: 'com.nimbalyst.csv-spreadsheet',
   'calc.md': 'com.nimbalyst.calc-sheets',
   canvas: 'com.nimbalyst.canvas',
+  // A host-owned page type with no extension; desktop and the web console edit it.
+  html: 'builtin.html',
 };
 
 /** A file a markdown page links to (an image, an attachment), as written and where it is on disk. */

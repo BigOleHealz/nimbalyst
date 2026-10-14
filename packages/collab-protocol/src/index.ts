@@ -36,3 +36,5 @@ export * from "./sessionRetention.js";
 export * from './jwtScopes.js';
 export * from './syncClientInfo.js';
 export * from './sessionPayload.js';
+export * from './htmlEmbedProtocol.js';
+export * from './htmlEmbedShell.js';

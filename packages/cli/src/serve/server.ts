@@ -9,7 +9,7 @@ import { isAllowedOrigin, isLoopbackHost, newToken, sessionCookie, tokenSource }
 import { handleApi } from './api.js';
 import { ChangeStream } from './events.js';
 import { BASE_HEADERS, HttpError, sendError, sendJson } from './http.js';
-import { serveStatic } from './static.js';
+import { HTML_EMBED_SHELL_PATH, serveHtmlEmbedShell, serveStatic } from './static.js';
 
 export interface WikiServerOptions {
   wiki: LocalWiki;
@@ -79,6 +79,7 @@ export async function startWikiServer(options: WikiServerOptions): Promise<WikiS
       return;
     }
     if (req.method !== 'GET' && req.method !== 'HEAD') return plain(res, 405, 'Method not allowed');
+    if (url.pathname === HTML_EMBED_SHELL_PATH) return serveHtmlEmbedShell(res);
     if (!options.assetsDir) return plain(res, 404, 'No browser assets are installed; the API is under /api/.');
     await serveStatic(res, options.assetsDir, url.pathname);
   };

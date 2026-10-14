@@ -33,6 +33,8 @@ Maintain this when notable capabilities are added, significantly expanded, or re
 - Document history with diff viewer
 - Auto-save
 - Live custom-editor embeds in Markdown through a standalone file link, including mockups, data models, and animations; a Team or Personal page of an extension type embeds the same way when linked with `@` (a Personal page embed is view only and follows edits made in its tab)
+- Interactive HTML embeds and pages -- a standalone link to an `.html` file or HTML page embeds it live and interactive without selecting it first, in the desktop app, the team web console and the local wiki browser view; the page runs sandboxed (no access to the app, its storage or credentials; scripts, styles, fonts and images may load over https, network requests are blocked), its ordinary links open wiki pages, tracker items and files in the app, it follows the app's light/dark theme, and it grows to its content unless the link sets a height; HTML is also a Team, Personal and local wiki page type with a rendered preview and a source view
+- Team wiki pages in the web console render embedded editor pages (drawings, mockups, spreadsheets and the other browser editors) live at the link's width and height
 - Editor-header session history -- open the last AI session that worked on a file, choose another associated session, or start a new one
 - Shared mockup comments anchored to a spot in the design, with live pins and agent read/reply support
 - Decision blocks inside documents -- solo or collaborative voting on a decision, with the attributed outcome sealed into the markdown itself so it survives outside Nimbalyst

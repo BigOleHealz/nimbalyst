@@ -3779,7 +3779,8 @@ var DEFAULT_EDITOR_TYPES = {
   ".mockup.html": "mockup.html",
   ".csv": "csv",
   ".calc.md": "calc.md",
-  ".canvas": "canvas"
+  ".canvas": "canvas",
+  ".html": "html"
 };
 function normalizeEditorTypes(table) {
   const out = /* @__PURE__ */ new Map();
@@ -6278,7 +6279,31 @@ async function openLocalWiki(startDir, location, cache) {
     throw err;
   }
 }
-var HOME_BODY = `This is the project's local wiki. Its pages are markdown files in this folder; Nimbalyst, \`nim\` and agents read and edit them.
+var HOME_BODY = `This is the project's local wiki, a folder of markdown pages that Nimbalyst, \`nim\` and agents read and edit.
+
+> [!TIP] Make this the project's home
+> Ask your agent to set up the wiki. After a few questions about the project, it turns this page into a dashboard and writes the pages behind it.
+
+<div data-columns="1fr 1fr">
+<div data-column>
+
+**The big picture**
+
+- What the project is and who it serves
+- A map of the product, one box per module
+- The initiatives under way, with their status and health
+
+</div>
+<div data-column>
+
+**Where to drill in**
+
+- Open questions and recent decisions
+- Who owns what, and how the team works
+- Goals, bets and competitors
+
+</div>
+</div>
 `;
 async function initLocalWiki(startDir, location) {
   const where = resolveWikiLocation(startDir, location);
@@ -6980,6 +7005,206 @@ function pageToolContract(name) {
   return BY_NAME.get(name) ?? null;
 }
 
+// packages/collab-protocol/src/htmlEmbedProtocol.ts
+var HTML_EMBED_CHANNEL = "nimbalyst-html-embed";
+var HTML_EMBED_PROTOCOL_VERSION = 1;
+
+// packages/collab-protocol/src/htmlEmbedShell.ts
+var HTML_EMBED_SHELL_CSP = [
+  "sandbox allow-scripts allow-popups",
+  "default-src 'none'",
+  "script-src 'unsafe-inline' 'unsafe-eval' https:",
+  "style-src 'unsafe-inline' https:",
+  "img-src data: blob: https:",
+  "font-src data: https:",
+  "media-src data: blob: https:",
+  "connect-src 'none'",
+  "frame-src 'none'",
+  "form-action 'none'",
+  "base-uri 'none'"
+].join("; ");
+var SHELL_SCRIPT = `
+(function () {
+  'use strict';
+  var CHANNEL = ${JSON.stringify(HTML_EMBED_CHANNEL)};
+  var VERSION = ${HTML_EMBED_PROTOCOL_VERSION};
+  var host = window.parent;
+  var rendered = false;
+  var theme = null;
+  var lastHeight = -1;
+  var observer = null;
+  var VAR_NAME = /^--nim-[A-Za-z0-9_-]+$/;
+  var UNSAFE_VALUE = /[<>{};\\\\]/;
+  var DOCTYPE = /^\\uFEFF?\\s*<!doctype[^>]*>/i;
+
+  function post(type, fields) {
+    if (host === window) return;
+    var message = { channel: CHANNEL, v: VERSION, type: type };
+    if (fields) for (var key in fields) message[key] = fields[key];
+    host.postMessage(message, '*');
+  }
+
+  function themeVars(next) {
+    var out = [];
+    var vars = next && next.vars;
+    if (!vars || typeof vars !== 'object') return out;
+    for (var name in vars) {
+      var value = vars[name];
+      if (VAR_NAME.test(name) && typeof value === 'string' && !UNSAFE_VALUE.test(value)) out.push([name, value]);
+    }
+    return out;
+  }
+
+  function scheme(next) {
+    return next && next.colorScheme === 'dark' ? 'dark' : 'light';
+  }
+
+  // Theme as a style block written ahead of the author's markup, so the
+  // author's own scripts see the variables while the document parses.
+  function themeStyle(next) {
+    if (!next) return '';
+    var css = 'color-scheme:' + scheme(next) + ';';
+    var vars = themeVars(next);
+    for (var i = 0; i < vars.length; i++) css += vars[i][0] + ':' + vars[i][1] + ';';
+    return '<style data-nimbalyst-theme>:root{' + css + '}</style>';
+  }
+
+  function applyTheme(next) {
+    if (!next || typeof next !== 'object') return;
+    theme = next;
+    var root = document.documentElement;
+    if (!root) return;
+    root.style.colorScheme = scheme(next);
+    root.setAttribute('data-color-scheme', scheme(next));
+    var vars = themeVars(next);
+    for (var i = 0; i < vars.length; i++) root.style.setProperty(vars[i][0], vars[i][1]);
+  }
+
+  function measure() {
+    var root = document.documentElement;
+    var body = document.body;
+    var height = root ? root.getBoundingClientRect().height : 0;
+    if (body && body.scrollHeight > height) height = body.scrollHeight;
+    return Math.ceil(height);
+  }
+
+  function reportHeight() {
+    var height = measure();
+    if (height === lastHeight) return;
+    lastHeight = height;
+    post('resize', { height: height });
+  }
+
+  // The empty shell has no height worth reporting; the host keeps the last
+  // content height until the new content reports its own.
+  function observeSize() {
+    if (!rendered) return;
+    if (observer) observer.disconnect();
+    observer = null;
+    if (typeof ResizeObserver === 'function' && document.documentElement) {
+      observer = new ResizeObserver(reportHeight);
+      observer.observe(document.documentElement);
+      if (document.body) observer.observe(document.body);
+    }
+    reportHeight();
+  }
+
+  function anchorFor(target) {
+    var node = target;
+    while (node && node.nodeType !== 1) node = node.parentNode;
+    return node && node.closest ? node.closest('a') : null;
+  }
+
+  function anchorHref(anchor) {
+    var href = anchor.getAttribute('href');
+    if (href == null) href = anchor.getAttributeNS('http://www.w3.org/1999/xlink', 'href');
+    return href == null ? null : String(href).trim();
+  }
+
+  function onClick(event) {
+    if (event.defaultPrevented) return;
+    if (event.type === 'click' && event.button !== 0) return;
+    if (event.type === 'auxclick' && event.button !== 1) return;
+    var anchor = anchorFor(event.target);
+    if (!anchor) return;
+    var href = anchorHref(anchor);
+    if (!href || href.charAt(0) === '#') return;
+    event.preventDefault();
+    var target = (anchor.getAttribute('target') || '').toLowerCase();
+    var newTab = event.type === 'auxclick' || event.metaKey || event.ctrlKey || target === '_blank';
+    post('navigate', { href: href, newTab: !!newTab });
+  }
+
+  function onMessage(event) {
+    if (event.source !== host) return;
+    var data = event.data;
+    if (!data || typeof data !== 'object' || data.channel !== CHANNEL || data.v !== VERSION) return;
+    if (data.type === 'render' && typeof data.html === 'string') {
+      if (data.theme) theme = data.theme;
+      render(data.html);
+    } else if (data.type === 'theme') {
+      applyTheme(data.theme);
+    }
+  }
+
+  function installBridge() {
+    window.addEventListener('message', onMessage);
+    window.addEventListener('click', onClick);
+    window.addEventListener('auxclick', onClick);
+    window.addEventListener('load', observeSize);
+    window.addEventListener('DOMContentLoaded', observeSize);
+  }
+
+  function render(html) {
+    if (rendered) return;
+    rendered = true;
+    if (observer) observer.disconnect();
+    var match = DOCTYPE.exec(html);
+    var doctype = match ? match[0] : '<!doctype html>';
+    var rest = match ? html.slice(match[0].length) : html;
+    document.open();
+    document.write(doctype + themeStyle(theme));
+    document.write(rest);
+    document.close();
+    installBridge();
+    applyTheme(theme);
+    observeSize();
+  }
+
+  try {
+    Object.defineProperty(window, 'nimbalyst', {
+      value: Object.freeze({
+        navigate: function (href, options) {
+          if (typeof href !== 'string') return;
+          post('navigate', { href: href, newTab: !!(options && options.newTab) });
+        }
+      }),
+      writable: false,
+      configurable: false
+    });
+  } catch (error) {}
+
+  installBridge();
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { if (!rendered) post('ready'); });
+  } else {
+    post('ready');
+  }
+})();
+`;
+var HTML_EMBED_SHELL_HTML = `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HTML embed</title>
+</head>
+<body>
+<script>${SHELL_SCRIPT}</script>
+</body>
+</html>
+`;
+
 // packages/cli/src/mcp/localTools.ts
 var INIT_TOOL_NAME = "initLocalWiki";
 var LOCAL_SECTION = {
@@ -7085,6 +7310,18 @@ function applyReplacements(markdown, replacements) {
 
 // packages/cli/src/mcp/pageTools.ts
 var PAGE_REFS = ["filePath", "itemId", "pageId", "parentFolderId", "newParentFolderId", "before", "after", "root"];
+var LOCAL_DOCUMENT_TYPES = ["markdown", ...Object.values(DEFAULT_EDITOR_TYPES)];
+var LOCAL_CREATE_DOC_ARGS = {
+  documentType: {
+    type: "string",
+    enum: LOCAL_DOCUMENT_TYPES,
+    description: `The page's editor: ${LOCAL_DOCUMENT_TYPES.map((type2) => `'${type2}'`).join(", ")}. Defaults to 'markdown'.`
+  },
+  initialContent: {
+    type: "string",
+    description: "The page's whole file text in its editor's format: markdown for a markdown page, the .excalidraw JSON for a drawing, the Prisma schema for a data model, and so on. Empty gives that editor's empty file."
+  }
+};
 var stripNodePrefix = (ref) => ref.replace(/^(document|item|page):/, "");
 async function resolveParent(wiki, args, idKey) {
   const folderPath = str3(args, "folderPath");
@@ -7204,7 +7441,9 @@ function pageTools(context) {
     localTool(
       contractDefinition(
         "createSharedDoc",
-        "Create a local wiki page, at the top of the wiki, under a page (parentFolderId), under a path of titles (folderPath, missing pages are created), or beside a sibling (before/after). A markdown page by default; documentType (excalidraw, mindmap, datamodel, mockup.html, csv...) makes an editor file, whose initialContent is the whole file. Returns documentId, uri and path."
+        "Create a local wiki page, at the top of the wiki, under a page (parentFolderId), under a path of titles (folderPath, missing pages are created), or beside a sibling (before/after). A markdown page by default; documentType (excalidraw, mindmap, datamodel, mockup.html, csv...) makes an editor file, whose initialContent is the whole file. Returns documentId, uri and path.",
+        // The contract's wording is the remote server's, which creates markdown only.
+        { extra: LOCAL_CREATE_DOC_ARGS }
       ),
       context,
       async ({ wiki }, args) => {
@@ -7768,6 +8007,15 @@ function tooLarge(maxBytes) {
 import { createReadStream } from "node:fs";
 import { stat as stat4 } from "node:fs/promises";
 import * as path12 from "node:path";
+var HTML_EMBED_SHELL_PATH = "/html-embed/shell";
+function serveHtmlEmbedShell(res) {
+  res.writeHead(200, {
+    ...BASE_HEADERS,
+    "Content-Type": "text/html; charset=utf-8",
+    "Content-Security-Policy": HTML_EMBED_SHELL_CSP
+  });
+  res.end(HTML_EMBED_SHELL_HTML);
+}
 var CONTENT_TYPES = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -8232,6 +8480,7 @@ async function startWikiServer(options) {
       return;
     }
     if (req.method !== "GET" && req.method !== "HEAD") return plain(res, 405, "Method not allowed");
+    if (url.pathname === HTML_EMBED_SHELL_PATH) return serveHtmlEmbedShell(res);
     if (!options.assetsDir) return plain(res, 404, "No browser assets are installed; the API is under /api/.");
     await serveStatic(res, options.assetsDir, url.pathname);
   };
@@ -9305,7 +9554,9 @@ var EDITOR_IDS = {
   "mockup.html": "com.nimbalyst.mockuplm",
   csv: "com.nimbalyst.csv-spreadsheet",
   "calc.md": "com.nimbalyst.calc-sheets",
-  canvas: "com.nimbalyst.canvas"
+  canvas: "com.nimbalyst.canvas",
+  // A host-owned page type with no extension; desktop and the web console edit it.
+  html: "builtin.html"
 };
 function relationIds(value) {
   const one = (v) => typeof v === "string" && v ? v : v && typeof v === "object" && typeof v.itemId === "string" ? v.itemId : void 0;

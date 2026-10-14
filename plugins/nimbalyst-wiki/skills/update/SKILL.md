@@ -34,7 +34,7 @@ Before creating a page, search for an existing one with `searchPages` (`query`, 
 
 The project decides its types and relations. Suggest common ones (module, technology, competitor, person) when they fit; never assume a fixed list.
 
-Do not build any of these, even if older content or habits suggest them: claim, fact, finding or investigation items; qualifiers on links; generic relations such as "related to" or "depends on"; a decision record in place of the marked sentence, or decisions as subject-verb-object triples; lists or relationship chips in a page header; automatic rollup tables of every relation; approval steps for your own edits; large decision boxes.
+Do not build any of these, even if older content or habits suggest them: claim, fact, finding or investigation items; qualifiers on links; generic relations such as "related to" or "depends on"; a decision record in place of the marked sentence, or decisions as subject-verb-object triples; lists or relationship chips in a page header; automatic rollup tables of every relation; approval steps for your own edits; a box, callout or section that restates a decision already made. (A ` ```decision ` block that puts an open question to named people is fine; see `references/components.md`.)
 
 ## What to write
 
@@ -82,15 +82,38 @@ Links in page content are https console links; the app opens them in place and t
 - Write the relation in a sentence that says why ("Built on Durable Objects and KV"), because the Links section shows that sentence when expanded.
 - Only link keys and pages you created or looked up.
 
-## Diagrams and files
+## Choosing a visual
 
-Teammates read a Team page on their own machines, so whatever the page shows has to be a page too. A link to a file path (`docs/architecture.excalidraw`, `/Users/...`) opens nothing for them.
+A page can show more than text: components inside the markdown (`references/components.md`) and editor pages embedded in it (`references/editor-pages.md`).
 
-- Draw a diagram as a fenced `mermaid` code block in the page; it renders as a diagram. Other file types cannot be created from here: tell the person to copy the file in with Copy to Wiki... in Nimbalyst.
+**The team picks which one.** The guide's "Our visual defaults" table says what this team uses for each need; follow it. When the project has no guide, or its guide has no such table, use these defaults:
+
+- **A map of the product** or the architecture: an `html` page with a box per module, each a link to its page.
+- **A flow or a sequence:** a `mermaid` block.
+- **A freeform diagram** whose layout carries meaning: a drawing page (`excalidraw`).
+- **The status of a set** of modules, initiatives or competitors: a placed view of their type, as a table or board.
+- **Positioning, or impact against effort:** a ` ```2x2 ` block, or a view with `mode=2x2` when the points are pages with number fields.
+- **A trend** in a few numbers: a ` ```chart ` block, with the numbers' source cited.
+- **A question for the team** to settle: a ` ```decision ` block that names who is asked.
+- **A roadmap:** a view of the initiatives with `mode=timeline` from their start to their target date.
+- **A data table or a model of numbers:** a spreadsheet (`csv`) for rows of data, a calc sheet (`calc.md`) for named numbers.
+
+Then read the component's entry in the references before writing it; each lists exact syntax and where it renders.
+
+- **The host cannot make or show it.** When the guide's choice does not work here (the references' availability table, or a page type this host cannot create), tell the person and use the closest option that does: a `mermaid` block or a table in place of a new drawing, a list of links in place of a view.
+- **The references do not cover it.** A row may name a component or page type an extension added. Look for that editor's own skill or tools and follow its file format; if you cannot find them, ask the person instead of guessing a format.
+
+Use one only where it helps a reader; most pages are text. Never use a component or page type in a place the references say it does not render. Every point and box shows a real item with values a person or a source gave; where data is missing, say so in the page instead of drawing a placeholder.
+
+A product map, a `chart` or `2x2` block, and any list of other pages' fields are snapshots. When you add, rename or change a page one of them shows (a module, an initiative's status or health), update the snapshot in the same pass. Placed views update themselves.
+
+Teammates read a page on their own machines, so whatever it shows has to be a page too. A link to a file path (`docs/architecture.excalidraw`, `/Users/...`) opens nothing for them.
+
+- From a terminal you can write every component that `references/components.md` marks as working on the team web, and embed editor pages that already exist. New editor pages cannot be created from here: use a `mermaid` block or a table, and tell the person they can make the drawing, spreadsheet or HTML page in Nimbalyst.
 
 ## Placed views
 
-A view is a table of one type, placed in a page on purpose. It is a link on its own line, with the type's `viewLink` from `listPages` as the target and the definition in the title: `[Modules](https://console.nimbalyst.com/org/<orgId>/project/<projectId>/view/type/module "cols=title,status,owner sort=title")`, with optional `filter=`. A view can also be a 2x2 of a type by two number fields (`mode=2x2 x=<field> y=<field>`). A list of open marks across pages uses the `openMarksViewLink` from `listPages` (`.../view/marks?kind=open`; `kind=decided` for decisions). Editing a cell edits the page the row points at. Place a view only where a person reading the page needs the whole set; never as an automatic rollup of every relation. If a view link does not render as a table in this version, leave it as a link and tell the person.
+A view is a table of one type, placed in a page on purpose. It is a link on its own line, with the type's `viewLink` from `listPages` as the target and the definition in the title: `[Modules](https://console.nimbalyst.com/org/<orgId>/project/<projectId>/view/type/module "cols=title,status,owner sort=title")`, with optional `filter=`. A view can also be a board, a timeline, a 2x2 of a type by two number fields (`mode=2x2 x=<field> y=<field>`) or a chart (`mode=chart by=<field>`); every setting is in `references/components.md`. A list of open marks across pages uses the `openMarksViewLink` from `listPages` (`.../view/marks?kind=open`; `kind=decided` for decisions). Editing a cell edits the page the row points at. Place a view only where a person reading the page needs the whole set; never as an automatic rollup of every relation. If a view link does not render as a table in this version, leave it as a link and tell the person.
 
 ## Tools
 
@@ -127,7 +150,7 @@ When the `connect` skill chose the local wiki, use only the `nimbalyst-local` se
 - **Who decided.** The person at this terminal is `git config user.name` and `git config user.email`. Cite their words from `list_session_inputs` as on the team wiki. Local pages have no comments, so there is nothing to cite from `list_citable_inputs`.
 - **Links are relative paths carrying the target's id**, never console links: `[Acme](../Competitors/Acme.md "id=<id>")`, with the path relative to the linking page's file and the id from `listPages`. The server rewrites them when a page moves or is renamed. Relations (`rel=`) and placed views are team-wiki features; on a local wiki write a plain link and say why in the sentence.
 - **Typed pages** have ids, not issue keys. Create one with `tracker_create` (`parentId` places it under a page); `tracker_update` with `description` replaces the whole body, so read it with `tracker_get` first. Only types whose definition declares `storage:` keep their items in the wiki; for any other type, say its items live in the Nimbalyst app.
-- **Diagrams.** A small flow or sequence that reads top to bottom is a fenced `mermaid` block in the page. Make a drawing page when the layout itself carries meaning (an architecture sketch, a 2x2, a screen flow someone will rearrange), and a mind map page for a branching outline people will expand. Create it with `createSharedDoc` (`documentType: 'excalidraw'` or `'mindmap'`), place it under the page it explains, and link it from that page. Build a drawing with `excalidraw_add_elements` and `excalidraw_add_arrows` (shapes are found by label; read them with `excalidraw_get_elements`), and a mind map with `mindmap_get_document` and `mindmap_apply_operations` (node ids are outline positions such as `1.2`, valid for the version you read). Spreadsheets (`csv`), data models (`datamodel`, a Prisma schema), mockups (`mockup.html`), calc sheets (`calc.md`) and canvases (`canvas`) are written as their file text.
+- **Visuals.** "Choosing a visual" applies here too, except placed views: where the guide names a view, write a list of links with the fields a reader needs, and a `mermaid` gantt for a timeline. Create an editor page with `createSharedDoc` (the `documentType` values it lists are the ones this wiki holds), place it under the page it explains, and embed it there with a relative link alone in its paragraph; `references/editor-pages.md` has each file format. Build a drawing with `excalidraw_add_elements` and `excalidraw_add_arrows` (shapes are found by label; read them with `excalidraw_get_elements`), and a mind map with `mindmap_get_document` and `mindmap_apply_operations` (node ids are outline positions such as `1.2`, valid for the version you read). Every other type is written as its file text.
 - **Deletes** go to the wiki's `.trash/` folder and can be restored. Ask before deleting a page someone else wrote.
 - Pages are ordinary files: a person may edit them in any editor or commit them. Read before every edit; a write with a stale `expectedVersion` is refused, so re-read and apply your change again.
-- **To read it in a browser**, call `openWikiInBrowser` and give the person the URL it returns. It serves the wiki on this machine for the rest of the session, with the same pages, types and tables, opens drawings, mind maps, spreadsheets, calc sheets, data models, mockups and canvases in their editors, and saves edits to the files.
+- **To read it in a browser**, call `openWikiInBrowser` and give the person the URL it returns. It serves the wiki on this machine for the rest of the session, with the same pages, types and tables, opens drawings, mind maps, spreadsheets, calc sheets, data models, mockups, canvases and HTML pages, and saves edits to the files.

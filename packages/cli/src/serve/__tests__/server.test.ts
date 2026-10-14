@@ -9,6 +9,7 @@ import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { initWiki, openWiki, type LocalWiki } from '@nimbalyst/local-wiki';
+import { HTML_EMBED_SHELL_CSP, HTML_EMBED_SHELL_HTML } from '@nimbalyst/collab-protocol';
 import { startWikiServer, type WikiServer } from '../server.js';
 import { defaultSessionStore, startRememberedWikiServer } from '../session.js';
 import { createServer } from 'node:net';
@@ -79,6 +80,19 @@ describe('nim wiki serve', () => {
     // A page on another site cannot ride the cookie, and a rebinding Host is refused.
     expect((await fetch(`${server.origin}/api/snapshot`, { headers: { cookie, origin: 'https://evil.example' } })).status).toBe(403);
     expect(await rawStatus(server.port, { cookie, host: `evil.example:${server.port}` })).toBe(421);
+  });
+
+  // Release-blocking: HTML a page embeds runs in this shell, never as the app's origin.
+  it('serves the HTML embed shell with its sandbox CSP, and the sandboxed frame cannot call the API', async () => {
+    const { server } = await serve();
+    const cookie = `nim_wiki_${server.port}=${server.token}`;
+    const shell = await fetch(`${server.origin}/html-embed/shell`, { headers: { cookie } });
+    expect(shell.status).toBe(200);
+    expect(shell.headers.get('content-security-policy')).toBe(HTML_EMBED_SHELL_CSP);
+    expect(shell.headers.get('content-security-policy')).toMatch(/^sandbox allow-scripts allow-popups;/);
+    expect(await shell.text()).toBe(HTML_EMBED_SHELL_HTML);
+    // A sandboxed frame's requests carry `Origin: null`.
+    expect((await fetch(`${server.origin}/api/snapshot`, { headers: { cookie, origin: 'null' } })).status).toBe(403);
   });
 
   it('creates, reads and writes a page through REST, and rejects a stale write with 409', async () => {

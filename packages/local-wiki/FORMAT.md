@@ -90,7 +90,7 @@ Readers report (but do not fix) names that differ only by case in one folder, wh
 
 ## Editor pages
 
-A page can also be a file of an editor type: a drawing (`.excalidraw`), mind map (`.mindmap`), data model (`.prisma`), mockup (`.mockup.html`), spreadsheet (`.csv`), calc sheet (`.calc.md`), canvas (`.canvas`), or any other type an installed extension can share. The file keeps its own extension and its content is exactly what that editor reads and writes; the format never adds anything to it.
+A page can also be a file of an editor type: a drawing (`.excalidraw`), mind map (`.mindmap`), data model (`.prisma`), mockup (`.mockup.html`), spreadsheet (`.csv`), calc sheet (`.calc.md`), canvas (`.canvas`), interactive HTML page (`.html`), or any other type an installed extension can share. The file keeps its own extension and its content is exactly what that editor reads and writes; the format never adds anything to it.
 
 ```
 Flow.excalidraw

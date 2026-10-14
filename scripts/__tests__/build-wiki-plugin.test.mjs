@@ -131,6 +131,18 @@ test('the skill references the web console reads stay where it reads them', () =
   for (const rel of ['setup/references/wiki-guide.md', 'update/references/relations.yaml']) assert.ok(existsSync(path.join(source, rel)), rel);
 });
 
+test('the setup skill compares a team\'s guide against the version the base guide carries', () => {
+  // Setup reports "edited by the team" or "base changed" from this number, so a
+  // guide bumped without the skill (or the reverse) misreports every wiki.
+  const source = fileURLToPath(new URL('../../packages/extensions/knowledge/skills-source/setup', import.meta.url));
+  const guide = readFileSync(path.join(source, 'references', 'wiki-guide.md'), 'utf8');
+  const skill = readFileSync(path.join(source, 'SKILL.md'), 'utf8');
+  const guideVersion = guide.trim().match(/base guide, version (\d+)\.$/)?.[1];
+  assert.ok(guideVersion, 'the guide ends with its version line');
+  assert.ok(skill.includes(`**Base version:** ${guideVersion}.`), `setup/SKILL.md names base version ${guideVersion}`);
+  for (const mentioned of skill.matchAll(/(?:base version|version line) (\d+)/g)) assert.equal(mentioned[1], guideVersion, mentioned[0]);
+});
+
 test('committed desktop skills, plugin skills and session helper match the source', async () => {
   assert.deepEqual(await checkGenerated(), []);
 });
