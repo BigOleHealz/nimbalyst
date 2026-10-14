@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
-import simpleGit from 'simple-git';
+import { createGit } from '../gitClient';
 import { execFileSync } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -26,7 +26,7 @@ describe('gitSandboxEnv', () => {
     try {
       const sandboxEnv = gitSandboxEnv(undefined, { pinConfigPaths: false });
       expect(sandboxEnv.SSH_ASKPASS).toBeUndefined();
-      await expect(simpleGit(os.tmpdir()).env(sandboxEnv).raw(['--version'])).resolves.toMatch(/^git version /);
+      await expect(createGit(os.tmpdir(), {}, sandboxEnv).raw(['--version'])).resolves.toMatch(/^git version /);
     } finally {
       if (previousAskPass === undefined) delete process.env.SSH_ASKPASS;
       else process.env.SSH_ASKPASS = previousAskPass;
@@ -60,7 +60,7 @@ describe('GitWorktreeService.validateWorkspaceHasCommits', () => {
   it('throws WorkspaceHasNoCommitsError for a `git init`-ed repo with no commits', async () => {
     // Never let a pre-push hook's GIT_DIR redirect this mutating init into the
     // developer's shared repository.
-    const git = simpleGit(tmpDir).env(gitSandboxEnv(undefined, { pinConfigPaths: false }));
+    const git = createGit(tmpDir, {}, gitSandboxEnv(undefined, { pinConfigPaths: false }));
     await git.init();
 
     await expect(service.validateWorkspaceHasCommits(tmpDir))
@@ -71,7 +71,7 @@ describe('GitWorktreeService.validateWorkspaceHasCommits', () => {
   it('resolves cleanly when the repo has at least one commit', async () => {
     // .env() strips GIT_* — without it a hook-inherited GIT_DIR redirects this
     // commit onto the developer's live branch. See testSupport/gitTestSandbox.ts.
-    const git = simpleGit(tmpDir).env(gitSandboxEnv(undefined, { pinConfigPaths: false }));
+    const git = createGit(tmpDir, {}, gitSandboxEnv(undefined, { pinConfigPaths: false }));
     await git.init();
     await git.addConfig('user.email', 'test@example.com', false, 'local');
     await git.addConfig('user.name', 'Test', false, 'local');
@@ -117,7 +117,7 @@ describe('GitWorktreeService.getChangedFiles untracked-directory expansion', () 
 
   beforeEach(async () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nimbalyst-gws-changed-'));
-    const git = simpleGit(tmpDir).env(gitSandboxEnv(undefined, { pinConfigPaths: false }));
+    const git = createGit(tmpDir, {}, gitSandboxEnv(undefined, { pinConfigPaths: false }));
     await git.init();
     await git.addConfig('user.email', 'test@example.com', false, 'local');
     await git.addConfig('user.name', 'Test', false, 'local');
@@ -144,7 +144,7 @@ describe('GitWorktreeService.getChangedFiles untracked-directory expansion', () 
     // whose contents belong to IT rather than to the outer worktree.
     const embedded = path.join(tmpDir, 'embedded-repo');
     fs.mkdirSync(embedded);
-    const embeddedGit = simpleGit(embedded).env(gitSandboxEnv(undefined, { pinConfigPaths: false }));
+    const embeddedGit = createGit(embedded, {}, gitSandboxEnv(undefined, { pinConfigPaths: false }));
     await embeddedGit.init();
     await embeddedGit.addConfig('user.email', 'test@example.com', false, 'local');
     await embeddedGit.addConfig('user.name', 'Test', false, 'local');
@@ -265,7 +265,7 @@ describe('GitWorktreeService under an inherited repository-selection env', () =>
   let decoy: string;
   let previousEnv: Map<string, string | undefined>;
 
-  const fixtureGit = (dir: string) => simpleGit(dir).env(gitSandboxEnv(undefined, { pinConfigPaths: false }));
+  const fixtureGit = (dir: string) => createGit(dir, {}, gitSandboxEnv(undefined, { pinConfigPaths: false }));
   const snapshot = async (dir: string) => ({
     branches: await fixtureGit(dir).raw(['branch', '--list']),
     worktrees: await fixtureGit(dir).raw(['worktree', 'list', '--porcelain']),

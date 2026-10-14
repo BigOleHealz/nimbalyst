@@ -16,7 +16,7 @@ vi.mock('electron', () => ({
 }));
 vi.mock('electron-log/main', () => ({ default: { scope: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } }));
 vi.mock('../../services/GitWorktreeService', () => ({ GitWorktreeService: class { createWorktree = mocks.createWorktree; getWorktreeStatus = mocks.getWorktreeStatus; } }));
-vi.mock('simple-git', () => ({ default: () => ({ fetch: mocks.fetch }) }));
+vi.mock('simple-git', () => ({ simpleGit: () => ({ fetch: mocks.fetch }) }));
 vi.mock('../../services/WorktreeStore', () => ({ createWorktreeStore: () => mocks.store }));
 vi.mock('../../services/SuperLoopStore', () => ({ createSuperLoopStore: vi.fn() }));
 vi.mock('../../database/initialize', () => ({ getDatabase: () => ({}) }));

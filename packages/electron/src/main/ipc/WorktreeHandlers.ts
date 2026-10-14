@@ -7,7 +7,7 @@
 
 import { ipcMain, BrowserWindow } from 'electron';
 import log from 'electron-log/main';
-import simpleGit from 'simple-git';
+import { createGit } from '../services/gitClient';
 import { FeatureUsageService, FEATURES } from '../services/FeatureUsageService';
 import { GitWorktreeService } from '../services/GitWorktreeService';
 import { WorktreeStore, createWorktreeStore } from '../services/WorktreeStore';
@@ -547,7 +547,7 @@ export function registerWorktreeHandlers(): void {
         // Fetch latest remote refs for accurate merge detection
         if (options?.fetchFirst && baseBranch) {
           try {
-            const git = simpleGit(worktreePath, { timeout: { block: STATUS_FETCH_TIMEOUT_MS } });
+            const git = createGit(worktreePath, { timeout: { block: STATUS_FETCH_TIMEOUT_MS } });
             await withTimeout(
               git.fetch(['origin', baseBranch]),
               STATUS_FETCH_TIMEOUT_MS,
@@ -1406,8 +1406,7 @@ export function registerWorktreeHandlers(): void {
       return await gitOperationLock.withLock(worktreePath, 'worktree:stage-file', async () => {
         logger.info('Staging/unstaging file', { worktreePath, filePath, stage });
 
-        const simpleGit = (await import('simple-git')).default;
-        const git = simpleGit(worktreePath);
+        const git = createGit(worktreePath);
 
         if (stage) {
           await git.add(filePath);
@@ -1444,8 +1443,7 @@ export function registerWorktreeHandlers(): void {
       return await gitOperationLock.withLock(worktreePath, 'worktree:stage-all', async () => {
         logger.info('Staging/unstaging all files', { worktreePath, stage });
 
-        const simpleGit = (await import('simple-git')).default;
-        const git = simpleGit(worktreePath);
+        const git = createGit(worktreePath);
 
         if (stage) {
           await git.add('-A');
