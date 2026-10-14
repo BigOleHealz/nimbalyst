@@ -11,6 +11,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runMcp } from '../commands/mcp.js';
 import { resolvePluginWorkspace } from './pluginWorkspace.js';
+import { detectPluginInstall, startUpdateCheck } from './updateCheck.js';
 
 declare const __NIM_VERSION__: string;
 
@@ -20,7 +21,10 @@ const workspace = resolvePluginWorkspace(process.env, process.cwd(), pluginRoot)
 // The published plugin ships the browser app in web/; a monorepo checkout finds packages/wiki-web instead.
 const webDir = path.join(pluginRoot, 'web');
 const flags: Record<string, string> = existsSync(path.join(webDir, 'index.html')) ? { workspace, assets: webDir } : { workspace };
-runMcp(__NIM_VERSION__, { noun: 'mcp', positionals: [], flags }).catch((err) => {
+// Only an install from one of our marketplaces has anything to update.
+const install = detectPluginInstall(process.env, process.cwd(), pluginRoot);
+const updateCheck = install ? startUpdateCheck({ install }) : null;
+runMcp(__NIM_VERSION__, { noun: 'mcp', positionals: [], flags }, updateCheck?.takeNotice).catch((err) => {
   process.stderr.write(`nimbalyst-local: ${(err as Error).stack ?? err}\n`);
   process.exit(1);
 });

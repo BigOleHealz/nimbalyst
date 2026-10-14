@@ -3,7 +3,7 @@
 
 // packages/cli/src/mcp/pluginEntry.ts
 import { existsSync as existsSync6 } from "node:fs";
-import path21 from "node:path";
+import path22 from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // packages/cli/src/cli/exitCodes.ts
@@ -83,7 +83,7 @@ var rpcError = (id, code, message) => ({
   id,
   error: { code, message }
 });
-async function handleMessage(message, tools, serverInfo) {
+async function handleMessage(message, tools, serverInfo, takeNotice) {
   if (!message || typeof message !== "object" || Array.isArray(message)) {
     return rpcError(null, -32600, "Invalid request");
   }
@@ -109,7 +109,9 @@ async function handleMessage(message, tools, serverInfo) {
       if (!tool) return rpcError(id, -32602, `Unknown tool: ${String(name)}`);
       const args = request.params?.arguments;
       try {
-        return reply(await tool.call(args && typeof args === "object" ? args : {}));
+        const result = await tool.call(args && typeof args === "object" ? args : {});
+        const notice = result.isError ? null : takeNotice?.();
+        return reply(notice ? { ...result, content: [...result.content, { type: "text", text: notice }] } : result);
       } catch (err) {
         if (!(err instanceof TeamScopeRefusal)) {
           process.stderr.write(`nim mcp: ${String(name)} failed: ${err instanceof Error ? err.stack ?? err.message : String(err)}
@@ -140,7 +142,7 @@ function runStdioServer(options) {
           send(rpcError(null, -32700, "Parse error"));
           return;
         }
-        const response = await handleMessage(message, options.tools, options.serverInfo);
+        const response = await handleMessage(message, options.tools, options.serverInfo, options.takeNotice);
         if (response) send(response);
       });
     });
@@ -9642,7 +9644,7 @@ function teamTools(context, options = {}) {
 }
 
 // packages/cli/src/commands/mcp.ts
-async function runMcp(version, args) {
+async function runMcp(version, args, takeNotice) {
   const toStderr = (...parts) => console.error(...parts);
   console.log = toStderr;
   console.info = toStderr;
@@ -9656,7 +9658,7 @@ async function runMcp(version, args) {
   const editors = editorTools(context, editorModelsFromWikiWeb({ assetsDir, version }));
   process.stderr.write(`nim mcp ${version}: serving on stdio
 `);
-  await runStdioServer({ tools: createLocalToolMap(context, [...editors, serve, ...teamTools(context)]), serverInfo: { name: "nimbalyst-local", version } });
+  await runStdioServer({ tools: createLocalToolMap(context, [...editors, serve, ...teamTools(context)]), serverInfo: { name: "nimbalyst-local", version }, takeNotice });
   await serve.close();
   return 0;
 }
@@ -9669,12 +9671,117 @@ function resolvePluginWorkspace(env, cwd, pluginRoot2) {
   return cwd;
 }
 
+// packages/cli/src/mcp/updateCheck.ts
+import { mkdirSync as mkdirSync5, readFileSync as readFileSync7, writeFileSync as writeFileSync5 } from "node:fs";
+import os3 from "node:os";
+import path21 from "node:path";
+var UPDATE_CHECK_OPT_OUT = "NIMBALYST_WIKI_NO_UPDATE_CHECK";
+var CHECK_INTERVAL_MS = 24 * 60 * 60 * 1e3;
+var FETCH_TIMEOUT_MS = 5e3;
+var PLUGIN_NAME = "nimbalyst-wiki";
+var MANIFEST_URLS = {
+  nimbalyst: {
+    claude: "https://raw.githubusercontent.com/nimbalyst/nimbalyst/main/plugins/nimbalyst-wiki/.claude-plugin/plugin.json",
+    codex: "https://raw.githubusercontent.com/nimbalyst/nimbalyst/main/plugins/nimbalyst-wiki/.codex-plugin/plugin.json"
+  },
+  "nimbalyst-wiki": {
+    claude: "https://raw.githubusercontent.com/nimbalyst/nimbalyst-wiki/main/.claude-plugin/plugin.json",
+    codex: "https://raw.githubusercontent.com/nimbalyst/nimbalyst-wiki/main/.codex-plugin/plugin.json"
+  }
+};
+function detectPluginInstall(env, cwd, pluginRoot2) {
+  const parts = path21.resolve(pluginRoot2).split(path21.sep);
+  const n = parts.length;
+  if (n < 5 || parts[n - 5] !== "plugins" || parts[n - 4] !== "cache" || parts[n - 2] !== PLUGIN_NAME) return null;
+  const marketplace = parts[n - 3];
+  const urls = MANIFEST_URLS[marketplace];
+  if (!urls) return null;
+  const agent = !env.CLAUDE_PROJECT_DIR && path21.resolve(cwd) === path21.resolve(pluginRoot2) ? "codex" : "claude";
+  const manifest = path21.join(pluginRoot2, agent === "codex" ? ".codex-plugin" : ".claude-plugin", "plugin.json");
+  let version;
+  try {
+    version = JSON.parse(readFileSync7(manifest, "utf8")).version;
+  } catch {
+    return null;
+  }
+  if (typeof version !== "string" || !parseVersion(version)) return null;
+  return { agent, marketplace, version, manifestUrl: urls[agent] };
+}
+function parseVersion(version) {
+  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version.trim());
+  return match ? match.slice(1).map(Number) : null;
+}
+function isNewerVersion(latest, installed) {
+  const a = parseVersion(latest);
+  const b = parseVersion(installed);
+  if (!a || !b) return false;
+  for (let i = 0; i < 3; i++) {
+    if (a[i] !== b[i]) return a[i] > b[i];
+  }
+  return false;
+}
+function updateNotice(install2, latest) {
+  const steps = install2.agent === "codex" ? `run \`codex plugin marketplace upgrade ${install2.marketplace}\`` : `run \`claude plugin marketplace update ${install2.marketplace}\` and then \`claude plugin update ${PLUGIN_NAME}@${install2.marketplace}\``;
+  return `Nimbalyst Wiki ${latest} is available (installed: ${install2.version}). To update, ${steps}, then start a new session. Tell the user this once, briefly, and do not repeat it. Set ${UPDATE_CHECK_OPT_OUT}=1 to stop these notices.`;
+}
+var defaultUpdateCacheFile = () => path21.join(os3.homedir(), ".nimbalyst-wiki", "update-check.json");
+function readCache(file) {
+  try {
+    const parsed = JSON.parse(readFileSync7(file, "utf8"));
+    if (typeof parsed?.checkedAt === "number" && typeof parsed?.latestVersion === "string") return parsed;
+  } catch {
+  }
+  return null;
+}
+function startUpdateCheck(options) {
+  const env = options.env ?? process.env;
+  if (env[UPDATE_CHECK_OPT_OUT] && env[UPDATE_CHECK_OPT_OUT] !== "0") {
+    return { takeNotice: () => null, settled: Promise.resolve() };
+  }
+  const { install: install2 } = options;
+  const cacheFile = options.cacheFile ?? defaultUpdateCacheFile();
+  const now = options.now ?? Date.now;
+  const log = options.log ?? ((line) => process.stderr.write(`${line}
+`));
+  const cached = readCache(cacheFile);
+  let latest = cached?.latestVersion ?? null;
+  let delivered = false;
+  let settled = Promise.resolve();
+  if (!cached || now() - cached.checkedAt >= CHECK_INTERVAL_MS) {
+    const fetchImpl = options.fetchImpl ?? fetch;
+    settled = (async () => {
+      try {
+        const response = await fetchImpl(install2.manifestUrl, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const version = (await response.json())?.version;
+        if (typeof version !== "string" || !parseVersion(version)) throw new Error("manifest has no version");
+        latest = version;
+        mkdirSync5(path21.dirname(cacheFile), { recursive: true });
+        writeFileSync5(cacheFile, `${JSON.stringify({ checkedAt: now(), latestVersion: version })}
+`);
+      } catch (err) {
+        log(`nimbalyst-local: update check against ${install2.manifestUrl} failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    })();
+  }
+  return {
+    takeNotice() {
+      if (delivered || !latest || !isNewerVersion(latest, install2.version)) return null;
+      delivered = true;
+      return updateNotice(install2, latest);
+    },
+    settled
+  };
+}
+
 // packages/cli/src/mcp/pluginEntry.ts
-var pluginRoot = path21.dirname(path21.dirname(fileURLToPath2(import.meta.url)));
+var pluginRoot = path22.dirname(path22.dirname(fileURLToPath2(import.meta.url)));
 var workspace = resolvePluginWorkspace(process.env, process.cwd(), pluginRoot);
-var webDir = path21.join(pluginRoot, "web");
-var flags = existsSync6(path21.join(webDir, "index.html")) ? { workspace, assets: webDir } : { workspace };
-runMcp("0.3.0", { noun: "mcp", positionals: [], flags }).catch((err) => {
+var webDir = path22.join(pluginRoot, "web");
+var flags = existsSync6(path22.join(webDir, "index.html")) ? { workspace, assets: webDir } : { workspace };
+var install = detectPluginInstall(process.env, process.cwd(), pluginRoot);
+var updateCheck = install ? startUpdateCheck({ install }) : null;
+runMcp("0.3.0", { noun: "mcp", positionals: [], flags }, updateCheck?.takeNotice).catch((err) => {
   process.stderr.write(`nimbalyst-local: ${err.stack ?? err}
 `);
   process.exit(1);

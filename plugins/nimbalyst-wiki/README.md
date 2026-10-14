@@ -38,6 +38,17 @@ Claude Code only reports that the install succeeded; it does not start any onboa
 
 Your agent builds the first version of the wiki: Home, a writing guide, and starter pages based on this repository. Later, use `/nimbalyst-wiki:capture` at the end of sessions to record what you decided. For a short tour instead, run `/nimbalyst-wiki:start`.
 
+### Updating
+
+Claude Code does not update plugins from this marketplace unless you turn on auto-update for it (`/plugin`, then Marketplaces). To update by hand, run both commands, then restart Claude Code:
+
+```sh
+claude plugin marketplace update nimbalyst-wiki
+claude plugin update nimbalyst-wiki@nimbalyst-wiki
+```
+
+The first command only refreshes the list of versions; the second installs the new one. Once a day the plugin checks GitHub for a newer version, and if there is one, Claude mentions it with these commands the next time it uses the wiki. The check sends nothing about you or your wiki. Set `NIMBALYST_WIKI_NO_UPDATE_CHECK=1` to turn it off.
+
 ### Updating from 0.3.0
 
 Version 0.3.0 was installed from the `nimbalyst/nimbalyst` marketplace. Switch to this one so you get updates and the browser view:
@@ -134,6 +145,8 @@ codex plugin add nimbalyst-wiki@nimbalyst-wiki
 ```
 
 It brings the same skills (`nimbalyst-wiki:start`, `setup`, `capture`, `update`, `connect`, `team`), the same three MCP servers (`codex mcp list` shows them) and the same browser view. Sign in to the team wiki with `codex mcp login nimbalyst-team`.
+
+To update, run `codex plugin marketplace upgrade nimbalyst-wiki` and start a new session; that one command installs the new version. The plugin checks for a newer version once a day and Codex mentions it the next time it uses the wiki, as in Claude Code.
 
 Two differences from Claude Code:
 

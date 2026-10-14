@@ -25,10 +25,9 @@ import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkGenerated } from './build-wiki-plugin.mjs';
+import { checkGenerated, checkManifestVersions, listFiles, PLUGIN_DIR } from './build-wiki-plugin.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const PLUGIN_DIR = path.join(REPO_ROOT, 'plugins/nimbalyst-wiki');
 const WEB_PACKAGE = path.join(REPO_ROOT, 'packages/wiki-web');
 const TEMPLATE_DIR = path.join(REPO_ROOT, 'scripts/wiki-repo');
 const FORMAT_DOC = path.join(REPO_ROOT, 'packages/local-wiki/FORMAT.md');
@@ -41,9 +40,33 @@ function fail(message) {
   process.exit(1);
 }
 
+/**
+ * Plugin files that differ from an earlier staging of the same version. Installs
+ * update by version, so a changed plugin published under an unchanged version
+ * never reaches anyone who already has it. README.md is rewritten on staging and
+ * changes nothing an install runs, so it is not compared.
+ */
+export function unbumpedChanges(pluginDir, outDir) {
+  const versionIn = (dir) => {
+    const file = path.join(dir, '.claude-plugin/plugin.json');
+    return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')).version : undefined;
+  };
+  const staged = versionIn(outDir);
+  if (staged === undefined || staged !== versionIn(pluginDir)) return [];
+  return listFiles(pluginDir).filter((rel) => {
+    if (rel === 'README.md') return false;
+    const previous = path.join(outDir, rel);
+    return !existsSync(previous) || !readFileSync(previous).equals(readFileSync(path.join(pluginDir, rel)));
+  });
+}
+
 export function stage(outDir, { buildWeb = true } = {}) {
-  const stale = checkGenerated();
+  const stale = [...checkGenerated(), ...checkManifestVersions()];
   if (stale.length > 0) fail(`The plugin is stale; run node scripts/build-wiki-plugin.mjs first:\n  ${stale.join('\n  ')}`);
+  const unbumped = unbumpedChanges(PLUGIN_DIR, outDir);
+  if (unbumped.length > 0) {
+    fail(`The plugin changed since the last staging but its version did not; bump .claude-plugin and .codex-plugin plugin.json:\n  ${unbumped.join('\n  ')}`);
+  }
 
   if (buildWeb) execFileSync('pnpm', ['--filter', '@nimbalyst/wiki-web', 'run', 'build'], { cwd: REPO_ROOT, stdio: 'inherit' });
   const webDist = path.join(WEB_PACKAGE, 'dist');

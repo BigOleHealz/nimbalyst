@@ -45,6 +45,7 @@ export const SESSION_HELPER_ENTRY = path.join(REPO_ROOT, 'packages/extensions/kn
 export const SESSION_HELPER_OUT = path.join(REPO_ROOT, 'plugins/nimbalyst-wiki/scripts/session-inputs.mjs');
 export const LOCAL_SERVER_ENTRY = path.join(REPO_ROOT, 'packages/cli/src/mcp/pluginEntry.ts');
 export const LOCAL_SERVER_OUT = path.join(REPO_ROOT, 'plugins/nimbalyst-wiki/scripts/nim-local-mcp.mjs');
+export const PLUGIN_DIR = path.join(REPO_ROOT, 'plugins/nimbalyst-wiki');
 export const SIDES = ['desktop', 'remote'];
 /**
  * Source skill directory -> the skill's directory and `name` on each side. The
@@ -172,7 +173,7 @@ function transformFile(relPath, text, side) {
   return branched;
 }
 
-function listFiles(dir, base = dir) {
+export function listFiles(dir, base = dir) {
   if (!existsSync(dir)) return [];
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const full = path.join(dir, entry.name);
@@ -290,6 +291,21 @@ export function checkGenerated({ sourceDir = DEFAULT_SOURCE, targets = DEFAULT_T
   return stale;
 }
 
+/**
+ * The plugin's Claude Code and Codex manifests must carry one version: each
+ * agent's install reads its own, and the update check in the local server
+ * compares against the published one (packages/cli/src/mcp/updateCheck.ts).
+ */
+export function checkManifestVersions(pluginDir = PLUGIN_DIR) {
+  const read = (dir) => {
+    const file = path.join(pluginDir, dir, 'plugin.json');
+    return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')).version : undefined;
+  };
+  const claude = read('.claude-plugin');
+  const codex = read('.codex-plugin');
+  return claude === codex ? [] : [`version mismatch: .claude-plugin/plugin.json is ${claude}, .codex-plugin/plugin.json is ${codex}`];
+}
+
 export function writeGenerated({ sourceDir = DEFAULT_SOURCE, targets = DEFAULT_TARGETS, bundle = true } = {}) {
   const files = buildGeneratedFiles(sourceDir);
   // Only the generated skill directories are replaced; hand-written skills
@@ -314,7 +330,7 @@ export function writeGenerated({ sourceDir = DEFAULT_SOURCE, targets = DEFAULT_T
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   if (process.argv.includes('--check')) {
-    const stale = checkGenerated();
+    const stale = [...checkGenerated(), ...checkManifestVersions()];
     if (stale.length > 0) {
       console.error(`Generated wiki skills are stale:\n  ${stale.join('\n  ')}\nRun: node scripts/build-wiki-plugin.mjs`);
       process.exit(1);
