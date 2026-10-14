@@ -10,6 +10,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 <!-- New features go here -->
+
+### Changed
+<!-- Changes to existing functionality go here -->
+
+### Fixed
+<!-- Bug fixes go here -->
+
+### Removed
+<!-- Removed features go here -->
+
+## [0.81.5] - 2026-10-14
+
+
+### Added
+<!-- New features go here -->
 - Interactive HTML pages: a link to an `.html` file or HTML page on its own line embeds it live in a document, sandboxed from the app, and its links open wiki pages, tracker items and files in Nimbalyst. HTML is also a Team, Personal and local wiki page type with a preview and a source view.
 - Wiki setup now builds a project wiki by default, with a dashboard Home, a product map, initiatives, decisions, team and strategy pages, and wiki agents use charts, 2x2s, decision blocks and every editor page type where they fit. A team sets its preferred visuals in its "How we write this wiki" page.
 
