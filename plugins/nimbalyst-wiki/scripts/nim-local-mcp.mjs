@@ -263,7 +263,7 @@ import * as os from "node:os";
 import * as path10 from "node:path";
 
 // packages/local-wiki/src/wiki.ts
-import { mkdir as mkdir3, readdir as readdir4, readFile as readFile7, rm as rm2, rmdir, unlink as unlink2 } from "node:fs/promises";
+import { mkdir as mkdir3, readdir as readdir4, readFile as readFile7, rm as rm2, rmdir, stat as stat3, unlink as unlink2 } from "node:fs/promises";
 import * as path9 from "node:path";
 
 // node_modules/js-yaml/dist/js-yaml.mjs
@@ -5768,6 +5768,27 @@ var LocalWiki = class extends WikiTables {
       return { path: rel, link: encodeLinkPath(path9.posix.relative(linkBaseDir(page), rel)) };
     });
   }
+  /**
+   * The absolute path of a file a page links to (an image or attachment),
+   * resolved against the folder the page's links are written relative to.
+   * Null when the link leaves the wiki, names no file, or names the wiki's own
+   * bookkeeping (any dot-named segment other than `.assets`).
+   */
+  async resolvePageFile(id, linkPath) {
+    return this.exclusive(async () => {
+      const page = this.state.pages.get(id);
+      if (!page) throw new LocalWikiError("not-found", `No page ${id}`);
+      const rel = resolveLinkPath(linkBaseDir(page), linkPath);
+      if (!rel || rel.includes("\0")) return null;
+      if (rel.split("/").some((part) => part.startsWith(".") && part !== ATTACHMENTS_DIR)) return null;
+      const abs = this.abs(rel);
+      try {
+        return (await stat3(abs)).isFile() ? abs : null;
+      } catch {
+        return null;
+      }
+    });
+  }
   async command(cmd) {
     return this.mutate(async () => {
       switch (cmd.type) {
@@ -7643,7 +7664,7 @@ function createLocalToolMap(context, extra = []) {
 // packages/cli/src/serve/assets.ts
 import { existsSync as existsSync4, readFileSync as readFileSync2 } from "node:fs";
 import { createRequire } from "node:module";
-import * as path12 from "node:path";
+import * as path13 from "node:path";
 import { fileURLToPath } from "node:url";
 
 // packages/cli/src/serve/api.ts
@@ -7711,9 +7732,112 @@ async function readJson(req) {
     throw new HttpError(400, "bad-json", "Request body is not valid JSON");
   }
 }
+var SIMPLE_CONTENT_TYPES = ["application/x-www-form-urlencoded", "multipart/form-data", "text/plain"];
+async function readBytes(req, maxBytes) {
+  const type2 = (req.headers["content-type"] ?? "").toLowerCase();
+  if (!type2 || SIMPLE_CONTENT_TYPES.some((simple) => type2.startsWith(simple))) {
+    throw new HttpError(415, "unsupported-media-type", "Send the file as application/octet-stream or its own type");
+  }
+  if (Number(req.headers["content-length"] ?? 0) > maxBytes) throw tooLarge(maxBytes);
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > maxBytes) throw tooLarge(maxBytes);
+    chunks.push(chunk);
+  }
+  return new Uint8Array(Buffer.concat(chunks));
+}
+function tooLarge(maxBytes) {
+  return new HttpError(413, "too-large", `Files over ${Math.round(maxBytes / (1024 * 1024))} MB cannot be attached here`);
+}
+
+// packages/cli/src/serve/static.ts
+import { createReadStream } from "node:fs";
+import { stat as stat4 } from "node:fs/promises";
+import * as path12 from "node:path";
+var CONTENT_TYPES = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".map": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".ico": "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
+  ".wasm": "application/wasm",
+  ".txt": "text/plain; charset=utf-8",
+  ".avif": "image/avif",
+  ".bmp": "image/bmp",
+  ".pdf": "application/pdf",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".mp3": "audio/mpeg"
+};
+function contentTypeFor(file) {
+  return CONTENT_TYPES[path12.extname(file).toLowerCase()] ?? "application/octet-stream";
+}
+function streamWikiFile(res, abs) {
+  res.writeHead(200, {
+    ...BASE_HEADERS,
+    "Content-Type": contentTypeFor(abs),
+    "Content-Security-Policy": "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; media-src 'self'"
+  });
+  createReadStream(abs).pipe(res);
+}
+function resolveInside(root, urlPath) {
+  let decoded;
+  try {
+    decoded = decodeURIComponent(urlPath);
+  } catch {
+    return null;
+  }
+  if (decoded.includes("\0")) return null;
+  const abs = path12.resolve(root, "." + path12.posix.normalize("/" + decoded));
+  return abs === root || abs.startsWith(root + path12.sep) ? abs : null;
+}
+async function isFile(abs) {
+  try {
+    return (await stat4(abs)).isFile();
+  } catch {
+    return false;
+  }
+}
+function stream(res, abs, immutable) {
+  res.writeHead(200, {
+    ...BASE_HEADERS,
+    "Content-Type": contentTypeFor(abs),
+    // Vite puts a content hash in every asset name, so those can be cached; index.html cannot.
+    "Cache-Control": immutable ? "public, max-age=31536000, immutable" : "no-store"
+  });
+  createReadStream(abs).pipe(res);
+}
+async function serveStatic(res, assetsDir, urlPath) {
+  const root = path12.resolve(assetsDir);
+  const abs = resolveInside(root, urlPath);
+  if (abs && abs !== root && await isFile(abs)) {
+    stream(res, abs, urlPath.startsWith("/assets/"));
+    return;
+  }
+  if (urlPath.startsWith("/assets/") || path12.extname(urlPath)) {
+    res.writeHead(404, { ...BASE_HEADERS, "Content-Type": "text/plain; charset=utf-8" });
+    res.end("Not found");
+    return;
+  }
+  stream(res, path12.join(root, "index.html"), false);
+}
 
 // packages/cli/src/serve/api.ts
 var WIKI_API_VERSION = 1;
+var MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 function segment(value) {
   try {
     return decodeURIComponent(value);
@@ -7785,6 +7909,21 @@ async function handleApi(ctx, req, res, url) {
       return true;
     }
   }
+  if (method === "POST" && parts.length === 3 && parts[0] === "pages" && parts[2] === "attachments") {
+    const name = url.searchParams.get("name");
+    if (!name) throw new HttpError(400, "bad-name", "Pass the file name as ?name=");
+    const bytes = await readBytes(req, MAX_ATTACHMENT_BYTES);
+    sendJson(res, 200, await wiki.storeAttachment(segment(parts[1]), name, bytes));
+    return true;
+  }
+  if ((method === "GET" || method === "HEAD") && parts.length === 3 && parts[0] === "pages" && parts[2] === "file") {
+    const link2 = url.searchParams.get("path");
+    if (!link2) throw new HttpError(400, "bad-path", "Pass the link as ?path=");
+    const abs = await wiki.resolvePageFile(segment(parts[1]), link2);
+    if (!abs) throw new HttpError(404, "no-file", "No such file in the wiki");
+    streamWikiFile(res, abs);
+    return true;
+  }
   if (method === "POST" && parts.length === 3 && parts[0] === "types" && parts[2] === "convert") {
     const body = await readJson(req);
     if (body?.storage !== "pages") throw new HttpError(400, "bad-body", "Only conversion to { storage: 'pages' } is supported");
@@ -7815,13 +7954,13 @@ async function handleApi(ctx, req, res, url) {
 var WIKI_WEB_PACKAGE = "@nimbalyst/wiki-web";
 function readManifest(packageDir) {
   try {
-    return JSON.parse(readFileSync2(path12.join(packageDir, "package.json"), "utf8"));
+    return JSON.parse(readFileSync2(path13.join(packageDir, "package.json"), "utf8"));
   } catch {
     return null;
   }
 }
 function fromPackageDir(packageDir, source) {
-  const dir = path12.join(packageDir, "dist");
+  const dir = path13.join(packageDir, "dist");
   const manifest = readManifest(packageDir);
   if (manifest?.nimbalystWikiApi !== void 0 && manifest.nimbalystWikiApi !== WIKI_API_VERSION) {
     return {
@@ -7830,31 +7969,31 @@ function fromPackageDir(packageDir, source) {
       detail: `${packageDir} speaks wiki API ${manifest.nimbalystWikiApi}; this nim speaks ${WIKI_API_VERSION}`
     };
   }
-  if (!existsSync4(path12.join(dir, "index.html"))) return { ok: false, reason: "unbuilt", detail: `${dir} has no index.html` };
+  if (!existsSync4(path13.join(dir, "index.html"))) return { ok: false, reason: "unbuilt", detail: `${dir} has no index.html` };
   return { ok: true, assets: { dir, version: manifest?.version ?? null, source } };
 }
 function installedPackageDir(from) {
   try {
-    const require2 = createRequire(path12.join(from, "noop.js"));
-    return path12.dirname(require2.resolve(`${WIKI_WEB_PACKAGE}/package.json`));
+    const require2 = createRequire(path13.join(from, "noop.js"));
+    return path13.dirname(require2.resolve(`${WIKI_WEB_PACKAGE}/package.json`));
   } catch {
     return null;
   }
 }
 function workspacePackageDir(from) {
-  for (let dir = from; ; dir = path12.dirname(dir)) {
-    const candidate = path12.join(dir, "packages", "wiki-web");
-    if (existsSync4(path12.join(candidate, "package.json"))) return candidate;
-    if (path12.dirname(dir) === dir) return null;
+  for (let dir = from; ; dir = path13.dirname(dir)) {
+    const candidate = path13.join(dir, "packages", "wiki-web");
+    if (existsSync4(path13.join(candidate, "package.json"))) return candidate;
+    if (path13.dirname(dir) === dir) return null;
   }
 }
 function resolveWikiWebAssets(options) {
   if (options.flag) {
-    const dir = path12.resolve(options.flag);
-    if (!existsSync4(path12.join(dir, "index.html"))) return { ok: false, reason: "unbuilt", detail: `${dir} has no index.html` };
+    const dir = path13.resolve(options.flag);
+    if (!existsSync4(path13.join(dir, "index.html"))) return { ok: false, reason: "unbuilt", detail: `${dir} has no index.html` };
     return { ok: true, assets: { dir, version: null, source: "flag" } };
   }
-  const selfDir = options.selfDir ?? path12.dirname(fileURLToPath(import.meta.url));
+  const selfDir = options.selfDir ?? path13.dirname(fileURLToPath(import.meta.url));
   let firstFailure = null;
   for (const from of [selfDir, options.projectRoot].filter((d) => Boolean(d))) {
     const packageDir = installedPackageDir(from);
@@ -7889,7 +8028,7 @@ import * as path15 from "node:path";
 
 // packages/cli/src/cloud/config.ts
 import * as os2 from "node:os";
-import * as path13 from "node:path";
+import * as path14 from "node:path";
 var DEFAULT_SERVER = "https://sync.nimbalyst.com";
 var LOOPBACK_HOSTS = /* @__PURE__ */ new Set(["localhost", "127.0.0.1", "[::1]"]);
 function checkedOrigin(envName, raw) {
@@ -7911,12 +8050,12 @@ function resolveConfigDir() {
   if (process.env.NIM_CONFIG_DIR) return process.env.NIM_CONFIG_DIR;
   const home = os2.homedir();
   if (process.platform === "win32") {
-    return path13.join(process.env.APPDATA || path13.join(home, "AppData", "Roaming"), "nimbalyst-cli");
+    return path14.join(process.env.APPDATA || path14.join(home, "AppData", "Roaming"), "nimbalyst-cli");
   }
   if (process.platform === "darwin") {
-    return path13.join(home, "Library", "Application Support", "nimbalyst-cli");
+    return path14.join(home, "Library", "Application Support", "nimbalyst-cli");
   }
-  return path13.join(process.env.XDG_CONFIG_HOME || path13.join(home, ".config"), "nimbalyst-cli");
+  return path14.join(process.env.XDG_CONFIG_HOME || path14.join(home, ".config"), "nimbalyst-cli");
 }
 
 // packages/cli/src/serve/auth.ts
@@ -8037,72 +8176,6 @@ data: {}
     this.stop();
   }
 };
-
-// packages/cli/src/serve/static.ts
-import { createReadStream } from "node:fs";
-import { stat as stat3 } from "node:fs/promises";
-import * as path14 from "node:path";
-var CONTENT_TYPES = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".mjs": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".map": "application/json; charset=utf-8",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".webp": "image/webp",
-  ".ico": "image/x-icon",
-  ".woff": "font/woff",
-  ".woff2": "font/woff2",
-  ".ttf": "font/ttf",
-  ".wasm": "application/wasm",
-  ".txt": "text/plain; charset=utf-8"
-};
-function resolveInside(root, urlPath) {
-  let decoded;
-  try {
-    decoded = decodeURIComponent(urlPath);
-  } catch {
-    return null;
-  }
-  if (decoded.includes("\0")) return null;
-  const abs = path14.resolve(root, "." + path14.posix.normalize("/" + decoded));
-  return abs === root || abs.startsWith(root + path14.sep) ? abs : null;
-}
-async function isFile(abs) {
-  try {
-    return (await stat3(abs)).isFile();
-  } catch {
-    return false;
-  }
-}
-function stream(res, abs, immutable) {
-  res.writeHead(200, {
-    ...BASE_HEADERS,
-    "Content-Type": CONTENT_TYPES[path14.extname(abs).toLowerCase()] ?? "application/octet-stream",
-    // Vite puts a content hash in every asset name, so those can be cached; index.html cannot.
-    "Cache-Control": immutable ? "public, max-age=31536000, immutable" : "no-store"
-  });
-  createReadStream(abs).pipe(res);
-}
-async function serveStatic(res, assetsDir, urlPath) {
-  const root = path14.resolve(assetsDir);
-  const abs = resolveInside(root, urlPath);
-  if (abs && abs !== root && await isFile(abs)) {
-    stream(res, abs, urlPath.startsWith("/assets/"));
-    return;
-  }
-  if (urlPath.startsWith("/assets/") || path14.extname(urlPath)) {
-    res.writeHead(404, { ...BASE_HEADERS, "Content-Type": "text/plain; charset=utf-8" });
-    res.end("Not found");
-    return;
-  }
-  stream(res, path14.join(root, "index.html"), false);
-}
 
 // packages/cli/src/serve/server.ts
 var HOST = "127.0.0.1";
@@ -9229,14 +9302,14 @@ var jsonBytes = (value) => Buffer.byteLength(JSON.stringify(value));
 function planBatches(pages, options = {}) {
   const { maxPages = BATCH_MAX_PAGES, maxBytes = BATCH_MAX_BYTES, overhead = ENVELOPE_BYTES } = options;
   const batches = [];
-  const tooLarge = [];
+  const tooLarge2 = [];
   let current = [];
   let bytes = 0;
   const budget = maxBytes - overhead;
   for (const page of pages) {
     const size = jsonBytes(page) + 1;
     if (size > budget) {
-      tooLarge.push(page);
+      tooLarge2.push(page);
       continue;
     }
     if (current.length >= maxPages || bytes + size > budget) {
@@ -9248,19 +9321,19 @@ function planBatches(pages, options = {}) {
     bytes += size;
   }
   if (current.length) batches.push(current);
-  return { batches, tooLarge };
+  return { batches, tooLarge: tooLarge2 };
 }
 var TYPE_BATCH_MAX = 20;
 function planTypeBatches(types2, { maxTypes = TYPE_BATCH_MAX, maxBytes = BATCH_MAX_BYTES, overhead = ENVELOPE_BYTES } = {}) {
   const batches = [];
-  const tooLarge = [];
+  const tooLarge2 = [];
   let current = [];
   let bytes = 0;
   const budget = maxBytes - overhead;
   for (const type2 of types2) {
     const size = jsonBytes(type2) + 1;
     if (size > budget) {
-      tooLarge.push(type2);
+      tooLarge2.push(type2);
       continue;
     }
     if (current.length >= maxTypes || bytes + size > budget) {
@@ -9272,7 +9345,7 @@ function planTypeBatches(types2, { maxTypes = TYPE_BATCH_MAX, maxBytes = BATCH_M
     bytes += size;
   }
   if (current.length) batches.push(current);
-  return { batches, tooLarge };
+  return { batches, tooLarge: tooLarge2 };
 }
 var defaultSleep = (ms) => new Promise((resolve7) => setTimeout(resolve7, ms));
 function pacedCaller(deps) {
