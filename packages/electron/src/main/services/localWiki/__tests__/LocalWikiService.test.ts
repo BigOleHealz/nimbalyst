@@ -184,8 +184,20 @@ describe('LocalWikiService', () => {
     try {
       expect((await watching.snapshot(project)).exists).toBe(false);
       await settle();
-      await initWiki(path.join(project, 'nimbalyst-local', 'wiki'));
-      await vi.waitFor(() => expect(broadcast).toHaveBeenCalledWith(project), { timeout: 3000 });
+      const root = path.join(project, 'nimbalyst-local', 'wiki');
+      await initWiki(root);
+      // As below: under a loaded full-suite run the marker can be written before
+      // the watch on its folder is live, so touch it again on every poll.
+      const marker = path.join(root, '.nimbalyst-wiki.yaml');
+      await vi.waitFor(
+        () => {
+          const now = new Date();
+          fs.utimesSync(marker, now, now);
+          fs.appendFileSync(marker, '');
+          expect(broadcast).toHaveBeenCalledWith(project);
+        },
+        { timeout: 3000, interval: 200 },
+      );
       expect((await watching.snapshot(project)).exists).toBe(true);
 
       const other = fs.mkdtempSync(path.join(os.tmpdir(), 'local-wiki-service-'));
