@@ -193,8 +193,16 @@ describe('LocalWikiService', () => {
         fs.mkdirSync(path.join(other, '.nimbalyst'));
         expect((await watching.snapshot(other)).exists).toBe(false);
         await settle();
-        fs.writeFileSync(path.join(other, '.nimbalyst', 'local-wiki.json'), JSON.stringify({ location: 'docs/wiki' }));
-        await vi.waitFor(() => expect(broadcast).toHaveBeenCalledWith(other), { timeout: 3000 });
+        // Rewrite on every poll: under a loaded full-suite run a single write can
+        // still land before the watch is live and the event is never delivered.
+        const config = path.join(other, '.nimbalyst', 'local-wiki.json');
+        await vi.waitFor(
+          () => {
+            fs.writeFileSync(config, JSON.stringify({ location: 'docs/wiki' }));
+            expect(broadcast).toHaveBeenCalledWith(other);
+          },
+          { timeout: 3000, interval: 200 },
+        );
       } finally {
         fs.rmSync(other, { recursive: true, force: true });
       }
