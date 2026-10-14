@@ -412,6 +412,21 @@ describe('table types', () => {
     await rm(path.join(root, '..', `${path.basename(root)}-types`), { recursive: true, force: true });
   });
 
+  it('keeps a wikiId another instance stored when placing a table', async () => {
+    const typesDir = await withPartnerType();
+    await put('Ops.md', '---\nid: O\n---\n');
+    await open({ typesDir });
+    const other = await openWiki(root, { typesDir });
+    const id = await other.wikiId();
+    other.close();
+    expect(id).toMatch(/^[0-9A-Z]{26}$/);
+    await wiki!.command({ type: 'set-type-placement', typeId: 'partner', parentFolderId: 'O', sortOrder: 500 });
+    const reopened = await openWiki(root, { typesDir });
+    expect(await reopened.wikiId()).toBe(id);
+    reopened.close();
+    expect(await read('.nimbalyst-wiki.yaml')).toContain('order: 500');
+  });
+
   it('round-trips rows with quotes, newlines, commas and ; through the CSV', async () => {
     const typesDir = await withPartnerType();
     await put('Ops.md', '---\nid: O\n---\n');

@@ -19,11 +19,12 @@ import { loadCredentials } from '../cloud/credentials.js';
 import { resolveWikiLocation } from '../localWiki/locate.js';
 import { hasLocalWiki, initLocalWiki, openLocalWiki } from '../localWiki/open.js';
 import { buildTree, findPage, isTeamReference, positionBeside } from '../localWiki/tree.js';
+import { runMoveToTeam } from './wikiMove.js';
 
 /** Verbs the local wiki has; `ls` is `list`. */
-const LOCAL_VERBS = new Set(['init', 'list', 'ls', 'read', 'write', 'move', 'search', 'convert-type']);
+const LOCAL_VERBS = new Set(['init', 'list', 'ls', 'read', 'write', 'move', 'search', 'convert-type', 'move-to-team']);
 /** Local verbs with no team counterpart. */
-const LOCAL_ONLY = new Set(['init', 'write', 'convert-type']);
+const LOCAL_ONLY = new Set(['init', 'write', 'convert-type', 'move-to-team']);
 
 const startDir = (args: ParsedArgs) => flagStr(args, 'workspace') ?? process.cwd();
 
@@ -97,9 +98,12 @@ export async function runLocalWiki(args: ParsedArgs): Promise<number> {
     return ExitCode.OK;
   }
 
-  const { wiki } = await openLocalWiki(startDir(args), location);
+  const opened = await openLocalWiki(startDir(args), location);
+  const { wiki } = opened;
   try {
     switch (args.verb) {
+      case 'move-to-team':
+        return await runMoveToTeam(args, opened);
       case 'list':
       case 'ls':
         return await runLs(args, wiki);

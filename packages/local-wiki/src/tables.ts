@@ -1,17 +1,16 @@
 import { appendFile, readFile } from 'node:fs/promises';
 import * as path from 'node:path';
-import yaml from 'js-yaml';
 import { idForFileName, ulid } from './ids.js';
 import { composeMarkdownFile, parseMarkdownFile, RESERVED_KEYS } from './frontmatter.js';
 import { fileStemForTitle, nameKey, uniqueStem } from './names.js';
 import { stringifyCsv } from './csv.js';
 import { atomicWrite, movePath, pathExists, relJoin, writeExclusive } from './fsutil.js';
-import { ACTIVITY_SUFFIX, MARKER_FILE, TRASH_DIR, type TableRecord, type TrashManifest } from './scan.js';
+import { ACTIVITY_SUFFIX, TRASH_DIR, type TableRecord, type TrashManifest } from './scan.js';
 import type { WikiTypeDef } from './typeDefs.js';
 import { decodeRow, encodeRow, tableHeader } from './tableCodec.js';
 import { ORDER_STEP } from './project.js';
 import type { ActivityEntry, LocalTrackerCommand, LocalWikiCommandResult } from './types.js';
-import { LocalWikiError, MARKER_HEADER, WikiCore } from './core.js';
+import { LocalWikiError, WikiCore } from './core.js';
 
 /** Table types: one CSV per type. */
 export class WikiTables extends WikiCore {
@@ -281,8 +280,7 @@ export class WikiTables extends WikiCore {
     } else {
       await writeExclusive(this.abs(relJoin(targetDir, this.csvFileName(def))), stringifyCsv([tableHeader([], def)]));
     }
-    this.marker = { ...this.marker, tables: { ...(this.marker.tables ?? {}), [typeId]: { order: sortOrder } } };
-    await atomicWrite(path.join(this.root, MARKER_FILE), MARKER_HEADER + yaml.dump(this.marker, { schema: yaml.CORE_SCHEMA }));
+    await this.updateMarker((marker) => ({ ...marker, tables: { ...(marker.tables ?? {}), [typeId]: { order: sortOrder } } }));
     await this.refresh();
   }
 }

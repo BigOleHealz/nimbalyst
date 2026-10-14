@@ -1,5 +1,6 @@
 import { appendFile, mkdir, readdir, readFile } from 'node:fs/promises';
 import * as path from 'node:path';
+import yaml from 'js-yaml';
 import { contentVersion, isSafeId, ulid } from './ids.js';
 import { composeMarkdownFile, insertIdIntoFile, parseMarkdownFile, readPageMeta } from './frontmatter.js';
 import { rewriteLinks } from './links.js';
@@ -10,6 +11,7 @@ import { acquireWriteLock } from './lock.js';
 import {
   ACTIVITY_SUFFIX,
   linkBaseDir,
+  MARKER_FILE,
   resolveLinkPath,
   scanWiki,
   TRASH_MANIFEST,
@@ -57,6 +59,8 @@ export class LocalWikiError extends Error {
 
 export interface MarkerData {
   formatVersion: number;
+  /** The wiki's stable identity; see `LocalWiki.wikiId`. */
+  wikiId?: string;
   tables?: Record<string, { order?: number }>;
 }
 
@@ -127,6 +131,24 @@ export class WikiCore {
       this.lockHeld = false;
       await release();
     }
+  }
+
+  /**
+   * Rewrites the root file from what is on disk now (call holding the write
+   * lock), so a key another process added since this instance opened survives.
+   */
+  protected async updateMarker(change: (marker: MarkerData) => MarkerData): Promise<MarkerData> {
+    const file = path.join(this.root, MARKER_FILE);
+    let onDisk: MarkerData = this.marker;
+    try {
+      const parsed = yaml.load(await readFile(file, 'utf8'), { schema: yaml.CORE_SCHEMA });
+      if (parsed && typeof parsed === 'object') onDisk = parsed as MarkerData;
+    } catch {
+      // unreadable: fall back to what this instance loaded
+    }
+    this.marker = change(onDisk);
+    await atomicWrite(file, MARKER_HEADER + yaml.dump(this.marker, { schema: yaml.CORE_SCHEMA }));
+    return this.marker;
   }
 
   /**

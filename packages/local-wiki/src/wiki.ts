@@ -373,6 +373,24 @@ export class LocalWiki extends WikiTables {
   }
 
   /**
+   * The wiki's stable identity, `wikiId` in the root file, created on first
+   * call. It travels with the folder (not the checkout), so a tool that copies
+   * the wiki somewhere else can key its copies on it and resume instead of
+   * duplicating.
+   */
+  async wikiId(): Promise<string> {
+    if (typeof this.marker.wikiId === 'string' && this.marker.wikiId) return this.marker.wikiId;
+    return this.exclusive(() =>
+      this.withWriteLock(async () => {
+        const marker = await this.updateMarker((onDisk) =>
+          typeof onDisk.wikiId === 'string' && onDisk.wikiId ? onDisk : { ...onDisk, wikiId: ulid() },
+        );
+        return marker.wikiId!;
+      }),
+    );
+  }
+
+  /**
    * Replaces the editor page suffix table (see `OpenWikiOptions.editorTypes`)
    * and rescans when it changed. Hosts call this when extensions load.
    */

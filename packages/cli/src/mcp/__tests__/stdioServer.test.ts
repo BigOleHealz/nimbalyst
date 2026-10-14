@@ -119,7 +119,7 @@ describe('nim mcp over stdio', () => {
     expect(created).toBe(true);
     // The list is stable without a wiki, and every name but the local-only ones is a contract name.
     const names = responses[1].result.tools.map((t: { name: string }) => t.name);
-    expect(names).toEqual(['initLocalWiki', ...LOCAL_TOOLS, 'convertTypeStorage', ...EDITOR_TOOLS, 'openWikiInBrowser']);
+    expect(names).toEqual(['initLocalWiki', ...LOCAL_TOOLS, 'convertTypeStorage', ...EDITOR_TOOLS, 'openWikiInBrowser', 'teamSignIn', 'moveLocalWikiToTeam', 'openUrl']);
     expect(LOCAL_TOOLS.every((n: string) => (PAGE_TOOL_NAMES as readonly string[]).includes(n))).toBe(true);
     expect(stderr).toContain('nim mcp');
   });

@@ -15,6 +15,7 @@ tables:
 
 - `formatVersion` is required. A reader that sees a higher version than it knows refuses to open the wiki instead of guessing.
 - `tables` is optional and holds the position of each table type among its siblings (see Order). Unknown keys are preserved.
+- `wikiId` is optional: a ULID naming this wiki, written the first time a tool needs one (moving the wiki to a team project keys its copies on it, so a re-run resumes instead of duplicating). It travels with the folder; a writer never changes it. A copy of the folder made to start a separate wiki should drop it.
 
 Names starting with `.` and `node_modules` are not part of the tree at any level; the one exception is an editor page's sidecar (`.<file>.wiki.yaml`, see Editor pages), which is read with its file. `.trash/` at the root holds deleted items, and `.nimbalyst-wiki.lock` is the write lock (see Writes and concurrency). Temporary files written during an atomic write are dot-prefixed and so are ignored.
 

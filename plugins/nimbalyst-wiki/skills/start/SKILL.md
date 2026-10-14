@@ -11,7 +11,7 @@ Say, in a few lines:
 1. Nimbalyst Wiki is a local wiki your agents write for you, so you can think, organize, and set direction.
 2. Best first step: `/nimbalyst-wiki:setup`. The agent builds the first wiki from this repository: Home, a writing guide, and starter pages.
 3. The habit: at the end of a session, `/nimbalyst-wiki:capture` records what was decided in the page it affects.
-4. Growth paths: typed pages and tables to track things; reading and editing the wiki in the browser (ask "open the wiki in my browser"; the agent calls `openWikiInBrowser`, nothing to install); and optionally connecting a Nimbalyst Team wiki later (`/nimbalyst-wiki:connect`).
+4. Growth paths: typed pages and tables to track things; reading and editing the wiki in the browser (ask "open the wiki in my browser"; the agent calls `openWikiInBrowser`, nothing to install); and optionally connecting a Nimbalyst Team wiki later (`/nimbalyst-wiki:connect`). A local wiki can be moved to Nimbalyst Teams later in one step with `/nimbalyst-wiki:team`, which also invites teammates; they need nothing installed to read it in the browser.
 
 If the user gave a goal, tailor the next step to it. Check whether a local wiki already exists in this repository; if it does, suggest `capture` or asking a question about it instead of `setup`.
 
