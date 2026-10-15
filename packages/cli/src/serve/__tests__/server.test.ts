@@ -38,9 +38,9 @@ async function serve(): Promise<{ root: string; wiki: LocalWiki; server: WikiSer
 }
 
 /** `fetch` will not send a custom Host header; plain http will. */
-function rawStatus(port: number, headers: Record<string, string>): Promise<number> {
+function rawStatus(port: number, headers: Record<string, string>, path = '/api/snapshot'): Promise<number> {
   return new Promise((resolve, reject) => {
-    const req = request({ host: '127.0.0.1', port, path: '/api/snapshot', headers }, (res) => {
+    const req = request({ host: '127.0.0.1', port, path, headers }, (res) => {
       res.resume();
       resolve(res.statusCode ?? 0);
     });
@@ -93,6 +93,17 @@ describe('nim wiki serve', () => {
     expect(await shell.text()).toBe(HTML_EMBED_SHELL_HTML);
     // A sandboxed frame's requests carry `Origin: null`.
     expect((await fetch(`${server.origin}/api/snapshot`, { headers: { cookie, origin: 'null' } })).status).toBe(403);
+  });
+
+  // Some embedded browser panels withhold the SameSite=Strict cookie from the frame.
+  it('serves the HTML embed shell without the token, since it holds no wiki data', async () => {
+    const { server } = await serve();
+    const shell = await fetch(`${server.origin}/html-embed/shell`);
+    expect(shell.status).toBe(200);
+    expect(await shell.text()).toBe(HTML_EMBED_SHELL_HTML);
+    // The page bodies the shell renders still need the token.
+    expect((await fetch(`${server.origin}/api/snapshot`)).status).toBe(401);
+    expect(await rawStatus(server.port, { host: `evil.example:${server.port}` }, '/html-embed/shell')).toBe(421);
   });
 
   it('creates, reads and writes a page through REST, and rejects a stale write with 409', async () => {

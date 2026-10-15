@@ -10,7 +10,10 @@
  *   - another web link opens in the system browser;
  *   - a relative path opens what it names beside the HTML page itself: a
  *     workspace file for an HTML file on disk, a page in the same tree for a
- *     Team or Personal HTML page (never a file on this machine).
+ *     Team or Personal HTML page (never a file on this machine). A Local wiki
+ *     HTML file opens a wiki page through the wiki host, because the wiki can
+ *     sit in the main checkout outside the active worktree, where the
+ *     workspace file opener refuses it; a link naming no page opens as a file.
  */
 
 import { store } from '@nimbalyst/runtime/store';
@@ -38,7 +41,8 @@ const PERSONAL_PAGE_PREFIX = 'personal-doc://';
 export type HtmlLinkBase =
   | { kind: 'file'; path: string | null }
   | { kind: 'team'; documentId: string }
-  | { kind: 'personal'; documentId: string; workspacePath: string };
+  | { kind: 'personal'; documentId: string; workspacePath: string }
+  | { kind: 'wiki-file'; documentId: string; workspacePath: string; path: string };
 
 /** The link base for an HTML page from its editor path (a file, `collab://`, or `personal-doc://`). */
 export function htmlLinkBaseFor(path: string | null | undefined, workspacePath: string | null): HtmlLinkBase {
@@ -46,6 +50,10 @@ export function htmlLinkBaseFor(path: string | null | undefined, workspacePath: 
   if (path?.startsWith(PERSONAL_PAGE_PREFIX) && workspacePath) {
     return { kind: 'personal', documentId: path.slice(PERSONAL_PAGE_PREFIX.length), workspacePath };
   }
+  const wikiPageId = path && workspacePath
+    ? getPersonalCollabHost(workspacePath).source().documentIdForFile(path)
+    : null;
+  if (path && workspacePath && wikiPageId) return { kind: 'wiki-file', documentId: wikiPageId, workspacePath, path };
   return { kind: 'file', path: path ?? null };
 }
 
@@ -58,6 +66,10 @@ function openRelativePageLink(href: string, newTab: boolean, base: Exclude<HtmlL
   }
   const session = getPersonalCollabDocsSession(base.workspacePath);
   const documentId = resolveSharedPageLink(href, base.documentId, store.get(session.atoms.sharedDocuments), store.get(session.atoms.sharedFolders));
+  if (!documentId && base.kind === 'wiki-file') {
+    openFileLink(href, base.path);
+    return;
+  }
   if (!documentId) {
     console.warn('[HtmlEmbed] no personal page for link', href);
     return;
@@ -77,6 +89,12 @@ export function isWorkspaceHtmlEmbed(src: string, documentPath: string | null | 
   return isHtmlPagePath(src.split(/[?#]/)[0]);
 }
 
+function openFileLink(href: string, path: string | null): void {
+  if (!openWorkspaceFileLink(href, path)) {
+    console.warn('[HtmlEmbed] no opener for relative link', href);
+  }
+}
+
 export function openHtmlEmbedLink(
   href: string,
   { newTab, kind }: HtmlEmbedNavigateOptions,
@@ -87,9 +105,7 @@ export function openHtmlEmbedLink(
       openRelativePageLink(href, newTab, base);
       return;
     }
-    if (!openWorkspaceFileLink(href, base.path)) {
-      console.warn('[HtmlEmbed] no opener for relative link', href);
-    }
+    openFileLink(href, base.path);
     return;
   }
 

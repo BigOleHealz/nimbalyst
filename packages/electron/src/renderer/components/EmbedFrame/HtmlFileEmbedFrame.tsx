@@ -28,7 +28,7 @@ import { DiskChangeSubscription } from '../../services/document-model/DiskChange
 import { activeWorkspacePathAtom } from '../../store/atoms/openProjects';
 import { useEmbedFilePath } from './useEmbedFilePath';
 import { openFileInTab, readFileFromDisk, workspaceRelativePath } from './embeddedFileIo';
-import { openHtmlEmbedLink } from './htmlEmbedNavigation';
+import { htmlLinkBaseFor, openHtmlEmbedLink } from './htmlEmbedNavigation';
 import { DESKTOP_HTML_EMBED_SHELL_URL } from './htmlEmbedShellUrl';
 import { useDesktopHtmlEmbedTheme } from './useDesktopHtmlEmbedTheme';
 
@@ -83,8 +83,8 @@ export const HtmlFileEmbedFrame: React.FC<EmbedFrameProps> = ({ src, label, attr
 
   // Links resolve beside the HTML file itself, as when it is opened on its own.
   const onNavigate = useCallback(
-    (href: string, options: HtmlEmbedNavigateOptions) => openHtmlEmbedLink(href, options, { kind: 'file', path: absolutePath }),
-    [absolutePath],
+    (href: string, options: HtmlEmbedNavigateOptions) => openHtmlEmbedLink(href, options, htmlLinkBaseFor(absolutePath, workspacePath)),
+    [absolutePath, workspacePath],
   );
 
   const select = useCallback(
@@ -103,7 +103,7 @@ export const HtmlFileEmbedFrame: React.FC<EmbedFrameProps> = ({ src, label, attr
       event.stopPropagation();
       if (absolutePath) openFileInTab(absolutePath);
     },
-    [absolutePath],
+    [absolutePath, workspacePath],
   );
 
   const problem = pending ? null : pathError || (!absolutePath ? 'Could not resolve embed path' : readError);

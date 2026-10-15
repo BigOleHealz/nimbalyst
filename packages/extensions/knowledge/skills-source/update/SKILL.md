@@ -1,6 +1,6 @@
 ---
 name: update
-description: Write and maintain project wiki pages, decisions, and links.
+description: Write and maintain project wiki pages, decisions, and links. Use for any wiki page, including architecture or product maps, diagrams, HTML pages and other visuals.
 ---
 
 # Update the wiki
@@ -115,7 +115,7 @@ A page can show more than text: components inside the markdown (`references/comp
 
 **The team picks which one.** The guide's "Our visual defaults" table says what this team uses for each need; follow it. When the project has no guide, or its guide has no such table, use these defaults:
 
-- **A map of the product** or the architecture: an `html` page with a box per module, each a link to its page.
+- **A map of the product** or the architecture: an `html` page with a box per module, each a link to its page. The whole map fits on one screen without scrolling. Every box links to a wiki page, or to a source outside the wiki; when a module has no page yet, create it. Never make a map a mockup (`mockup.html`): the mockup editor takes clicks for selection and comments, so its links never open.
 - **A flow or a sequence:** a `mermaid` block.
 - **A freeform diagram** whose layout carries meaning: a drawing page (`excalidraw`).
 - **The status of a set** of modules, initiatives or competitors: a placed view of their type, as a table or board.
@@ -131,6 +131,8 @@ Then read the component's entry in the references before writing it; each lists 
 - **The references do not cover it.** A row may name a component or page type an extension added. Look for that editor's own skill or tools and follow its file format; if you cannot find them, ask the person instead of guessing a format.
 
 Use one only where it helps a reader; most pages are text. Never use a component or page type in a place the references say it does not render. Every point and box shows a real item with values a person or a source gave; where data is missing, say so in the page instead of drawing a placeholder.
+
+Before you report a map or any page of links done, check every link: each wiki target must be a page `listPages` returns. When you have a browser tool, also open the page and click two of its boxes. Do not click links to sites outside the wiki there; each opens a popup.
 
 A product map, a `chart` or `2x2` block, and any list of other pages' fields are snapshots. When you add, rename or change a page one of them shows (a module, an initiative's status or health), update the snapshot in the same pass. Placed views update themselves.
 
@@ -197,6 +199,7 @@ Projects that used the earlier knowledge graph have entity, claim, question, fin
 When the `connect` skill chose the local wiki, use only the `nimbalyst-local` server's tools; these rules replace the team-specific ones above wherever they differ.
 
 - **No project to resolve.** Tools take no `repo` or `project`, and there is no `pages_status`. Without a wiki, every tool answers "No local wiki"; the `connect` skill says when to offer `initLocalWiki`. Pages are files in the wiki folder; `listPages` gives each page's `uri` (`local-wiki://<id>`) for the tools and its `path` in the folder.
+- **Check the folder.** Every result names the `wikiFolder` in use, which is the project the session started in. When that is not the project you are working on, call `useLocalWiki` with that project's folder before anything else.
 - **Guide and Home.** Find "How we write this wiki" and Home with `listPages` and read them with `readCollabDoc`. With no guide page, follow `../setup/references/wiki-guide.md` and offer the setup skill (`/wiki:setup`) to install it.
 - **Who decided.** The person at this terminal is `git config user.name` and `git config user.email`. Cite their words from `list_session_inputs` as on the team wiki. Local pages have no comments, so there is nothing to cite from `list_citable_inputs`.
 - **Links are relative paths carrying the target's id**, never console links: `[Acme](../Competitors/Acme.md "id=<id>")`, with the path relative to the linking page's file and the id from `listPages`. The server rewrites them when a page moves or is renamed. Relations (`rel=`) and placed views are team-wiki features; on a local wiki write a plain link and say why in the sentence.

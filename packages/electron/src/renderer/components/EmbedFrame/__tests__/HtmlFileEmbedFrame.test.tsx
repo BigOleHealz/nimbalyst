@@ -11,7 +11,10 @@ import { LexicalComposer } from '@lexical/react/LexicalComposer';
 
 const navigation = vi.hoisted(() => ({ open: vi.fn() }));
 
-vi.mock('../htmlEmbedNavigation', () => ({ openHtmlEmbedLink: navigation.open }));
+vi.mock('../htmlEmbedNavigation', () => ({
+  openHtmlEmbedLink: navigation.open,
+  htmlLinkBaseFor: (path: string | null) => ({ kind: 'file', path }),
+}));
 vi.mock('../useEmbedFilePath', () => ({ useEmbedFilePath: () => ({ path: '/ws/Maps/Map.html', pending: false, error: null }) }));
 vi.mock('../embeddedFileIo', () => ({
   readFileFromDisk: async () => '<a href="./Module.md">Module</a>',

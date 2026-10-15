@@ -5,7 +5,7 @@
  * scripts/build.mjs does) so the test needs no prior build.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
@@ -17,6 +17,7 @@ import { PAGE_TOOL_NAMES } from '@nimbalyst/collab-protocol';
 import { handleMessage, runStdioServer } from '../stdioServer.js';
 import { TeamScopeRefusal, ToolMap, textResult } from '../toolMap.js';
 import { resolvePluginWorkspace } from '../pluginWorkspace.js';
+import { createLocalToolMap, localWikiContext } from '../serverTools.js';
 import { detectPluginInstall, startUpdateCheck, type PluginInstall } from '../updateCheck.js';
 
 const EDITOR_TOOLS = ['mindmap_get_document', 'mindmap_apply_operations', 'excalidraw_get_elements', 'excalidraw_add_elements', 'excalidraw_add_arrows', 'excalidraw_remove_elements'];
@@ -106,6 +107,7 @@ describe('nim mcp over stdio', () => {
           protocolVersion: '2025-06-18',
           capabilities: { tools: {} },
           serverInfo: { name: 'nimbalyst-local', version: expect.any(String) },
+          instructions: expect.stringContaining('useLocalWiki'),
         },
       },
       { jsonrpc: '2.0', id: 2, result: { tools: expect.any(Array) } },
@@ -120,7 +122,7 @@ describe('nim mcp over stdio', () => {
     expect(created).toBe(true);
     // The list is stable without a wiki, and every name but the local-only ones is a contract name.
     const names = responses[1].result.tools.map((t: { name: string }) => t.name);
-    expect(names).toEqual(['initLocalWiki', ...LOCAL_TOOLS, 'convertTypeStorage', ...EDITOR_TOOLS, 'openWikiInBrowser', 'teamSignIn', 'moveLocalWikiToTeam', 'openUrl']);
+    expect(names).toEqual(['initLocalWiki', 'useLocalWiki', ...LOCAL_TOOLS, 'convertTypeStorage', ...EDITOR_TOOLS, 'openWikiInBrowser', 'teamSignIn', 'moveLocalWikiToTeam', 'openUrl']);
     expect(LOCAL_TOOLS.every((n: string) => (PAGE_TOOL_NAMES as readonly string[]).includes(n))).toBe(true);
     // createSharedDoc makes editor pages locally, so it must not inherit the remote server's markdown-only wording.
     const createDoc = responses[1].result.tools.find((t: { name: string }) => t.name === 'createSharedDoc');
@@ -240,6 +242,73 @@ describe('tool calls', () => {
       id: null,
       error: { code: -32600, message: 'Invalid request' },
     });
+  });
+});
+
+describe('re-pointing the server at another project', () => {
+  const projects: string[] = [];
+  const project = async (withWiki: boolean) => {
+    const dir = realpathSync(mkdtempSync(path.join(tmpdir(), 'nim-mcp-repoint-')));
+    projects.push(dir);
+    if (withWiki) await initWiki(path.join(dir, 'nimbalyst-local', 'wiki'));
+    return dir;
+  };
+  afterAll(() => {
+    for (const dir of projects) rmSync(dir, { recursive: true, force: true });
+  });
+  const run = async (tools: ToolMap, name: string, args: Record<string, unknown> = {}) => {
+    const result = await tools.get(name)!.call(args);
+    return { isError: result.isError === true, text: result.content[0].text, body: () => JSON.parse(result.content[0].text) };
+  };
+
+  it('useLocalWiki moves every later call to the named project or wiki folder, and names the folder in each result', async () => {
+    const a = await project(true);
+    const b = await project(true);
+    const empty = await project(false);
+    const wikiA = path.join(a, 'nimbalyst-local', 'wiki');
+    const wikiB = path.join(b, 'nimbalyst-local', 'wiki');
+    const tools = createLocalToolMap(localWikiContext(a));
+
+    expect((await run(tools, 'listPages')).body().wikiFolder).toBe(wikiA);
+    expect((await run(tools, 'useLocalWiki', { folder: b })).body()).toEqual({ projectRoot: b, wikiFolder: wikiB });
+    expect((await run(tools, 'listPages')).body().wikiFolder).toBe(wikiB);
+    const created = await run(tools, 'createSharedDoc', { title: 'Moved' });
+    expect(created.body()).toMatchObject({ wikiFolder: wikiB, path: 'Moved.md' });
+    expect(existsSync(path.join(wikiB, 'Moved.md'))).toBe(true);
+    expect(existsSync(path.join(wikiA, 'Moved.md'))).toBe(false);
+
+    // A wiki folder itself works too, and resolves to its project.
+    expect((await run(tools, 'useLocalWiki', { folder: wikiA })).body()).toEqual({ projectRoot: a, wikiFolder: wikiA });
+    expect((await run(tools, 'tracker_list_types')).body().wikiFolder).toBe(wikiA);
+
+    // A folder that does not exist changes nothing.
+    const missing = await run(tools, 'useLocalWiki', { folder: path.join(a, 'nope') });
+    expect(missing.isError).toBe(true);
+    expect((await run(tools, 'listPages')).body().wikiFolder).toBe(wikiA);
+
+    // A project without a wiki: pointed there, told to create one, and initLocalWiki creates it there.
+    const none = await run(tools, 'useLocalWiki', { folder: empty });
+    expect(none.isError).toBe(true);
+    expect(none.text).toContain('initLocalWiki');
+    expect(none.text).toContain(path.join(empty, 'nimbalyst-local', 'wiki'));
+    expect((await run(tools, 'initLocalWiki')).body().dir).toBe(path.join(empty, 'nimbalyst-local', 'wiki'));
+  });
+
+  it('useLocalWiki on a wiki folder that is its own git repository makes that folder the project', async () => {
+    const outer = await project(true);
+    const wiki = path.join(outer, 'nimbalyst-local', 'wiki');
+    execFileSync('git', ['init', '-q'], { cwd: wiki, stdio: 'ignore' });
+    // Sandboxed: the repository is the temp wiki folder, never this checkout.
+    expect(realpathSync(execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: wiki, encoding: 'utf8' }).trim())).toBe(wiki);
+    const tools = createLocalToolMap(localWikiContext(await project(true)));
+
+    expect((await run(tools, 'useLocalWiki', { folder: wiki })).body()).toEqual({ projectRoot: wiki, wikiFolder: wiki });
+  });
+
+  it('tells the agent in initialize to load the update skill before writing and to re-point after a project change', async () => {
+    const reply = (await handleMessage({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }, new ToolMap(), { name: 'nimbalyst-local', version: 'test' })) as { result: { instructions: string } };
+    expect(reply.result.instructions).toContain('`update` skill');
+    expect(reply.result.instructions).toContain('useLocalWiki');
   });
 });
 

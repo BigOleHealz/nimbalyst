@@ -22,7 +22,7 @@ export async function runMcp(version: string, args: ParsedArgs, takeNotice?: () 
   const location = flagStr(args, 'location');
   const context = localWikiContext(startDir, location);
   const assetsDir = flagStr(args, 'assets');
-  const serve = serveTool({ startDir, location, assetsDir, version });
+  const serve = serveTool({ startDir, location, workspace: context.workspace, assetsDir, version });
   const loadEditorModels = editorModelsFromWikiWeb({ assetsDir, version });
   const editors = editorTools(context, loadEditorModels);
   process.stderr.write(`nim mcp ${version}: serving on stdio\n`);

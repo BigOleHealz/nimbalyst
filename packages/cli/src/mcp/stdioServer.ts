@@ -12,6 +12,12 @@ import { TeamScopeRefusal, textResult, type ToolMap } from './toolMap.js';
 
 const DEFAULT_PROTOCOL = '2025-06-18';
 
+/** Sent in `initialize`; hosts put it in the agent's system prompt. */
+export const SERVER_INSTRUCTIONS =
+  "These tools read and write this project's local wiki, a folder of markdown pages. " +
+  'Before writing or changing any wiki page, including architecture or product maps, diagrams, HTML pages and other visuals, load the `update` skill from the nimbalyst-wiki plugin and follow it. ' +
+  'Every result names the wiki folder in use; if the session has moved to another project, call `useLocalWiki` with that project folder first.';
+
 type JsonRpcId = string | number | null;
 
 interface JsonRpcRequest {
@@ -56,6 +62,7 @@ export async function handleMessage(
           typeof request.params?.protocolVersion === 'string' ? request.params.protocolVersion : DEFAULT_PROTOCOL,
         capabilities: { tools: {} },
         serverInfo,
+        instructions: SERVER_INSTRUCTIONS,
       });
     case 'ping':
       return reply({});

@@ -60,6 +60,10 @@ export async function startWikiServer(options: WikiServerOptions): Promise<WikiS
     if (!isLoopbackHost(req.headers.host, port)) return plain(res, 421, 'This server only answers on 127.0.0.1 or localhost.');
     const url = new URL(req.url ?? '/', `http://${HOST}:${port}`);
     if (!isAllowedOrigin(req.headers.origin, port)) return plain(res, 403, 'Cross-origin requests are refused.');
+    // The shell is static and holds no wiki data (page bodies arrive by postMessage from the
+    // authed app), so it skips the token: some embedded browser panels withhold the
+    // SameSite=Strict cookie from the sandboxed frame and would otherwise render it blank.
+    if (url.pathname === HTML_EMBED_SHELL_PATH && (req.method === 'GET' || req.method === 'HEAD')) return serveHtmlEmbedShell(res);
     const source = tokenSource(req, url, port, token);
     if (!source) {
       if (url.pathname.startsWith('/api/')) {
@@ -79,7 +83,6 @@ export async function startWikiServer(options: WikiServerOptions): Promise<WikiS
       return;
     }
     if (req.method !== 'GET' && req.method !== 'HEAD') return plain(res, 405, 'Method not allowed');
-    if (url.pathname === HTML_EMBED_SHELL_PATH) return serveHtmlEmbedShell(res);
     if (!options.assetsDir) return plain(res, 404, 'No browser assets are installed; the API is under /api/.');
     await serveStatic(res, options.assetsDir, url.pathname);
   };

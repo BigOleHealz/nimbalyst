@@ -5,6 +5,7 @@
 import { LocalWikiError } from '@nimbalyst/local-wiki';
 import { pageToolContract, type PageToolName } from '@nimbalyst/collab-protocol';
 import { CliError, usageError } from '../cli/exitCodes.js';
+import type { WikiLocation, Workspace } from '../localWiki/locate.js';
 import { NoLocalWikiError, type InitResult, type OpenedWiki } from '../localWiki/open.js';
 import { isTeamIssueKey, isTeamReference } from '../localWiki/tree.js';
 import { TeamScopeRefusal, textResult, type McpTool, type McpToolDefinition, type McpToolResult } from './toolMap.js';
@@ -14,12 +15,22 @@ export interface LocalWikiContext {
   open(): Promise<OpenedWiki>;
   /** Creates the wiki, at `location` (relative to the project root) or the configured/default folder. */
   init(location?: string): Promise<InitResult>;
+  /** The project (and location, if any) every later call resolves against. */
+  workspace(): Workspace;
+  /**
+   * Points every later call at another project or wiki folder (relative to the
+   * current project root), for the rest of the server's life. Throws, changing
+   * nothing, when the folder does not exist.
+   */
+  use(folder: string): WikiLocation;
 }
 
 export type Args = Record<string, unknown>;
 
 /** Local-only: the team wiki already exists on the server, so the shared contract has no create-wiki tool. */
 export const INIT_TOOL_NAME = 'initLocalWiki';
+/** Local-only: the team server's project comes from the repository binding, not a folder. */
+export const USE_TOOL_NAME = 'useLocalWiki';
 
 const LOCAL_SECTION = {
   type: 'string',
@@ -119,7 +130,8 @@ export function localTool(
         refuseTeamScope(definition.name, args, teamRefs);
         const opened = await context.open();
         const value = await run(opened, args);
-        return textResult(value);
+        // Every result names its wiki folder, so an agent sees which project answered.
+        return textResult(value && typeof value === 'object' && !Array.isArray(value) ? { wikiFolder: opened.dir, ...value } : value);
       } catch (err) {
         if (err instanceof NoLocalWikiError) return noLocalWikiResult(err);
         if (err instanceof TeamScopeRefusal) return textResult(err.message, true);

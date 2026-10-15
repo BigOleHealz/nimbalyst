@@ -14,6 +14,7 @@ const opened = vi.hoisted(() => ({
   shared: vi.fn(() => true),
   personal: vi.fn(),
   items: new Map<string, unknown>(),
+  wikiFiles: new Map<string, string>(),
 }));
 
 vi.mock('@nimbalyst/runtime/editor/utils/workspaceLinkNavigation', () => ({ openWorkspaceFileLink: opened.workspace }));
@@ -28,7 +29,11 @@ vi.mock('../../../store/atoms/collabDocuments', () => ({
   sharedDocumentsAtom: 'team-docs',
   sharedFoldersAtom: 'team-folders',
   getPersonalCollabDocsSession: () => ({ atoms: { sharedDocuments: 'personal-docs', sharedFolders: 'personal-folders' } }),
-  getPersonalCollabHost: () => ({ resolveScope: async () => 'personal-scope', openArtifact: opened.personal }),
+  getPersonalCollabHost: () => ({
+    resolveScope: async () => 'personal-scope',
+    openArtifact: opened.personal,
+    source: () => ({ documentIdForFile: (path: string) => opened.wikiFiles.get(path) ?? null }),
+  }),
 }));
 
 import { htmlLinkBaseFor, isWorkspaceHtmlEmbed, openHtmlEmbedLink } from '../htmlEmbedNavigation';
@@ -125,5 +130,33 @@ describe('relative links in shared HTML pages', () => {
     await vi.waitFor(() => expect(opened.personal).toHaveBeenCalled());
     expect(opened.personal.mock.calls[0]![0]).toMatchObject({ kind: 'document', scope: 'personal-scope', documentId: 'home' });
     expect(opened.workspace).not.toHaveBeenCalled();
+  });
+});
+
+// A Local wiki file can sit outside the active worktree, where the workspace
+// file opener refuses it; its links open wiki pages through the wiki host.
+describe('relative links in a Local wiki HTML file', () => {
+  const wikiMap = '/main/nimbalyst-local/wiki/Map.html';
+  const doc = (documentId: string, title: string, extra: Record<string, unknown> = {}) =>
+    ({ documentId, title, documentType: 'markdown', parentFolderId: null, ...extra });
+
+  beforeEach(() => {
+    opened.wikiFiles.clear();
+    opened.wikiFiles.set(wikiMap, 'pmap');
+    opened.items.set('personal-docs', [doc('pmap', 'Map.html', { documentType: 'html' }), doc('home', 'Home')]);
+    opened.items.set('personal-folders', []);
+  });
+
+  it('opens the linked wiki page, not the workspace file', async () => {
+    openHtmlEmbedLink('./Home.md', { newTab: false, kind: 'relative' }, htmlLinkBaseFor(wikiMap, '/ws-worktree'));
+    await vi.waitFor(() => expect(opened.personal).toHaveBeenCalled());
+    expect(opened.personal.mock.calls[0]![0]).toMatchObject({ kind: 'document', documentId: 'home' });
+    expect(opened.workspace).not.toHaveBeenCalled();
+  });
+
+  it('opens a link that names no wiki page as a file beside the HTML file', () => {
+    openHtmlEmbedLink('Map.assets/chart.png', { newTab: false, kind: 'relative' }, htmlLinkBaseFor(wikiMap, '/ws-worktree'));
+    expect(opened.workspace).toHaveBeenCalledWith('Map.assets/chart.png', wikiMap);
+    expect(opened.personal).not.toHaveBeenCalled();
   });
 });

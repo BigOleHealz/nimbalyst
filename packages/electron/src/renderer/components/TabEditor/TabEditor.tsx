@@ -70,6 +70,7 @@ import { reloadFromDisk, type ReloadOutcome } from './reloadFromDisk';
 import { resolveDiffResolutionSave } from './resolveDiffResolutionSave';
 import { resolveCustomEditorReview } from './resolveCustomEditorReview';
 import { localWikiUploadAssetFor } from '../../services/localWikiAttachments';
+import { findTabEditorRegistration } from './tabEditorRegistration';
 import {
   decideLexicalDiffByBytes,
   decideLexicalDiffByRootNodes,
@@ -214,9 +215,9 @@ export const TabEditor: React.FC<TabEditorProps> = ({
   // Re-computed when registry changes (registryVersion dependency)
   const fileType = useMemo(() => {
     const checkCustomEditor = (): boolean =>
-      customEditorRegistry.findRegistrationForFile(filePath) !== undefined;
+      findTabEditorRegistration(filePath, workspaceId) !== undefined;
     return getFileType(filePath, checkCustomEditor);
-  }, [filePath, registryVersion]);
+  }, [filePath, workspaceId, registryVersion]);
 
   const isMarkdown = fileType === 'markdown';
   const isImage = fileType === 'image';
@@ -225,8 +226,8 @@ export const TabEditor: React.FC<TabEditorProps> = ({
   // Get the custom editor registration for this file (used for source mode and storage)
   const customEditorRegistration = useMemo(() => {
     if (!isCustom) return null;
-    return customEditorRegistry.findRegistrationForFile(filePath) ?? null;
-  }, [isCustom, filePath, registryVersion]);
+    return findTabEditorRegistration(filePath, workspaceId) ?? null;
+  }, [isCustom, filePath, workspaceId, registryVersion]);
 
   // Check if the custom editor supports source mode (from registry)
   const customEditorSupportsSourceMode = customEditorRegistration?.supportsSourceMode || false;
@@ -3366,7 +3367,7 @@ export const TabEditor: React.FC<TabEditorProps> = ({
             // Render custom editor if one is registered for this file's
             // extension. Supports compound extensions of any depth via
             // longest-suffix match (e.g. .mockup.html, .reddit.watch.json).
-            const registration = customEditorRegistry.findRegistrationForFile(filePath) ?? null;
+            const registration = findTabEditorRegistration(filePath, workspaceId) ?? null;
 
             if (registration) {
               // Mark editor as ready when custom editor mounts

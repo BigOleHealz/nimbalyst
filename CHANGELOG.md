@@ -13,9 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 <!-- Changes to existing functionality go here -->
+- The wiki update skill now applies to requests for architecture or product maps, diagrams and HTML pages, keeps a map to one screen with every box linked to a page, and checks those links before finishing.
 
 ### Fixed
 <!-- Bug fixes go here -->
+- Local wiki HTML pages opened from the Pages tree now open in the HTML page editor instead of the browser, and their links open the linked wiki pages.
+- HTML pages in `nim wiki serve` no longer render blank in browser panels that withhold the sign-in cookie from embedded frames.
+- The wiki plugin's local wiki tools can now switch to another project's wiki with `useLocalWiki` when a session moves to a different folder, and every result names the wiki folder in use.
 
 ### Removed
 <!-- Removed features go here -->
