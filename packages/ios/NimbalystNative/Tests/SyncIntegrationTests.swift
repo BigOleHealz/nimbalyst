@@ -735,27 +735,26 @@ final class SyncIntegrationTests: XCTestCase {
         let readable = try crypto.encrypt(plaintext: "ok")
         let foreign = try CryptoManager(seed: "other-seed", userId: "other").encrypt(plaintext: "old key")
         func row(_ id: String, _ seq: Int, _ e: (encrypted: String, iv: String)) -> [String: Any] {
-            ["id": id, "sequence": seq, "revision": seq, "createdAt": 1_000, "source": "assistant", "direction": "output",
+            ["id": id, "sequence": seq, "createdAt": 1_000, "source": "assistant", "direction": "output",
              "encryptedContent": e.encrypted, "iv": e.iv]
         }
         let response = try JSONSerialization.data(withJSONObject: [
-            "type": "syncResponse", "hasMore": false, "revisionCursor": 2,
+            "type": "syncResponse", "hasMore": false,
             "messages": [row("a", 1, (readable.encrypted, readable.iv)), row("b", 2, (foreign.encrypted, foreign.iv))],
         ])
         sync.handleSessionMessage(response, sessionId: "history-session")
         XCTAssertNil(sync.syncError)
         XCTAssertEqual(try database.messages(forSession: "history-session").map(\.id), ["a"])
-        XCTAssertEqual(try database.syncState(forRoom: "history-session")?.lastCursor, "r:2",
-                       "An unreadable inline row does not hold the revision cursor")
+        XCTAssertEqual(try database.syncState(forRoom: "history-session")?.lastSequence, 1)
     }
 
     func testSyncErrorAnalyticsSendsKindAndCodeOncePerWindow() {
         var throttle = SyncErrorAnalyticsThrottle(window: 600)
         let start = Date(timeIntervalSince1970: 0)
-        let incomplete = SyncError(kind: .decrypt, message: "msg", code: "payloadIncomplete", detail: "secret detail")
+        let incomplete = SyncError(kind: .decrypt, message: "msg", code: "decryptFailed", detail: "secret detail")
         let sent = throttle.properties(for: incomplete, now: start)
         XCTAssertEqual(sent?["kind"] as? String, "decrypt")
-        XCTAssertEqual(sent?["code"] as? String, "payloadIncomplete")
+        XCTAssertEqual(sent?["code"] as? String, "decryptFailed")
         XCTAssertEqual(sent?.count, 2, "Message and detail stay on the device")
         XCTAssertNil(throttle.properties(for: incomplete, now: start.addingTimeInterval(60)))
         XCTAssertNotNil(throttle.properties(for: SyncError(kind: .storage, message: "m"), now: start.addingTimeInterval(60)))
@@ -778,10 +777,10 @@ final class SyncIntegrationTests: XCTestCase {
 
         let report = DiagnosticsReport.render(DiagnosticsReport.Facts(
             appVersion: "1.2.1 (3)", osVersion: "iOS 18.1", device: "iPhone", sqliteVersion: "3.46.1",
-            migrations: ["v1", "v20_message_projection_stamp"], connected: true, signedIn: true,
+            migrations: ["v1", "v19_project_local_wiki_folder"], connected: true, signedIn: true,
             sessionCount: nil, errors: [DiagnosticEntry(at: Date(timeIntervalSince1970: 0), area: "sessionList.query",
                 summary: "Couldn't load sessions", detail: "SQLite 1: no such column: b.worktreeId", count: 6)]))
-        for expected in ["SQLite: 3.46.1", "latest v20_message_projection_stamp", "Local sessions: unreadable",
+        for expected in ["SQLite: 3.46.1", "latest v19_project_local_wiki_folder", "Local sessions: unreadable",
                          "Couldn't load sessions (x6)", "no such column: b.worktreeId"] {
             XCTAssertTrue(report.contains(expected), expected)
         }

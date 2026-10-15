@@ -378,14 +378,6 @@ public final class DatabaseManager: @unchecked Sendable {
             }
         }
 
-        // #1711: same-ID transcript repairs are ordered by this stamp. NULL is
-        // projection version 0, so every existing row accepts a repaired copy.
-        migrator.registerMigration("v20_message_projection_stamp") { db in
-            try db.alter(table: "messages") { t in
-                t.add(column: "projectionJson", .text)
-            }
-        }
-
         try migrator.migrate(writer)
         // The projection is derived data with its own shape marker; a recorded
         // migration says nothing about which shape it created.
@@ -530,11 +522,20 @@ public final class DatabaseManager: @unchecked Sendable {
     }
 
     public func appendMessage(_ message: Message) throws {
-        try appendMessages([message])
+        try writer.write { db in
+            // Use INSERT OR IGNORE to skip duplicates (same sessionId + sequence).
+            // This handles the case where we store a message locally (e.g. a sent prompt)
+            // and then receive the same message back via a session room broadcast.
+            try message.insert(db, onConflict: .ignore)
+        }
     }
 
     public func appendMessages(_ messages: [Message]) throws {
-        try writer.write { db in try persistMessageProjections(messages, in: db) }
+        try writer.write { db in
+            for message in messages {
+                try message.insert(db, onConflict: .ignore)
+            }
+        }
     }
 
     // MARK: - Sync State Queries

@@ -14,7 +14,7 @@ import os
 public final class SyncManager: ObservableObject {
     let logger = Logger(subsystem: "com.nimbalyst.app", category: "SyncManager")
 
-    let crypto: CryptoManager
+    private let crypto: CryptoManager
     private let database: DatabaseManager
     let indexClient: WebSocketClient = {
         let client = WebSocketClient()
@@ -929,7 +929,7 @@ public final class SyncManager: ObservableObject {
             sinceSeq = nil
         }
 
-        let request = SessionSyncRequest(sinceRevision: forceFullSync ? 0 : transcriptRevisionCursor((try? database.syncState(forRoom: sessionId))?.lastCursor), sinceSeq: sinceSeq)
+        let request = SessionSyncRequest(sinceSeq: sinceSeq)
         guard let data = try? JSONEncoder().encode(request),
               let json = String(data: data, encoding: .utf8) else {
             logger.error("requestSessionSync failed to encode request for session \(sessionId)")
@@ -973,8 +973,6 @@ public final class SyncManager: ObservableObject {
         switch envelope.type {
         case "syncResponse":
             handleSessionSyncResponse(data, sessionId: sessionId)
-        case "messagePayloadPart":
-            acceptPayloadPart(data, sessionId: sessionId)
         case "messageBroadcast":
             handleMessageBroadcast(data, sessionId: sessionId)
         case "metadataBroadcast":
@@ -1008,10 +1006,10 @@ public final class SyncManager: ObservableObject {
         // Buffer messages for batch insert
         sessionSyncBuffer.append(contentsOf: response.messages)
 
-        if response.hasMore, let cursor = response.revisionCursor.map(String.init) ?? response.cursor {
+        if response.hasMore, let cursor = response.cursor {
             // Request next page
             let sinceSeq = Int(cursor)
-            let request = SessionSyncRequest(sinceRevision: response.revisionCursor, sinceSeq: response.revisionCursor == nil ? sinceSeq : nil)
+            let request = SessionSyncRequest(sinceSeq: sinceSeq)
             if let data = try? JSONEncoder().encode(request),
                let json = String(data: data, encoding: .utf8) {
                 requests.send(kind: .sessionSyncPage, channel: .session, json: json)
@@ -1036,31 +1034,26 @@ public final class SyncManager: ObservableObject {
             return msg
         }
 
-        let maxRevision = sessionSyncBuffer.compactMap(\.revision).max()
-        let receivedEntries = sessionSyncBuffer
-        // An inline row that fails to decrypt is from a prior key epoch and never
-        // becomes readable; only an incomplete chunked row may heal on a refetch.
-        let holdsCursor = receivedEntries.contains { $0.payload != nil && failedIds.contains($0.id) }
         sessionSyncBuffer = []
 
         // Log decryption results
         if !failedIds.isEmpty {
             logger.error("Decryption failed for \(failedIds.count)/\(totalCount) messages in session \(sessionId). Failed sequences: \(failedSeqs.prefix(10))")
-            recordUnreadableHistory(failed: failedIds.count, of: totalCount)
+            // Unreadable history rows go to "Copy diagnostics" only, never the banner.
+            DiagnosticsLog.shared.record(area: "sync.decrypt", summary: "Some synced messages could not be decrypted",
+                                         detail: "\(failedIds.count) of \(totalCount) in one session")
         }
 
         do {
             try database.appendMessages(messages)
-            for entry in receivedEntries where !failedIds.contains(entry.id) { sessionPayloads.release(entry, sessionId: sessionId) }
 
-            let previous = try database.syncState(forRoom: sessionId)
             // Update sync watermark to max sequence
             if let maxSeq = messages.map(\.sequence).max() {
                 let now = Int(Date().timeIntervalSince1970 * 1000)
                 let syncState = SyncState(
                     roomId: sessionId,
-                    lastCursor: !holdsCursor ? maxRevision.map { "r:\(max($0, transcriptRevisionCursor(previous?.lastCursor)))" } ?? previous?.lastCursor : previous?.lastCursor,
-                    lastSequence: max(maxSeq, previous?.lastSequence ?? 0),
+                    lastCursor: nil,
+                    lastSequence: maxSeq,
                     lastSyncedAt: now
                 )
                 try database.updateSyncState(syncState)
@@ -1125,9 +1118,6 @@ public final class SyncManager: ObservableObject {
 
         do {
             try database.appendMessage(message)
-            if !sessionSyncBuffer.contains(where: { $0.payload?.transferId == broadcast.message.payload?.transferId }) {
-                sessionPayloads.release(broadcast.message, sessionId: sessionId)
-            }
 
             // #NIM-5924: the watermark only moves forward. A broadcast that
             // arrives late, or out of order after a reconnect, used to rewind
@@ -1137,7 +1127,7 @@ public final class SyncManager: ObservableObject {
             guard message.sequence > lastSequence else { return }
             try database.updateSyncState(SyncState(
                 roomId: sessionId,
-                lastCursor: (try database.syncState(forRoom: sessionId))?.lastCursor,
+                lastCursor: nil,
                 lastSequence: message.sequence,
                 lastSyncedAt: Int(Date().timeIntervalSince1970 * 1000)
             ))
@@ -1236,8 +1226,28 @@ public final class SyncManager: ObservableObject {
 
     // MARK: - Message Decryption
 
-    /// See SyncManager+SessionPayloads.swift.
-    let sessionPayloads = SessionPayloadStore()
+    private func decryptServerMessage(_ entry: ServerMessageEntry, sessionId: String) -> Message? {
+        let decrypted: String?
+        do {
+            decrypted = try crypto.decrypt(encryptedBase64: entry.encryptedContent, ivBase64: entry.iv)
+        } catch {
+            logger.error("Failed to decrypt message \(entry.id) seq=\(entry.sequence) in session \(sessionId): \(error.localizedDescription). encryptedContent length=\(entry.encryptedContent.count), iv length=\(entry.iv.count)")
+            return nil
+        }
+
+        return Message(
+            id: entry.id,
+            sessionId: sessionId,
+            sequence: entry.sequence,
+            source: entry.source,
+            direction: entry.direction,
+            encryptedContent: entry.encryptedContent,
+            iv: entry.iv,
+            contentDecrypted: decrypted,
+            metadataJson: nil,
+            createdAt: entry.createdAt
+        )
+    }
 
     // MARK: - Draft Input Sync
 

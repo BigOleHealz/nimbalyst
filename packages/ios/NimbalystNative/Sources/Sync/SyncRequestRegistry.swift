@@ -24,7 +24,7 @@ public struct SyncError: Identifiable {
     public let id: UUID
     public let kind: Kind
     public let message: String
-    /// Short stable identifier for analytics (e.g. `payloadIncomplete`); never prose.
+    /// Short stable identifier for analytics; never prose.
     public let code: String?
     /// Technical cause for "Copy diagnostics"; never shown in the banner.
     public let detail: String?

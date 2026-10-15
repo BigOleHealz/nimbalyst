@@ -1,6 +1,3 @@
-import { SessionPayloadChannel, SessionPayloadPublicationError } from './sessionPayloadChannel';
-import { decodeSessionPayload } from './sessionPayloadCodec';
-import { SessionPayloadInbox } from './sessionPayloadInbox';
 import { encryptSessionMessage as encryptMessage } from './encryptSessionMessage';
 import { applyReplicatedSessionRows, createIndexChangeSubscriptions, createHierarchySnapshotDispatch, dispatchIndexChange, reconcileFetchedIndex } from './indexChangeDispatch';
 import { createPendingIndexPublications } from './pendingIndexPublications';
@@ -656,7 +653,6 @@ async function decryptProjectPath(
 
 interface SessionConnection {
   ws: WebSocket;
-  payloadChannel: SessionPayloadChannel;
   status: SyncStatus;
   statusListeners: Set<(status: SyncStatus) => void>;
   changeListeners: Set<(change: SessionChange) => void>;
@@ -1901,15 +1897,11 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
     session.statusListeners.forEach((cb) => cb(session.status));
   }
 
-  const payloadInbox = new SessionPayloadInbox();
-
   async function decryptMessage(
     encrypted: EncryptedMessage,
     key: CryptoKey
   ): Promise<AgentMessage> {
-    const parts = payloadInbox.parts(encrypted.payload?.transferId);
-    payloadInbox.remove(encrypted.payload?.transferId);
-    const decrypted = await decodeSessionPayload(encrypted, key, parts);
+    const decrypted = await decrypt(encrypted.encryptedContent, encrypted.iv, key);
     const parsed = JSON.parse(decrypted);
 
     return {
@@ -1939,11 +1931,7 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
         typeof data === 'string' ? data : new TextDecoder().decode(data)
       );
 
-      session.payloadChannel.receive(message);
       switch (message.type) {
-        case 'messagePayloadPart':
-          payloadInbox.add(message.part);
-          break;
         case 'syncResponse':
           handleSyncResponse(sessionId, message);
           break;
@@ -1993,7 +1981,7 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
 
     // Update last sequence
     if (response.messages.length > 0) {
-      session.lastSequence = Math.max(session.lastSequence, ...response.messages.map(message => message.sequence));
+      session.lastSequence = response.messages[response.messages.length - 1].sequence;
     }
 
     // Cache metadata from sync response (includes queuedPrompts if present)
@@ -2004,13 +1992,11 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
 
     // Decrypt and emit messages as remote changes
     if (session.encryptionKey && response.messages.length > 0) {
-      // An inline row that fails to decrypt was written under a prior
-      // personal-key seed epoch (keychain reset / reinstall / an unpaired
-      // device) and can never be read: skip it, as before #1711. Only a
-      // chunked row can be incomplete and heal on reconnect, so only that
-      // holds the page. Report a bounded summary without transcript plaintext.
+      // A row that fails to decrypt was written under a prior personal-key
+      // seed epoch (keychain reset / reinstall / an unpaired device), or was
+      // blanked by the server when chunked rows were retired (#1711). Neither
+      // can ever be read: skip it and keep paging. Report a bounded summary.
       let decryptFailures = 0;
-      let incompletePayloads = 0;
       let oldestFailedAt: number | null = null;
       let newestFailedAt: number | null = null;
       let firstFailedId = '';
@@ -2025,7 +2011,6 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
         } catch {
           if (decryptFailures === 0) firstFailedId = encrypted.id;
           decryptFailures++;
-          if (encrypted.payload) incompletePayloads++;
           const at = new Date(encrypted.createdAt).getTime();
           if (!Number.isNaN(at)) {
             if (oldestFailedAt === null || at < oldestFailedAt) oldestFailedAt = at;
@@ -2035,14 +2020,10 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
       }
       if (decryptFailures > 0) {
         console.warn(
-          `[CollabV3] ${decryptFailures}/${response.messages.length} messages could not be authenticated or reassembled for session ${sessionId} ` +
-          `(${incompletePayloads} chunked). firstId=${firstFailedId} ` +
+          `[CollabV3] ${decryptFailures}/${response.messages.length} messages undecryptable for session ${sessionId} ` +
+          `(unrecoverable). firstId=${firstFailedId} ` +
           `createdAt=${oldestFailedAt ? new Date(oldestFailedAt).toISOString() : '?'}..${newestFailedAt ? new Date(newestFailedAt).toISOString() : '?'}`,
         );
-      }
-      if (incompletePayloads > 0) {
-        updateStatus(sessionId, { syncing: false, error: 'Transcript content could not be reassembled. Reconnect to retry.' });
-        return; // Never page past an incomplete logical message.
       }
     }
 
@@ -2053,10 +2034,10 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
     });
 
     // Request more if needed
-    if (response.hasMore && (response.revisionCursor !== undefined || response.cursor)) {
+    if (response.hasMore && response.cursor) {
       const nextRequest: ClientMessage = {
         type: 'syncRequest',
-        ...(response.revisionCursor !== undefined ? { sinceRevision: response.revisionCursor } : { sinceSeq: parseInt(response.cursor!, 10) }),
+        sinceSeq: parseInt(response.cursor, 10),
       };
       session.ws.send(JSON.stringify(nextRequest));
     }
@@ -2207,7 +2188,7 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
     console.log('[CollabV3] connectToIndex() roomId:', indexRoomId, 'orgId:', config.orgId, 'personalMemberId:', getPersonalMemberId());
     const url = getWebSocketUrl(indexRoomId);
     // Pass JWT via query parameter (WebSocket doesn't support custom headers in browsers)
-    const wsUrl = appendSyncClientParams(`${url}?token=${encodeURIComponent(jwt)}&sessionPayloadVersion=1`);
+    const wsUrl = appendSyncClientParams(`${url}?token=${encodeURIComponent(jwt)}`);
 
     indexWs = openWebSocket(wsUrl);
 
@@ -2870,7 +2851,7 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
       // console.log('[CollabV3] syncSessionMessages() - CREATING TEMP WebSocket for session', sessionId);
       const { jwt } = await ensureFreshJwt();
       // Pass JWT via query parameter (WebSocket doesn't support custom headers in browsers)
-      const ws = openWebSocket(appendSyncClientParams(`${getWebSocketUrl(getRoomId(sessionId))}?token=${encodeURIComponent(jwt)}&sessionPayloadVersion=1`));
+      const ws = openWebSocket(appendSyncClientParams(`${getWebSocketUrl(getRoomId(sessionId))}?token=${encodeURIComponent(jwt)}`));
       transientSockets.add(ws);
       return { ws, release: () => transientSockets.delete(ws) };
     },
@@ -3261,21 +3242,14 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
           //   source: encrypted.source,
           //   direction: encrypted.direction,
           // });
-          if (generation !== indexConnectionGeneration || sessions.get(sessionId) !== session || withholdPersonalSyncWrite('transcript publication')) {
-            return { published: false, reason: 'transcript write superseded or withheld', retryable: true };
+          if (generation !== indexConnectionGeneration || sessions.get(sessionId) !== session) {
+            return { published: false, reason: 'transcript write superseded', retryable: true };
           }
-          await session.payloadChannel.publish(encrypted);
-          session.lastActivity = Date.now();
-          return { published: true };
+          clientMessage = { type: 'appendMessage', message: encrypted };
         } catch (err) {
-          console.error('[CollabV3] Message publication failed:', err);
-          // Socket loss and ack timeouts retry; a server refusal or a local
-          // encode/encrypt failure would fail the same way again.
-          const retryable = err instanceof SessionPayloadPublicationError && err.retryable;
-          if (!(err instanceof SessionPayloadPublicationError && err.skippable)) {
-            updateStatus(sessionId, { syncing: false, error: err instanceof Error ? err.message : 'Message publication failed' });
-          }
-          return { published: false, reason: err instanceof Error ? err.message : 'message publication failed', retryable };
+          console.error('[CollabV3] Failed to encrypt message:', err);
+          // Deterministic: the same row would fail the same way.
+          return { published: false, reason: 'encryption failed', retryable: false };
         }
         break;
       }
@@ -3382,6 +3356,17 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
         console.error('[CollabV3] Failed to send message:', err);
         sessionRoomOutcome = { published: false, reason: 'session room send failed', retryable: true };
       }
+    } else if (change.type === 'message_added') {
+      // The only branch where a message row silently goes nowhere: either the
+      // session room is not connected or the personal-sync write gate is
+      // holding writes back. Both clear on reconnect, so this is retryable.
+      sessionRoomOutcome = {
+        published: false,
+        reason: sessionConnected
+          ? 'personal-sync writes are withheld'
+          : 'session room is not connected',
+        retryable: true,
+      };
     }
 
     // Handle index updates based on change type
@@ -3602,14 +3587,13 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
       }
       const url = getWebSocketUrl(roomId);
       // Pass JWT via query parameter (WebSocket doesn't support custom headers in browsers)
-      const wsUrl = appendSyncClientParams(`${url}?token=${encodeURIComponent(jwt)}&sessionPayloadVersion=1`);
+      const wsUrl = appendSyncClientParams(`${url}?token=${encodeURIComponent(jwt)}`);
 
       return new Promise<void>((resolve, reject) => {
         const ws = openWebSocket(wsUrl);
 
         const session: SessionConnection = {
           ws,
-          payloadChannel: new SessionPayloadChannel(ws),
           status: createInitialStatus(),
           statusListeners: sessionStatusListeners.get(sessionId) ?? new Set(),
           changeListeners: sessionChangeListeners.get(sessionId) ?? new Set(),
@@ -3634,14 +3618,13 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
           updateStatus(sessionId, { connected: true, syncing: true });
 
           // Request initial sync
-          const syncRequest: ClientMessage = { type: 'syncRequest', sinceRevision: 0 };
+          const syncRequest: ClientMessage = { type: 'syncRequest' };
           ws.send(JSON.stringify(syncRequest));
 
           resolve();
         };
 
         ws.onclose = (event: CloseEvent) => {
-          session.payloadChannel.dispose();
           clearTimeout(timeout);
           reject(new Error('Session connection closed before opening'));
           if (sessions.get(sessionId) !== session) return;
@@ -3690,14 +3673,12 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
       const session = sessions.get(sessionId);
       if (!session) return;
 
-      session.payloadChannel.dispose();
       session.ws.close();
       sessions.delete(sessionId);
     },
 
     disconnectAll(): void {
       sessionWritesClosed = true;
-      payloadInbox.clear();
       sessionWriteGeneration++;
       for (const ws of [...transientSockets]) ws.close();
       transientSockets.clear();
@@ -3810,12 +3791,12 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
         : publish();
     },
 
-    async sendSessionMessages(sessionId: string, messages: AgentMessage[], replay?: { activityAt: number }): Promise<PushChangeOutcome> {
+    async sendSessionMessages(sessionId: string, messages: AgentMessage[]): Promise<PushChangeOutcome> {
       if (sessionWritesClosed) return { published: false, reason: 'sync was shut down', retryable: false };
       const sendable = messages.filter(m => shouldSyncMessageForSessionRoom(m.source, m.metadata, m.content, m.hidden));
       if (sendable.length === 0) return { published: false, reason: 'filtered from session-room sync', retryable: false };
       try {
-        return await syncSessionMessages(sessionId, sendable, replay);
+        return await syncSessionMessages(sessionId, sendable);
       } catch (error) {
         return { published: false, reason: error instanceof Error ? error.message : String(error), retryable: true };
       }
