@@ -192,6 +192,22 @@ describe('in-memory collaborative editor harness', () => {
     await waitFor(() => expect(yDocument.getMap('decisions').get('browser-q\x1fteam-reader')).toMatchObject({ answer: { type: 'singleSelect', selectedId: 'yes' } }));
   });
 
+  it('answers a decision on a page with no room, like a local file, instead of waiting for answer status', async () => {
+    const yDocument = new Y.Doc();
+    MarkdownCollabContentAdapter.seedFromFile(yDocument, '```decision\nask: Retry on weekends?\ntype: singleSelect\noptions:\n  - id: always\n    label: Always\n  - id: never\n    label: Never\n```');
+    const element = document.createElement('div'); document.body.append(element);
+    const handle = mountCollabEditor({ element, source: { kind: 'in-memory', document: yDocument }, user: { memberId: asTeamMemberId('local'), name: 'You' } });
+    mountedHandles.push(handle);
+    await settle();
+    await waitFor(() => expect(element.querySelector('button[data-testid="decision-option-row"]')).not.toBeNull());
+    expect(element.textContent).not.toContain('Loading answer status');
+    fireEvent.click([...element.querySelectorAll('button')].find((button) => button.textContent?.includes('Always'))!);
+    fireEvent.click(element.querySelector('[data-testid="decision-answer"]')!);
+    await waitFor(() => expect(handle.getMarkdown()).toMatch(/\nresolved: always\n/));
+    expect(handle.getMarkdown()).toMatch(/\nid: dcn-[0-9a-f]{6}\n/);
+    expect(yDocument.getMap('decisions').size).toBe(0);
+  });
+
   it('writes references inserted in a team room as that project\'s console links', () => {
     const element = document.createElement('div'); document.body.append(element);
     const handle = mountCollabEditor({
