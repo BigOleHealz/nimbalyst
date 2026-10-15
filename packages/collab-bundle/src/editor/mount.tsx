@@ -211,6 +211,7 @@ export function mountCollabEditor(options: CollabEditorMountOptions): CollabEdit
     hasPendingWrites: () => session.networkProvider?.hasPendingWrites() ?? false,
     getPresence: () => presenceSurface.getPresence(),
     setPresenceActive: (active) => { presenceSurface.setActive(active); },
+    setUser: (user) => { presenceSurface.setDisplayName(resolveCollabEditorUser(user).displayName); },
     flush: (flushOptions) => session.flush(flushOptions),
     setReadOnly(nextReadOnly) {
       if (destroyed) return;

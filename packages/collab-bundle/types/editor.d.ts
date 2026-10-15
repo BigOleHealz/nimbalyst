@@ -326,6 +326,8 @@ export interface CollabEditorHandle {
   getPresence(): CollabEditorPresence;
   /** Announce departure/backgrounding or rejoin for host-managed lifecycles. */
   setPresenceActive(active: boolean): void;
+  /** Relabel this participant once the host resolves a name. Does not remount. */
+  setUser(user: CollabEditorUser): void;
   flush(options?: { timeoutMs?: number }): Promise<CollabEditorFlushResult>;
   setReadOnly(readOnly: boolean): void;
   /**
@@ -831,6 +833,8 @@ export interface ExtensionEditorHandle {
   getEditorAPI(): unknown | null;
   getMenuItems(): readonly EditorMenuItem[];
   setPresenceActive(active: boolean): void;
+  /** Relabel this participant once the host resolves a name. Does not remount. */
+  setUser(user: CollabEditorUser): void;
   setTheme(theme: string): void;
   setVisible(visible: boolean): void;
   setReadOnly(readOnly: boolean): void;

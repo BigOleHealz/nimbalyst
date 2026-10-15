@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- Bug fixes go here -->
 - Charts whose x column holds plain dates such as 2026-08-31 show one label per row, like "Aug 31", instead of weekday ticks that missed the rows.
 - Decision blocks in the local wiki browser view no longer stay on "Loading answer status...", and votes on a decision block typed by hand into a team page are kept after a reload.
+- In shared documents, a collaborator's cursor label shows their name, or their email when no name is set, instead of an internal member ID such as `member-live-...`.
 
 ### Removed
 <!-- Removed features go here -->

@@ -61,6 +61,7 @@ import { $getRoot, $setSelection, type LexicalEditor } from 'lexical';
 import type { EditorHost, ExtensionStorage } from '@nimbalyst/runtime';
 import type { CollabDocumentConfig } from '../../utils/collabDocumentOpener';
 import { resolveCollabConfigForUri } from '../../utils/collabDocumentOpener';
+import { collabPresenceName } from '../../utils/collabPresenceName';
 import { store, editorDirtyAtom, makeEditorKey, themeIdAtom } from '@nimbalyst/runtime/store';
 import type { Doc } from 'yjs';
 import type { Provider } from '@lexical/yjs';
@@ -966,10 +967,10 @@ export const CollaborativeTabEditor: React.FC<CollaborativeTabEditorProps> = ({
     providerFactory,
     shouldBootstrap: !!activeConfig.initialContent,
     initialContent: activeConfig.initialContent,
-    username: activeConfig.userName || activeConfig.teamMemberId,
+    username: collabPresenceName(activeConfig),
     cursorColor,
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [providerFactory, activeConfig.initialContent, activeConfig.userName, activeConfig.teamMemberId, cursorColor]);
+  }), [providerFactory, activeConfig.initialContent, activeConfig.userName, activeConfig.userEmail, activeConfig.teamMemberId, cursorColor]);
 
   // Document comments config for the markdown collab branch. Comments live in
   // the same shared Y.Doc (top-level `comments` array); `onMention` / `onReply`
@@ -1677,7 +1678,7 @@ const MonacoCollabBranch: React.FC<MonacoCollabBranchProps> = ({
       yDoc: syncProvider.getYDoc(),
       user: {
         id: activeConfig.teamMemberId,
-        name: activeConfig.userName ?? activeConfig.teamMemberId,
+        name: collabPresenceName(activeConfig),
         color: '#3A8FD6',
       },
     });
@@ -1885,7 +1886,7 @@ const ExtensionCollabBranch: React.FC<ExtensionCollabBranchProps> = ({
       yDoc: syncProvider.getYDoc(),
       user: {
         id: activeConfig.teamMemberId,
-        name: activeConfig.userName ?? activeConfig.teamMemberId,
+        name: collabPresenceName(activeConfig),
         color: '#3A8FD6',
       },
     });
