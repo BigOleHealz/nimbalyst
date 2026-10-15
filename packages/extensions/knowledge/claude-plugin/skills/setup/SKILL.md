@@ -50,15 +50,15 @@ Use the answers to choose the pages, their depth, and the types. Reflect the int
 
 ## 3. Guide page
 
-- **Base version:** 7. The base text is `references/wiki-guide.md`, unchanged; its last line names the version.
+- **Base version:** 8. The base text is `references/wiki-guide.md`, unchanged; its last line names the version.
 - **Find it.** `listPages` for the section, then look for a page titled "How we write this wiki" and read it with `readCollabDoc` at its `uri`.
 - **Missing:** create it with `createSharedDoc` (`section`, `title: How we write this wiki`, no parent, `after` the Home page's node when there is one, `initialContent` = the base text). Read it back at the returned `uri` and confirm the text is there.
 - **Only the earlier guide exists** (an `entity` titled "How we write this wiki"): leave it. Offer to create the new page and carry over the team's own edits that still apply; create it only after the person approves the merged text.
 
 If the guide page exists, **never overwrite it**. Compare it with the base, ignoring whitespace:
 
-- Same text: "already present, matches base version 7".
-- Different text, version line 7: the team edited it. Report "already present, edited by the team".
+- Same text: "already present, matches base version 8".
+- Different text, version line 8: the team edited it. Report "already present, edited by the team".
 - Different text, older or missing version line: the base changed since it was installed, and the team may also have edited it. Report both.
 
 When it differs, offer a diff and a merge that keeps every team edit and proposes only the base changes that do not conflict. A section or table the base added (version 7 added "Our visual defaults") does not conflict: propose it whole, at the base's position. If the team already wrote a section on the same subject, keep theirs and propose only the rows or points it lacks; a row the team changed stays as they wrote it. Update the version line only as part of the approved merge. Write it with `applyCollabDocEdit` only after the person approves the merged text. A team that rewrote the guide on purpose may decline; that is final until they ask again.

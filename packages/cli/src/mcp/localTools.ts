@@ -44,6 +44,25 @@ const LOCAL_PAGE_REF = {
 };
 
 /**
+ * Contract argument wording that is wrong on a local wiki: local typed pages
+ * have ids, never issue keys, and the wiki has no sections or projects.
+ */
+const LOCAL_WORDING: Array<[RegExp, string]> = [
+  [/ \/ issue key/g, ''],
+  [/, issue key or type id/g, ' or type id'],
+  [/ or issue key, or type id/g, ', or type id'],
+  [/, or typed-page issue key/g, ''],
+  [/top of the (?:section|project)/g, 'top of the wiki'],
+];
+
+function localWording(property: unknown): unknown {
+  if (!property || typeof property !== 'object') return property;
+  const { description } = property as { description?: unknown };
+  if (typeof description !== 'string') return property;
+  return { ...property, description: LOCAL_WORDING.reduce((text, [from, to]) => text.replace(from, to), description) };
+}
+
+/**
  * The contract's name and input schema, with the local description, `section`
  * and page-uri wording, minus arguments that mean nothing locally, plus any
  * local-only arguments.
@@ -55,7 +74,7 @@ export function contractDefinition(
 ): McpToolDefinition {
   const contract = pageToolContract(name);
   if (!contract) throw new Error(`nim mcp: ${name} is not in the page tool contract`);
-  const properties: Record<string, unknown> = { ...contract.inputSchema.properties };
+  const properties: Record<string, unknown> = Object.fromEntries(Object.entries(contract.inputSchema.properties).map(([key, value]) => [key, localWording(value)]));
   for (const key of options.drop ?? []) delete properties[key];
   if ('section' in properties) properties.section = LOCAL_SECTION;
   if ('filePath' in properties) properties.filePath = LOCAL_PAGE_REF;

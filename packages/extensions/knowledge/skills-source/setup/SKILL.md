@@ -62,7 +62,7 @@ Use the answers to choose the pages, their depth, and the types. Reflect the int
 
 ## 3. Guide page
 
-- **Base version:** 7. The base text is `references/wiki-guide.md`, unchanged; its last line names the version.
+- **Base version:** 8. The base text is `references/wiki-guide.md`, unchanged; its last line names the version.
 <!-- desktop-only -->
 - **Find it.** `listPages` for the section, then look for a page titled "How we write this wiki" and read it with `readCollabDoc` at its `uri`.
 <!-- /desktop-only -->
@@ -74,8 +74,8 @@ Use the answers to choose the pages, their depth, and the types. Reflect the int
 
 If the guide page exists, **never overwrite it**. Compare it with the base, ignoring whitespace:
 
-- Same text: "already present, matches base version 7".
-- Different text, version line 7: the team edited it. Report "already present, edited by the team".
+- Same text: "already present, matches base version 8".
+- Different text, version line 8: the team edited it. Report "already present, edited by the team".
 - Different text, older or missing version line: the base changed since it was installed, and the team may also have edited it. Report both.
 
 When it differs, offer a diff and a merge that keeps every team edit and proposes only the base changes that do not conflict. A section or table the base added (version 7 added "Our visual defaults") does not conflict: propose it whole, at the base's position. If the team already wrote a section on the same subject, keep theirs and propose only the rows or points it lacks; a row the team changed stays as they wrote it. Update the version line only as part of the approved merge. Write it with `applyCollabDocEdit` only after the person approves the merged text. A team that rewrote the guide on purpose may decline; that is final until they ask again.
@@ -163,5 +163,14 @@ When the `connect` skill chose the local wiki (or the person asked for one), set
 - **Links** in Home and every page are relative paths carrying the target's id, as the update skill's "On a local wiki" says, never console links.
 - **Types** are files, not a tool call: there is no `tracker_define_type` here. Write `.nimbalyst/trackers/<type>.yaml` with the same fields as the JSON above, in YAML, plus `storage: pages` (one markdown page per item, with a body and child pages). Use `storage: table` (one CSV of rows: fields only, no body, no children) only when the person asks for a table; a list that later needs notes has to be converted. To convert a table type, call `convertTypeStorage` (`storage: pages`); it keeps item ids and field values, so never move the CSV or edit `storage:` by hand. Leave out `sharing`. If `tracker_list_types` reports `problems` for a type, fix the type file. Check `tracker_list_types` first and never overwrite an existing type file without the person's approval. Place a table type under a page with `moveSharedItem` (`kind: type`).
 - **Relations, placed views and marks lists** are team-wiki features; skip step 6 on a local wiki. The reference's "Local wiki" part says what stands in for each view on Home and the sections.
+- **Paths.** When you draft a page from sources, a Module from its folder or a section from part of the code, record the folders it summarized in its `paths` field: `setPageFields` for a plain page, `tracker_update` `fields` for a typed one. Keep the globs coarse, a folder (`src/sync/**`) rather than a list of files. `pagesForFiles` then finds the page when that code changes. A page drawn from people's answers, not code, has no `paths`.
+- **The instruction file**, once: offer to add these lines to the repository's `CLAUDE.md`, or `AGENTS.md` when that is the file the repository uses, with the wiki folder filled in. Those files are the person's and teammates without the plugin read them too, so write only on a yes, and leave a file that already mentions the wiki alone. For a wiki under the gitignored `nimbalyst-local/`, teammates do not have the folder: offer `CLAUDE.local.md` (Claude Code's uncommitted personal file) instead, and with only `AGENTS.md`, say the lines would point teammates at a folder they lack.
+
+  ```markdown
+  ## Project wiki
+
+  Decisions and context for this project are in the wiki at `<wiki folder>/` (start at `Home.md`). Before changing an area, read the pages that cover it; a page's `paths` field names the code it explains.
+  After deciding something, record it in the page it affects with the nimbalyst-wiki plugin's `/nimbalyst-wiki:capture` skill.
+  ```
 - **When you finish**, offer to open the wiki in the browser with `openWikiInBrowser`.
 <!-- /local-only -->

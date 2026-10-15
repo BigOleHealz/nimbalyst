@@ -3,7 +3,7 @@
 
 // packages/cli/src/mcp/pluginEntry.ts
 import { existsSync as existsSync7 } from "node:fs";
-import path24 from "node:path";
+import path26 from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
 // packages/cli/src/cli/exitCodes.ts
@@ -78,13 +78,12 @@ var ToolMap = class {
 
 // packages/cli/src/mcp/stdioServer.ts
 var DEFAULT_PROTOCOL = "2025-06-18";
-var SERVER_INSTRUCTIONS = "These tools read and write this project's local wiki, a folder of markdown pages. Before writing or changing any wiki page, including architecture or product maps, diagrams, HTML pages and other visuals, load the `update` skill from the nimbalyst-wiki plugin and follow it. Every result names the wiki folder in use; if the session has moved to another project, call `useLocalWiki` with that project folder first.";
 var rpcError = (id, code, message) => ({
   jsonrpc: "2.0",
   id,
   error: { code, message }
 });
-async function handleMessage(message, tools, serverInfo, takeNotice) {
+async function handleMessage(message, tools, serverInfo, takeNotice, instructions) {
   if (!message || typeof message !== "object" || Array.isArray(message)) {
     return rpcError(null, -32600, "Invalid request");
   }
@@ -99,7 +98,7 @@ async function handleMessage(message, tools, serverInfo, takeNotice) {
         protocolVersion: typeof request.params?.protocolVersion === "string" ? request.params.protocolVersion : DEFAULT_PROTOCOL,
         capabilities: { tools: {} },
         serverInfo,
-        instructions: SERVER_INSTRUCTIONS
+        ...instructions ? { instructions } : {}
       });
     case "ping":
       return reply({});
@@ -132,7 +131,7 @@ function runStdioServer(options) {
   const send = (response) => output.write(`${JSON.stringify(response)}
 `);
   let queue = Promise.resolve();
-  return new Promise((resolve7) => {
+  return new Promise((resolve8) => {
     const lines = createInterface({ input, crlfDelay: Infinity });
     lines.on("line", (line) => {
       if (!line.trim()) return;
@@ -144,19 +143,19 @@ function runStdioServer(options) {
           send(rpcError(null, -32700, "Parse error"));
           return;
         }
-        const response = await handleMessage(message, options.tools, options.serverInfo, options.takeNotice);
+        const response = await handleMessage(message, options.tools, options.serverInfo, options.takeNotice, options.instructions);
         if (response) send(response);
       });
     });
     lines.on("close", () => {
-      void queue.then(() => resolve7());
+      void queue.then(() => resolve8());
     });
   });
 }
 
 // packages/cli/src/mcp/serverTools.ts
 import * as fs2 from "node:fs";
-import * as path11 from "node:path";
+import * as path13 from "node:path";
 
 // packages/local-wiki/src/wiki.ts
 import { mkdir as mkdir3, readdir as readdir4, readFile as readFile7, rm as rm2, rmdir, stat as stat3, unlink as unlink2 } from "node:fs/promises";
@@ -3952,21 +3951,21 @@ async function scanWiki(input) {
     };
   };
   const walk = async (dirRel, parent) => {
-    let entries;
+    let entries2;
     try {
-      entries = await readdir(toAbs(root, dirRel), { withFileTypes: true });
+      entries2 = await readdir(toAbs(root, dirRel), { withFileTypes: true });
     } catch {
       return;
     }
-    const sidecarTargets = new Set(entries.filter((e) => e.isFile() && isSidecarName(e.name)).map((e) => sidecarTarget(e.name)));
-    entries = entries.filter((e) => !isHidden(e.name)).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
-    const fileNames = new Set(entries.filter((e) => e.isFile()).map((e) => e.name));
+    const sidecarTargets = new Set(entries2.filter((e) => e.isFile() && isSidecarName(e.name)).map((e) => sidecarTarget(e.name)));
+    entries2 = entries2.filter((e) => !isHidden(e.name)).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+    const fileNames = new Set(entries2.filter((e) => e.isFile()).map((e) => e.name));
     for (const target of sidecarTargets) {
       if (!fileNames.has(target)) {
         state.issues.push({ code: "orphan-sidecar", path: relJoin(dirRel, sidecarName(target)), message: `Sidecar for ${target}, which is not in this folder` });
       }
     }
-    const dirs = entries.filter((e) => e.isDirectory()).map((e) => e.name);
+    const dirs = entries2.filter((e) => e.isDirectory()).map((e) => e.name);
     const consumedDirs = /* @__PURE__ */ new Set();
     const readmeName = parent?.bodySource === "readme" && parent.dir === dirRel && parent.path ? path2.posix.basename(parent.path) : null;
     const pagesHere = [];
@@ -3976,7 +3975,7 @@ async function scanWiki(input) {
       if (!keyNames.has(key)) keyNames.set(key, /* @__PURE__ */ new Set());
       keyNames.get(key).add(name);
     };
-    for (const entry of entries) {
+    for (const entry of entries2) {
       if (!entry.isFile()) continue;
       const lower = entry.name.toLowerCase();
       if (lower.endsWith(".csv")) {
@@ -4119,8 +4118,8 @@ async function scanWiki(input) {
   };
   await walk("", null);
   try {
-    const entries = await readdir(toAbs(root, TRASH_DIR), { withFileTypes: true });
-    for (const entry of entries) {
+    const entries2 = await readdir(toAbs(root, TRASH_DIR), { withFileTypes: true });
+    for (const entry of entries2) {
       if (!entry.isDirectory()) continue;
       const entryDir = relJoin(TRASH_DIR, entry.name);
       try {
@@ -4540,7 +4539,7 @@ import { hostname } from "node:os";
 import { randomBytes as randomBytes2 } from "node:crypto";
 import * as path4 from "node:path";
 var LOCK_FILE = ".nimbalyst-wiki.lock";
-var sleep = (ms) => new Promise((resolve7) => setTimeout(resolve7, ms));
+var sleep = (ms) => new Promise((resolve8) => setTimeout(resolve8, ms));
 async function readLock(file) {
   try {
     const data = JSON.parse(await readFile3(file, "utf8"));
@@ -5059,10 +5058,10 @@ var WikiCore = class {
     const occupied = /* @__PURE__ */ new Set();
     let names = [];
     try {
-      const entries = await readdir3(this.abs(dir), { withFileTypes: true });
-      const sidecarTargets = new Set(entries.filter((e) => e.isFile() && isSidecarName(e.name)).map((e) => sidecarTarget(e.name)));
+      const entries2 = await readdir3(this.abs(dir), { withFileTypes: true });
+      const sidecarTargets = new Set(entries2.filter((e) => e.isFile() && isSidecarName(e.name)).map((e) => sidecarTarget(e.name)));
       const tableFiles = new Set([...this.state.tables.values()].map((table) => nameKey(table.path)));
-      names = entries.filter((e) => !e.name.startsWith(".")).map((e) => {
+      names = entries2.filter((e) => !e.name.startsWith(".")).map((e) => {
         if (e.isDirectory()) return e.name;
         if (!e.isFile() || tableFiles.has(nameKey(relJoin(dir, e.name)))) return "";
         const suffix = this.pageSuffix(e.name, sidecarTargets.has(e.name));
@@ -5496,6 +5495,16 @@ var LocalWiki = class extends WikiTables {
   async snapshot() {
     return this.exclusive(async () => this.project());
   }
+  /** Each live page's resolved page links: the ids its body links to, once each. Unresolved links are left out. */
+  async outboundLinks() {
+    return this.exclusive(async () => {
+      const out = /* @__PURE__ */ new Map();
+      for (const page of this.state.pages.values()) {
+        out.set(page.id, [...new Set(page.linkTargets.filter((id) => id !== null))]);
+      }
+      return out;
+    });
+  }
   typeDefs() {
     return [...this.types.values()];
   }
@@ -5510,9 +5519,9 @@ var LocalWiki = class extends WikiTables {
       } else {
         const trashed = this.state.trash.get(id);
         if (!trashed || trashed.manifest.kind !== "page") throw new LocalWikiError("not-found", `No page ${id}`);
-        const entries = trashed.manifest.entries ?? {};
-        rel = entries.md ? relJoin(trashed.entryDir, entries.md) : entries.file ? relJoin(trashed.entryDir, entries.file) : null;
-        raw = !entries.md && Boolean(entries.file);
+        const entries2 = trashed.manifest.entries ?? {};
+        rel = entries2.md ? relJoin(trashed.entryDir, entries2.md) : entries2.file ? relJoin(trashed.entryDir, entries2.file) : null;
+        raw = !entries2.md && Boolean(entries2.file);
       }
       if (!rel) return { markdown: "", version: contentVersion("") };
       const text2 = await readFile7(this.abs(rel), "utf8");
@@ -6056,28 +6065,28 @@ var LocalWiki = class extends WikiTables {
   async trashPage(page, trashedAt) {
     const entryDir = relJoin(TRASH_DIR, `${trashedAt}-${idForFileName(page.id)}`);
     const moves = [];
-    const entries = {};
+    const entries2 = {};
     if (page.sidecar && page.path) {
-      entries.file = path8.posix.basename(page.path);
-      moves.push([page.path, relJoin(entryDir, entries.file)]);
+      entries2.file = path8.posix.basename(page.path);
+      moves.push([page.path, relJoin(entryDir, entries2.file)]);
       if (await pathExists(this.abs(page.sidecar))) {
-        entries.sidecar = path8.posix.basename(page.sidecar);
-        moves.push([page.sidecar, relJoin(entryDir, entries.sidecar)]);
+        entries2.sidecar = path8.posix.basename(page.sidecar);
+        moves.push([page.sidecar, relJoin(entryDir, entries2.sidecar)]);
       }
     } else if (page.bodySource === "file" && page.path) {
-      entries.md = path8.posix.basename(page.path);
-      moves.push([page.path, relJoin(entryDir, entries.md)]);
+      entries2.md = path8.posix.basename(page.path);
+      moves.push([page.path, relJoin(entryDir, entries2.md)]);
     }
     if (await pathExists(this.abs(page.dir))) {
-      entries.dir = path8.posix.basename(page.dir);
-      moves.push([page.dir, relJoin(entryDir, entries.dir)]);
-      if (page.bodySource === "readme" && page.path) entries.md = relJoin(entries.dir, path8.posix.basename(page.path));
+      entries2.dir = path8.posix.basename(page.dir);
+      moves.push([page.dir, relJoin(entryDir, entries2.dir)]);
+      if (page.bodySource === "readme" && page.path) entries2.md = relJoin(entries2.dir, path8.posix.basename(page.path));
     }
     const activity = this.activityPath(page);
     if (page.type) await this.appendActivity(activity, { itemId: page.id, action: "trash" });
     if (await pathExists(this.abs(activity))) {
-      entries.activity = path8.posix.basename(activity);
-      moves.push([activity, relJoin(entryDir, entries.activity)]);
+      entries2.activity = path8.posix.basename(activity);
+      moves.push([activity, relJoin(entryDir, entries2.activity)]);
     }
     await this.writeTrashManifest(entryDir, {
       formatVersion: 1,
@@ -6087,7 +6096,7 @@ var LocalWiki = class extends WikiTables {
       trashedAt,
       originalParentId: page.parentId,
       originalDir: page.parentDir,
-      entries,
+      entries: entries2,
       pageType: page.type,
       ...page.sidecar ? { documentType: page.documentType, fileExtension: page.fileExtension } : {}
     });
@@ -6104,26 +6113,26 @@ var LocalWiki = class extends WikiTables {
     } else if (manifest.kind === "page") {
       const parent = manifest.originalParentId ? this.state.pages.get(manifest.originalParentId) : void 0;
       const targetDir = parent ? parent.dir : manifest.originalDir === "" || await pathExists(this.abs(manifest.originalDir)) ? manifest.originalDir : "";
-      const entries = manifest.entries ?? {};
-      const fileSuffix = entries.file ? manifest.fileExtension ?? this.pageSuffix(entries.file, true) ?? "" : "";
-      const oldStem = entries.file ? entries.file.slice(0, entries.file.length - fileSuffix.length) : entries.md && !entries.md.includes("/") ? entries.md.slice(0, -3) : entries.dir ?? fileStemForTitle(manifest.title);
+      const entries2 = manifest.entries ?? {};
+      const fileSuffix = entries2.file ? manifest.fileExtension ?? this.pageSuffix(entries2.file, true) ?? "" : "";
+      const oldStem = entries2.file ? entries2.file.slice(0, entries2.file.length - fileSuffix.length) : entries2.md && !entries2.md.includes("/") ? entries2.md.slice(0, -3) : entries2.dir ?? fileStemForTitle(manifest.title);
       const stem = uniqueStem(oldStem, await this.occupiedNames(targetDir, null));
-      if (entries.file) {
+      if (entries2.file) {
         const fileName = stem + fileSuffix;
-        await movePath(this.abs(relJoin(entryDir, entries.file)), this.abs(relJoin(targetDir, fileName)));
+        await movePath(this.abs(relJoin(entryDir, entries2.file)), this.abs(relJoin(targetDir, fileName)));
         const sidecarRel = relJoin(targetDir, sidecarName(fileName));
-        if (entries.sidecar) await movePath(this.abs(relJoin(entryDir, entries.sidecar)), this.abs(sidecarRel));
-        if (stem !== oldStem || !entries.sidecar) {
-          const text2 = entries.sidecar ? await readFile7(this.abs(sidecarRel), "utf8").catch(() => "") : "";
+        if (entries2.sidecar) await movePath(this.abs(relJoin(entryDir, entries2.sidecar)), this.abs(sidecarRel));
+        if (stem !== oldStem || !entries2.sidecar) {
+          const text2 = entries2.sidecar ? await readFile7(this.abs(sidecarRel), "utf8").catch(() => "") : "";
           const parsed = parseSidecar(text2);
           const data = parsed.ok ? parsed.data : {};
           await this.writeSidecar(sidecarRel, { ...data, id, ...data.title === void 0 && stem !== oldStem ? { title: manifest.title } : {} });
         }
       }
-      if (entries.md && !entries.md.includes("/")) await movePath(this.abs(relJoin(entryDir, entries.md)), this.abs(relJoin(targetDir, `${stem}.md`)));
-      if (entries.dir) await movePath(this.abs(relJoin(entryDir, entries.dir)), this.abs(relJoin(targetDir, stem)));
-      if (entries.activity) await movePath(this.abs(relJoin(entryDir, entries.activity)), this.abs(relJoin(targetDir, stem + ACTIVITY_SUFFIX)));
-      if (stem !== oldStem && entries.md && !entries.md.includes("/")) {
+      if (entries2.md && !entries2.md.includes("/")) await movePath(this.abs(relJoin(entryDir, entries2.md)), this.abs(relJoin(targetDir, `${stem}.md`)));
+      if (entries2.dir) await movePath(this.abs(relJoin(entryDir, entries2.dir)), this.abs(relJoin(targetDir, stem)));
+      if (entries2.activity) await movePath(this.abs(relJoin(entryDir, entries2.activity)), this.abs(relJoin(targetDir, stem + ACTIVITY_SUFFIX)));
+      if (stem !== oldStem && entries2.md && !entries2.md.includes("/")) {
         const abs = this.abs(relJoin(targetDir, `${stem}.md`));
         const parsed = parseMarkdownFile(await readFile7(abs, "utf8"));
         if (parsed.ok && parsed.data.title === void 0) await atomicWrite(abs, composeMarkdownFile({ ...parsed.data, title: manifest.title }, parsed.body));
@@ -6336,19 +6345,19 @@ async function initLocalWiki(startDir, location) {
 // packages/cli/src/localWiki/tree.ts
 var LOCAL_URI_PREFIX = "local-wiki://";
 var localPageUri = (id) => `${LOCAL_URI_PREFIX}${id}`;
-function isTeamReference(ref) {
-  return /^(collab:|https?:)/i.test(ref.trim());
+function isTeamReference(ref2) {
+  return /^(collab:|https?:)/i.test(ref2.trim());
 }
-function isTeamIssueKey(ref) {
-  return /^[A-Z][A-Z0-9]*-\d+$/.test(ref.trim());
+function isTeamIssueKey(ref2) {
+  return /^[A-Z][A-Z0-9]*-\d+$/.test(ref2.trim());
 }
 function livePages(snapshot) {
   return snapshot.pages.filter((page) => page.trashedAt === null);
 }
 var normalizePath = (value) => value.trim().replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/+$/, "").toLowerCase();
-function findPage(snapshot, ref) {
+function findPage(snapshot, ref2) {
   const pages = livePages(snapshot);
-  const raw = ref.startsWith(LOCAL_URI_PREFIX) ? ref.slice(LOCAL_URI_PREFIX.length) : ref.trim();
+  const raw = ref2.startsWith(LOCAL_URI_PREFIX) ? ref2.slice(LOCAL_URI_PREFIX.length) : ref2.trim();
   const byId = pages.find((page) => page.id === raw);
   if (byId) return byId;
   const wanted = normalizePath(raw);
@@ -6357,21 +6366,21 @@ function findPage(snapshot, ref) {
     (page) => page.path && [wanted, withMd].includes(normalizePath(page.path)) || normalizePath(page.dir) === wanted
   );
   if (byPath) return byPath;
-  const byTitle = pages.filter((page) => page.title.toLowerCase() === raw.toLowerCase());
-  if (byTitle.length === 1) return byTitle[0];
-  if (byTitle.length > 1) {
+  const byTitle2 = pages.filter((page) => page.title.toLowerCase() === raw.toLowerCase());
+  if (byTitle2.length === 1) return byTitle2[0];
+  if (byTitle2.length > 1) {
     throw usageError(
-      `"${ref}" matches ${byTitle.length} pages; use an id:
-` + byTitle.map((page) => `  ${page.id}  ${page.path ?? page.dir}`).join("\n")
+      `"${ref2}" matches ${byTitle2.length} pages; use an id:
+` + byTitle2.map((page) => `  ${page.id}  ${page.path ?? page.dir}`).join("\n")
     );
   }
-  throw notFoundError(`No local wiki page "${ref}" (looked for an id, a path and a title).`);
+  throw notFoundError(`No local wiki page "${ref2}" (looked for an id, a path and a title).`);
 }
 var pageNodeId = (page) => `${page.type ? "item" : "document"}:${page.id}`;
 function buildTree(snapshot) {
   const pages = livePages(snapshot);
   const byId = new Map(pages.map((page) => [page.id, page]));
-  const entries = pages.map((page) => ({
+  const entries2 = pages.map((page) => ({
     parentId: page.parentId && byId.has(page.parentId) ? page.parentId : null,
     node: {
       nodeId: pageNodeId(page),
@@ -6390,7 +6399,7 @@ function buildTree(snapshot) {
   }));
   for (const table of snapshot.tables) {
     const placement2 = snapshot.typePlacements.find((p) => p.typeId === table.typeId);
-    entries.push({
+    entries2.push({
       parentId: table.parentId && byId.has(table.parentId) ? table.parentId : null,
       node: {
         nodeId: `type:${table.typeId}`,
@@ -6404,7 +6413,7 @@ function buildTree(snapshot) {
     });
   }
   const children = /* @__PURE__ */ new Map();
-  for (const entry of entries) {
+  for (const entry of entries2) {
     const list = children.get(entry.parentId) ?? [];
     list.push(entry);
     children.set(entry.parentId, list);
@@ -6443,6 +6452,103 @@ function positionBeside(snapshot, siblingRef, side, movingId) {
   const before = side === "before" ? ordered[at - 1] : ordered[at];
   const after = side === "before" ? ordered[at] : ordered[at + 1];
   return { parentId, sortOrder: orderBetween(before, after) };
+}
+
+// packages/collab-protocol/src/consoleLinks.ts
+var CONSOLE_LINK_ORIGIN = "https://console.nimbalyst.com";
+var LOCAL_SEGMENT = "app";
+var CITATION_KINDS = ["prompt", "answer", "comment"];
+var AGENT_CITATION_KINDS = ["prompt", "answer"];
+var CITATION_AGENTS = ["claude-code"];
+function dec(value) {
+  try {
+    const decoded = decodeURIComponent(value);
+    return decoded === "" ? null : decoded;
+  } catch {
+    return null;
+  }
+}
+function parsePath(pathname, search) {
+  const raw = pathname.split("/").slice(1);
+  if (raw.some((segment2) => segment2 === "")) return null;
+  let scope;
+  let rest;
+  if (raw[0] === LOCAL_SEGMENT) {
+    scope = "local";
+    rest = raw.slice(1);
+  } else if (raw[0] === "org" && raw[2] === "project" && raw.length > 4) {
+    const orgId = dec(raw[1]);
+    const projectId = dec(raw[3]);
+    if (!orgId || !projectId) return null;
+    scope = { orgId, projectId };
+    rest = raw.slice(4);
+  } else {
+    return null;
+  }
+  const local = scope === "local";
+  const [head, a, b, c] = rest;
+  if (rest[0] === "view") {
+    if (rest.length === 3 && a === "type") {
+      const typeId = dec(b);
+      return typeId ? { kind: "view", scope, view: { kind: "type", typeId } } : null;
+    }
+    if (rest.length === 2 && a === "marks") {
+      const kind = search.get("kind");
+      if (kind === null) return { kind: "view", scope, view: { kind: "marks", marks: "all" } };
+      return kind === "decided" || kind === "open" ? { kind: "view", scope, view: { kind: "marks", marks: kind } } : null;
+    }
+    return null;
+  }
+  if (local) {
+    if (head === "cite" && rest.length === 4) {
+      const sessionId = dec(a);
+      const key = dec(c);
+      const inputKind = b;
+      if (!sessionId || !key || !CITATION_KINDS.includes(inputKind)) return null;
+      return { kind: "citation", sessionId, inputKind, key };
+    }
+    if (head === "cite" && rest.length === 5) {
+      const agent = a;
+      const sessionId = dec(b);
+      const inputKind = c;
+      const key = dec(rest[4]);
+      if (!CITATION_AGENTS.includes(agent) || !sessionId || !key || !AGENT_CITATION_KINDS.includes(inputKind)) return null;
+      return { kind: "citation", agent, sessionId, inputKind, key };
+    }
+    if (rest.length !== 2) return null;
+    const id = dec(a);
+    if (!id) return null;
+    if (head === "page") return { kind: "page", scope, pageId: id };
+    if (head === "item") return { kind: "item", scope, itemRef: id };
+    if (head === "type") return { kind: "type", scope, typeId: id };
+    return null;
+  }
+  if (head === "document" && rest.length === 2) {
+    const pageId = dec(a);
+    if (!pageId) return null;
+    const comment = search.get("comment");
+    if (comment === null) return { kind: "page", scope, pageId };
+    return comment && scope !== "local" ? { kind: "commentCitation", scope, pageId, commentId: comment } : null;
+  }
+  if ((head === "page" || head === "trackers") && rest.length === 3) {
+    const id = dec(b);
+    if (!id) return null;
+    if (a === "item") return { kind: "item", scope, itemRef: id };
+    if (a === "type") return { kind: "type", scope, typeId: id };
+  }
+  return null;
+}
+function parseConsoleLink(href, options = {}) {
+  if (!href) return null;
+  let url;
+  try {
+    url = new URL(href);
+  } catch {
+    return null;
+  }
+  const origins = [CONSOLE_LINK_ORIGIN, ...options.origins ?? []];
+  if (!origins.includes(url.origin)) return null;
+  return parsePath(url.pathname, url.searchParams);
 }
 
 // packages/collab-protocol/src/pageToolContract.ts
@@ -7230,10 +7336,23 @@ var LOCAL_PAGE_REF = {
   type: "string",
   description: "The page: its uri from listPages (local-wiki://<id>), its id, or its path in the wiki folder."
 };
+var LOCAL_WORDING = [
+  [/ \/ issue key/g, ""],
+  [/, issue key or type id/g, " or type id"],
+  [/ or issue key, or type id/g, ", or type id"],
+  [/, or typed-page issue key/g, ""],
+  [/top of the (?:section|project)/g, "top of the wiki"]
+];
+function localWording(property) {
+  if (!property || typeof property !== "object") return property;
+  const { description } = property;
+  if (typeof description !== "string") return property;
+  return { ...property, description: LOCAL_WORDING.reduce((text2, [from, to]) => text2.replace(from, to), description) };
+}
 function contractDefinition(name, description, options = {}) {
   const contract = pageToolContract(name);
   if (!contract) throw new Error(`nim mcp: ${name} is not in the page tool contract`);
-  const properties = { ...contract.inputSchema.properties };
+  const properties = Object.fromEntries(Object.entries(contract.inputSchema.properties).map(([key, value]) => [key, localWording(value)]));
   for (const key of options.drop ?? []) delete properties[key];
   if ("section" in properties) properties.section = LOCAL_SECTION;
   if ("filePath" in properties) properties.filePath = LOCAL_PAGE_REF;
@@ -7296,6 +7415,730 @@ function localTool(definition2, context, run, teamRefs = {}) {
   };
 }
 
+// packages/cli/src/localWiki/coverage.ts
+import { execFileSync as execFileSync3 } from "node:child_process";
+import { readFileSync as readFileSync2, realpathSync, statSync } from "node:fs";
+import * as path11 from "node:path";
+var DeadlineExceeded = class extends Error {
+  constructor() {
+    super("wiki coverage: deadline passed");
+    this.name = "DeadlineExceeded";
+  }
+};
+var GIT_TIMEOUT_MS = 5e3;
+function git2(cwd, args, deadline) {
+  const left = deadline === void 0 ? GIT_TIMEOUT_MS : deadline - Date.now();
+  if (left <= 0) throw new DeadlineExceeded();
+  try {
+    return execFileSync3("git", ["--literal-pathspecs", ...args], {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: Math.min(GIT_TIMEOUT_MS, left),
+      maxBuffer: 256 * 1024 * 1024
+    });
+  } catch {
+    if (deadline !== void 0 && Date.now() >= deadline) throw new DeadlineExceeded();
+    return void 0;
+  }
+}
+var entries = (out) => (out ?? "").split("\0").filter(Boolean);
+var uniqueSorted = (list) => [...new Set(list)].sort();
+function escapeRegex(text2) {
+  return text2.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+}
+function charClass(pattern, open2) {
+  let start = open2 + 1;
+  const negate = pattern[start] === "!" || pattern[start] === "^";
+  if (negate) start++;
+  const close = pattern.indexOf("]", start + 1);
+  if (close === -1) return null;
+  const members = pattern.slice(start, close).replace(/[\\^[\]]/g, "\\$&");
+  return { regex: negate ? `[^/${members}]` : `(?!/)[${members}]`, end: close };
+}
+var globCache = /* @__PURE__ */ new Map();
+function globRegex(glob) {
+  const cached = globCache.get(glob);
+  if (cached !== void 0) return cached;
+  let pattern = glob.trim().replace(/\\/g, "/");
+  let regex = null;
+  if (pattern && !pattern.startsWith("#")) {
+    const anchored = pattern.replace(/\/+$/, "").includes("/");
+    pattern = pattern.replace(/^\/+/, "").replace(/\/+$/, "");
+    let body = "";
+    for (let i = 0; i < pattern.length; i++) {
+      const ch = pattern[i];
+      if (pattern.startsWith("**/", i)) {
+        body += "(?:.*/)?";
+        i += 2;
+      } else if (pattern.startsWith("/**", i) && i + 3 === pattern.length) {
+        body += "(?:/.*)?";
+        i += 2;
+      } else if (pattern.startsWith("**", i)) {
+        body += ".*";
+        i += 1;
+      } else if (ch === "*") body += "[^/]*";
+      else if (ch === "?") body += "[^/]";
+      else if (ch === "[") {
+        const cls = charClass(pattern, i);
+        if (cls) {
+          body += cls.regex;
+          i = cls.end;
+        } else body += "\\[";
+      } else body += escapeRegex(ch);
+    }
+    if (body) regex = new RegExp(`^${anchored ? "" : "(?:.*/)?"}${body}(?:/.*)?$`);
+  }
+  globCache.set(glob, regex);
+  return regex;
+}
+function matchesGlob(glob, file) {
+  return globRegex(glob)?.test(file.replace(/\\/g, "/").replace(/^\.\//, "")) ?? false;
+}
+function pathsCover(globs, file) {
+  let covered = false;
+  for (const raw of globs) {
+    const glob = raw.trim();
+    if (glob.startsWith("!")) {
+      if (covered && matchesGlob(glob.slice(1), file)) covered = false;
+    } else if (!covered && matchesGlob(glob, file)) covered = true;
+  }
+  return covered;
+}
+function pagePaths(page) {
+  const value = page.fields.paths;
+  const list = Array.isArray(value) ? value : typeof value === "string" ? [value] : [];
+  return list.filter((item) => typeof item === "string" && item.trim().length > 0);
+}
+function repoRoot(startDir, deadline) {
+  return git2(startDir, ["rev-parse", "--show-toplevel"], deadline)?.trim() || void 0;
+}
+function resolveCommit(root, ref2, deadline) {
+  if (!ref2.trim() || ref2.startsWith("-")) return void 0;
+  const hash = git2(root, ["rev-parse", "--verify", "--quiet", "--end-of-options", `${ref2}^{commit}`], deadline)?.trim();
+  return hash && /^[0-9a-f]{40,64}$/.test(hash) ? hash : void 0;
+}
+var DIFF = ["diff", "--name-only", "-z", "--no-renames"];
+function changedFiles(root, since, deadline) {
+  if (since) return uniqueSorted(entries(git2(root, [...DIFF, `${since}...HEAD`, "--"], deadline)));
+  const changed = resolveCommit(root, "HEAD", deadline) ? entries(git2(root, [...DIFF, "HEAD", "--"], deadline)) : (
+    // No commit yet: what is staged, and what changed since it was staged.
+    [...entries(git2(root, [...DIFF, "--cached", "--"], deadline)), ...entries(git2(root, [...DIFF, "--"], deadline))]
+  );
+  const untracked = entries(git2(root, ["ls-files", "-z", "--others", "--exclude-standard"], deadline));
+  return uniqueSorted([...changed, ...untracked]);
+}
+function lastCommitOf(root, file, ref2, deadline) {
+  const out = git2(root, ["log", "-1", "--format=%H %ct", ...ref2 ? [ref2] : [], "--", file], deadline)?.trim();
+  if (!out) return void 0;
+  const [hash, seconds] = out.split(" ");
+  return { hash, at: Number(seconds) * 1e3 };
+}
+var PATHS_PER_WALK = 1e3;
+function newestCommits(root, pathspecs, options = {}) {
+  const newest = /* @__PURE__ */ new Map();
+  for (let i = 0; i < pathspecs.length; i += PATHS_PER_WALK) {
+    const args = ["log", "--no-renames", "--format=%x01%H %ct", "--name-only", "-z", ...options.ref ? [options.ref] : [], "--", ...pathspecs.slice(i, i + PATHS_PER_WALK)];
+    let current;
+    for (const token of (git2(root, args, options.deadline) ?? "").split("\0")) {
+      if (token.startsWith("")) {
+        const [hash, seconds] = token.slice(1).split(" ");
+        current = { hash, at: Number(seconds) * 1e3 };
+        continue;
+      }
+      const name = token.startsWith("\n") ? token.slice(1) : token;
+      if (name && current && !newest.has(name)) newest.set(name, current);
+    }
+  }
+  return newest;
+}
+function defaultBranch(root) {
+  const remote = git2(root, ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"])?.trim();
+  if (remote) return remote;
+  return ["main", "master"].find((name) => resolveCommit(root, `refs/heads/${name}`) !== void 0);
+}
+function filesAt(root, commit) {
+  return entries(git2(root, ["ls-tree", "-r", "-z", "--name-only", commit]));
+}
+function checkoutFiles(root) {
+  const deleted = new Set(entries(git2(root, ["ls-files", "-z", "--deleted"])));
+  return uniqueSorted(entries(git2(root, ["ls-files", "-z", "--cached", "--others", "--exclude-standard"])).filter((file) => !deleted.has(file)));
+}
+function shallowBoundaries(root, deadline) {
+  if (git2(root, ["rev-parse", "--is-shallow-repository"], deadline)?.trim() !== "true") return /* @__PURE__ */ new Set();
+  const file = git2(root, ["rev-parse", "--git-path", "shallow"], deadline)?.trim();
+  if (!file) return /* @__PURE__ */ new Set();
+  try {
+    return new Set(readFileSync2(path11.resolve(root, file), "utf8").split("\n").map((line) => line.trim()).filter(Boolean));
+  } catch {
+    return /* @__PURE__ */ new Set();
+  }
+}
+function pageClocks(wikiDir, pages, deadline) {
+  const clocks = /* @__PURE__ */ new Map();
+  const top = repoRoot(wikiDir, deadline);
+  let history = /* @__PURE__ */ new Map();
+  let boundaries = /* @__PURE__ */ new Set();
+  let wikiRel = "";
+  if (top) {
+    wikiRel = path11.relative(realish(top), realish(wikiDir)).split(path11.sep).join("/");
+    const folder = wikiRel || ".";
+    if (entries(git2(top, ["ls-files", "-z", "--", folder], deadline)).length > 0) {
+      history = newestCommits(top, [folder], { deadline });
+      boundaries = shallowBoundaries(top, deadline);
+    }
+  }
+  for (const page of pages) {
+    const commit = page.path ? history.get(wikiRel ? `${wikiRel}/${page.path}` : page.path) : void 0;
+    if (commit) {
+      clocks.set(page.id, { clock: boundaries.has(commit.hash) ? "shallow" : "git", at: commit.at });
+      continue;
+    }
+    const mtime = page.path ? statSync(path11.join(wikiDir, page.path), { throwIfNoEntry: false })?.mtimeMs : void 0;
+    clocks.set(page.id, { clock: "mtime", at: mtime ?? page.updatedAt });
+  }
+  return clocks;
+}
+function staleness(page, newestFileChange) {
+  if (newestFileChange !== void 0 && newestFileChange > page.at) return true;
+  return page.clock === "shallow" ? null : false;
+}
+function realish(file) {
+  for (let at = file, rest = ""; at !== path11.dirname(at); rest = path11.join(path11.basename(at), rest), at = path11.dirname(at)) {
+    try {
+      return path11.join(realpathSync(at), rest);
+    } catch {
+    }
+  }
+  return file;
+}
+function inRepository(root, file) {
+  const rel = path11.relative(realish(root), realish(path11.resolve(root, file)));
+  if (!rel || rel === ".." || rel.startsWith(`..${path11.sep}`) || path11.isAbsolute(rel)) return void 0;
+  return rel.split(path11.sep).join("/");
+}
+function matchPages(pages, files) {
+  const out = [];
+  for (const page of pages) {
+    if (page.trashedAt !== null) continue;
+    const globs = pagePaths(page);
+    if (globs.length === 0) continue;
+    const matched = files.filter((file) => pathsCover(globs, file));
+    if (matched.length > 0) out.push({ page, files: matched });
+  }
+  return out.sort((a, b) => a.page.title.localeCompare(b.page.title));
+}
+async function pagesForFiles(opened, options) {
+  const { deadline } = options;
+  const gitRoot = repoRoot(options.startDir, deadline);
+  const root = gitRoot ?? path11.resolve(options.startDir);
+  let source;
+  let files;
+  if (options.files && options.files.length > 0) {
+    source = "given";
+    files = uniqueSorted(options.files.map((file) => inRepository(root, file)).filter((file) => file !== void 0));
+  } else if (options.since) {
+    source = `since ${options.since}`;
+    const commit = gitRoot ? resolveCommit(gitRoot, options.since, deadline) : void 0;
+    if (!commit) throw usageError(`\`since\` is not a commit in this repository: ${options.since}`);
+    files = changedFiles(root, commit, deadline);
+  } else {
+    source = "working tree";
+    files = gitRoot ? changedFiles(root, void 0, deadline) : [];
+  }
+  if (files.length === 0) return { source, files, pages: [] };
+  const { pages } = await opened.wiki.snapshot();
+  const matches = matchPages(pages, files);
+  const clocks = pageClocks(opened.dir, matches.map(({ page }) => page), deadline);
+  const fileChanges = /* @__PURE__ */ new Map();
+  const changedAt = (file) => {
+    if (!fileChanges.has(file)) fileChanges.set(file, gitRoot ? lastCommitOf(gitRoot, file, void 0, deadline)?.at : void 0);
+    return fileChanges.get(file);
+  };
+  const covered = matches.map(({ page, files: matched }) => {
+    const clock = clocks.get(page.id);
+    const newest = Math.max(...matched.map((file) => changedAt(file) ?? 0));
+    return { id: page.id, title: page.title, files: matched, stale: staleness(clock, newest || void 0), clock: clock.clock, lastChange: new Date(clock.at).toISOString() };
+  });
+  return { source, files, pages: covered };
+}
+
+// packages/cli/src/mcp/coverageTool.ts
+var PAGES_FOR_FILES_TOOL = "pagesForFiles";
+function coverageTool(context) {
+  return localTool(
+    {
+      name: PAGES_FOR_FILES_TOOL,
+      description: "List the local wiki pages that cover a set of files, through each page's `paths` field (repository-relative globs). With no `files`, checks the working tree: uncommitted and untracked changes, or with `since` (a git ref) the files changed in `<since>...HEAD`. Each page comes with the files it matched and `stale: true` when one of them has a commit newer than the page; `clock` says whether the page was dated by its own last commit (`git`) or, for a wiki git does not track, its file time (`mtime`, reset by a checkout). Call it before changing code, to read the pages that explain it, and after, to update or flag the pages the change affects.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          files: { type: "array", items: { type: "string" }, description: "Files to check, absolute or relative to the repository root. Default: the working tree changes." },
+          since: { type: "string", description: "A git ref (branch, tag or commit). Checks the files changed since it instead of the working tree." }
+        }
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
+    },
+    context,
+    async (opened, args) => {
+      const files = Array.isArray(args.files) ? args.files.filter((file) => typeof file === "string" && file.trim().length > 0) : void 0;
+      return pagesForFiles(opened, { startDir: context.workspace().startDir, files, since: str3(args, "since") });
+    }
+  );
+}
+
+// packages/cli/src/localWiki/doctor.ts
+import { realpathSync as realpathSync2 } from "node:fs";
+import * as path12 from "node:path";
+var DOCTOR_DEFAULT_LIMIT = 20;
+var FILES_SHOWN = 5;
+var ref = (page) => ({ id: page.id, title: page.title, path: page.path });
+function singular(word) {
+  if (word.length > 4 && word.endsWith("ies")) return `${word.slice(0, -3)}y`;
+  if (word.length > 3 && word.endsWith("s") && !word.endsWith("ss") && !word.endsWith("us") && !word.endsWith("is")) return word.slice(0, -1);
+  return word;
+}
+function titleKey(title) {
+  return title.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean).map(singular).join(" ");
+}
+function isHome(page) {
+  return page.parentId === null && page.type === null && page.title.trim().toLowerCase() === "home";
+}
+async function wikiDoctor(opened, options) {
+  const limit = Math.max(1, Math.floor(options.limit ?? DOCTOR_DEFAULT_LIMIT));
+  const snapshot = await opened.wiki.snapshot();
+  const live2 = snapshot.pages.filter((page) => page.trashedAt === null && !page.malformed);
+  const byCode = {};
+  for (const issue of snapshot.issues) byCode[issue.code] = (byCode[issue.code] ?? 0) + 1;
+  const issues = {
+    total: snapshot.issues.length,
+    byCode,
+    items: snapshot.issues.slice(0, limit).map(({ code, path: where, message }) => ({ code, path: where, message }))
+  };
+  const outbound = await opened.wiki.outboundLinks();
+  const linked = /* @__PURE__ */ new Set();
+  for (const [from, targets] of outbound) for (const to of targets) if (to !== from) linked.add(to);
+  const orphanPages = live2.filter((page) => page.type === null && !isHome(page) && !linked.has(page.id)).sort((a, b) => a.title.localeCompare(b.title));
+  const groups = /* @__PURE__ */ new Map();
+  for (const page of live2) {
+    const key = titleKey(page.title);
+    if (key) groups.set(key, [...groups.get(key) ?? [], page]);
+  }
+  const duplicates = [...groups.values()].filter((group) => group.length > 1).map((group) => group.sort((a, b) => a.title.localeCompare(b.title)).map(ref));
+  const root = repoRoot(options.startDir);
+  const covering = live2.filter((page) => pagePaths(page).length > 0);
+  const stale = { base: null, total: 0, pages: [] };
+  const dead = { total: 0, pages: [] };
+  if (!root) {
+    stale.note = "Not in a git repository: there is no branch to compare pages with.";
+    dead.note = "Not in a git repository: page paths were not checked against files.";
+  } else {
+    const base = options.base ?? defaultBranch(root);
+    const commit = base ? resolveCommit(root, base) : void 0;
+    if (!base || !commit) {
+      stale.note = base ? `${base} is not a commit in this repository.` : "No default branch (origin/HEAD, main or master) to compare pages with.";
+    } else {
+      stale.base = base;
+      const wikiRel = path12.relative(realpathSync2(root), realpathSync2(opened.dir)).split(path12.sep).join("/");
+      const code = filesAt(root, commit).filter((file) => !(wikiRel && (file === wikiRel || file.startsWith(`${wikiRel}/`))));
+      const matched = covering.map((page) => ({ page, files: code.filter((file) => pathsCover(pagePaths(page), file)) })).filter(({ files: files2 }) => files2.length > 0);
+      const newest = newestCommits(root, [...new Set(matched.flatMap(({ files: files2 }) => files2))], { ref: commit });
+      const clocks = pageClocks(opened.dir, matched.map(({ page }) => page));
+      const found = [];
+      let unknown = 0;
+      for (const { page, files: files2 } of matched) {
+        const changed = Math.max(...files2.map((file) => newest.get(file)?.at ?? 0));
+        const clock = clocks.get(page.id);
+        const verdict = staleness(clock, changed || void 0);
+        if (verdict === null) unknown++;
+        if (!verdict) continue;
+        found.push({
+          ...ref(page),
+          files: files2.slice(0, FILES_SHOWN),
+          fileCount: files2.length,
+          clock: clock.clock,
+          lastChange: new Date(clock.at).toISOString(),
+          fileChange: new Date(changed).toISOString()
+        });
+      }
+      found.sort((a, b) => a.title.localeCompare(b.title));
+      stale.total = found.length;
+      stale.pages = found.slice(0, limit);
+      if (unknown > 0) stale.note = `${unknown} covering page${unknown === 1 ? "" : "s"} could not be dated: this is a shallow clone and their last commit is where its history stops.`;
+    }
+    const files = checkoutFiles(root);
+    const deadPages = covering.filter((page) => page.fields.status === "current").filter((page) => !files.some((file) => pathsCover(pagePaths(page), file))).sort((a, b) => a.title.localeCompare(b.title));
+    dead.total = deadPages.length;
+    dead.pages = deadPages.slice(0, limit).map((page) => ({ ...ref(page), paths: pagePaths(page) }));
+  }
+  return {
+    summary: { issues: issues.total, orphans: orphanPages.length, stale: stale.total, duplicateTitles: duplicates.length, deadPaths: dead.total },
+    issues,
+    orphans: { total: orphanPages.length, pages: orphanPages.slice(0, limit).map(ref) },
+    stale,
+    duplicateTitles: { total: duplicates.length, groups: duplicates.slice(0, limit) },
+    deadPaths: dead
+  };
+}
+
+// packages/cli/src/mcp/doctorTool.ts
+var WIKI_DOCTOR_TOOL = "wikiDoctor";
+function doctorTool(context) {
+  return localTool(
+    {
+      name: WIKI_DOCTOR_TOOL,
+      description: "Check the local wiki and report what needs fixing, without changing anything. Groups: `issues` (what the folder scan found: broken links, duplicate ids, malformed files and the like), `orphans` (plain pages no other page links to, other than Home), `stale` (pages whose `paths` cover files committed on the default branch after the page last changed), `duplicateTitles` (titles equal after folding case, punctuation and plurals) and `deadPaths` (pages with `status: current` whose `paths` match no file). Each group has a total and at most `limit` entries; `summary` has the counts. Call it after a large rework and before calling the wiki tidy, then fix with the ordinary page tools.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          base: { type: "string", description: "Branch or ref the stale check compares with. Default: the default branch (origin/HEAD, else main or master)." },
+          limit: { type: "number", description: `Entries per group. Default ${DOCTOR_DEFAULT_LIMIT}.` }
+        }
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
+    },
+    context,
+    async (opened, args) => wikiDoctor(opened, {
+      startDir: context.workspace().startDir,
+      base: str3(args, "base"),
+      limit: typeof args.limit === "number" && args.limit > 0 ? args.limit : void 0
+    })
+  );
+}
+
+// packages/runtime/src/core/markdownProseLines.ts
+var FENCE_OPEN = /^\s{0,3}(`{3,}|~{3,})/;
+function forEachProseLine(markdown, visit) {
+  const lines = markdown.split("\n");
+  let offset = 0;
+  let fence = null;
+  let inFrontmatter = lines[0]?.trim() === "---";
+  lines.forEach((line, index) => {
+    const lineStart = offset;
+    offset += line.length + 1;
+    if (inFrontmatter) {
+      if (index > 0 && line.trim() === "---") inFrontmatter = false;
+      return;
+    }
+    const fenceMatch = FENCE_OPEN.exec(line);
+    if (fence) {
+      if (fenceMatch && fenceMatch[1][0] === fence[0] && fenceMatch[1].length >= fence.length && line.trim() === fenceMatch[1]) {
+        fence = null;
+      }
+      return;
+    }
+    if (fenceMatch) {
+      fence = fenceMatch[1];
+      return;
+    }
+    visit(line, lineStart, index);
+  });
+}
+function codeSpanEnd(text2, from) {
+  let ticks = 0;
+  while (text2[from + ticks] === "`") ticks++;
+  const fence = "`".repeat(ticks);
+  let search = from + ticks;
+  while (search < text2.length) {
+    const found = text2.indexOf(fence, search);
+    if (found === -1) return -1;
+    let run = 0;
+    while (text2[found + run] === "`") run++;
+    if (run === ticks) return found + ticks;
+    search = found + run;
+  }
+  return -1;
+}
+
+// packages/runtime/src/core/citationSyntax.ts
+var LEGACY_HUMAN_CITATION_BASE = "nimbalyst://cite/";
+var SOURCE_CITATION_TITLE = "cite";
+var TITLE_FIELDS = [
+  ["by", "by"],
+  ["email", "email"],
+  ["at", "at"],
+  ["context", "ctx"],
+  ["sessionTitle", "in"],
+  ["quote", "quote"]
+];
+var TARGET_DECODE = /%(20|28|29|22|3C|3E|09|0A|0D)/gi;
+var INLINE_LINK = /(?<!!)\[([^[\]\n]*)\]\(([^\s()"]+)(?:\s+"([^"\n]*)")?\)/g;
+function isCitationInputKind(value) {
+  return value === "prompt" || value === "answer" || value === "comment";
+}
+function decodeValue(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+function parseHumanCitationHref(href) {
+  const target = parseConsoleLink(href);
+  if (target?.kind === "citation") {
+    return { ...target.agent ? { agent: target.agent } : {}, sessionId: target.sessionId, inputKind: target.inputKind, key: target.key };
+  }
+  if (!href.startsWith(LEGACY_HUMAN_CITATION_BASE)) return null;
+  const segments = href.slice(LEGACY_HUMAN_CITATION_BASE.length).split("/");
+  if (segments.length !== 3) return null;
+  const [sessionId, inputKind, key] = segments.map(decodeValue);
+  if (!sessionId || !key || !isCitationInputKind(inputKind)) return null;
+  return { sessionId, inputKind, key };
+}
+function decodeTarget(destination) {
+  return destination.replace(TARGET_DECODE, (_match, hex) => String.fromCharCode(parseInt(hex, 16)));
+}
+function isSourceTitle(title) {
+  return title?.trim().split(/\s+/)[0] === SOURCE_CITATION_TITLE;
+}
+function parseCitationTitle(title) {
+  const out = {};
+  const tokenPattern = /([A-Za-z][\w-]*)=(?:'([^']*)'|(\S+))/g;
+  let match;
+  while ((match = tokenPattern.exec(title)) !== null) {
+    const field = TITLE_FIELDS.find(([, name]) => name === match[1])?.[0];
+    if (!field) continue;
+    out[field] = decodeValue(match[2] ?? match[3] ?? "");
+  }
+  return out;
+}
+function parseCitationLink(label, href, title) {
+  const ref2 = parseHumanCitationHref(href);
+  if (ref2) return { kind: "human", ...ref2, label, ...title ? parseCitationTitle(title) : {} };
+  if (isSourceTitle(title)) {
+    const target = decodeTarget(href);
+    return target ? { kind: "source", target, label } : null;
+  }
+  return null;
+}
+function findInlineCitation(text2, from = 0) {
+  const pattern = new RegExp(INLINE_LINK.source, "g");
+  pattern.lastIndex = from;
+  let match;
+  while ((match = pattern.exec(text2)) !== null) {
+    const citation = parseCitationLink(match[1], match[2], match[3]);
+    if (citation) {
+      return { citation, rawTitle: match[3] ?? null, rawHref: match[2], start: match.index, end: match.index + match[0].length };
+    }
+  }
+  return null;
+}
+function stripCitations(markdown) {
+  let out = "";
+  let from = 0;
+  for (let match = findInlineCitation(markdown); match; match = findInlineCitation(markdown, from)) {
+    out += markdown.slice(from, match.start);
+    from = match.end;
+  }
+  return out + markdown.slice(from);
+}
+
+// packages/runtime/src/core/pageMarkSyntax.ts
+var ATTR_ORDER = ["by", "email", "on", "over"];
+function isAttrName(value) {
+  return ATTR_ORDER.includes(value);
+}
+function readAttrBlock(text2, from) {
+  if (text2[from] !== "{") return null;
+  let i = from + 1;
+  const kindMatch = /^(decided|open)(?=[\s}])/.exec(text2.slice(i, i + 8));
+  if (!kindMatch) return null;
+  const attrs = { kind: kindMatch[1] };
+  i += kindMatch[1].length;
+  while (i < text2.length) {
+    while (text2[i] === " " || text2[i] === "	") i++;
+    if (text2[i] === "}") return { attrs, end: i + 1 };
+    const nameMatch = /^([A-Za-z][\w-]*)=/.exec(text2.slice(i, i + 40));
+    if (!nameMatch) return null;
+    const name = nameMatch[1];
+    i += nameMatch[0].length;
+    let value = "";
+    if (text2[i] === '"') {
+      i++;
+      let closed = false;
+      while (i < text2.length) {
+        const ch = text2[i];
+        if (ch === "\n" || ch === "\r") return null;
+        if (ch === "\\" && i + 1 < text2.length && text2[i + 1] !== "\n") {
+          value += text2[i + 1];
+          i += 2;
+          continue;
+        }
+        if (ch === '"') {
+          closed = true;
+          i++;
+          break;
+        }
+        value += ch;
+        i++;
+      }
+      if (!closed) return null;
+    } else {
+      const bare = /^[^\s"}]+/.exec(text2.slice(i));
+      if (!bare) return null;
+      value = bare[0];
+      i += value.length;
+    }
+    if (text2[i] !== " " && text2[i] !== "	" && text2[i] !== "}") return null;
+    if (isAttrName(name)) attrs[name] = value;
+  }
+  return null;
+}
+function matchingBracket(text2, open2) {
+  let depth = 0;
+  for (let i = open2; i < text2.length; i++) {
+    const ch = text2[i];
+    if (ch === "\n") return -1;
+    if (ch === "\\") {
+      i++;
+      continue;
+    }
+    if (ch === "`") {
+      const end = codeSpanEnd(text2, i);
+      if (end !== -1) {
+        i = end - 1;
+        continue;
+      }
+      while (text2[i + 1] === "`") i++;
+      continue;
+    }
+    if (ch === "[") depth++;
+    else if (ch === "]") {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+function findInlinePageMark(text2, from = 0) {
+  for (let i = from; i < text2.length; i++) {
+    const ch = text2[i];
+    if (ch === "\\") {
+      i++;
+      continue;
+    }
+    if (ch === "`") {
+      const end = codeSpanEnd(text2, i);
+      if (end !== -1) {
+        i = end - 1;
+        continue;
+      }
+      while (text2[i + 1] === "`") i++;
+      continue;
+    }
+    if (ch !== "[" || text2[i - 1] === "!") continue;
+    const close = matchingBracket(text2, i);
+    if (close === -1) continue;
+    const block = readAttrBlock(text2, close + 1);
+    if (!block) continue;
+    return {
+      start: i,
+      end: block.end,
+      innerStart: i + 1,
+      innerEnd: close,
+      rawAttrs: text2.slice(close + 1, block.end),
+      attrs: block.attrs
+    };
+  }
+  return null;
+}
+function inlineMarkdownToPlainText(markdown) {
+  return stripCitations(markdown).replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/`([^`]*)`/g, "$1").replace(/(\*\*|__|~~|==)(.+?)\1/g, "$2").replace(/(^|[^\w*])[*_](?=\S)(.+?)(?<=\S)[*_](?![\w*])/g, "$1$2").replace(/\\([!-/:-@[-`{-~])/g, "$1").replace(/\s+/g, " ").trim();
+}
+function findPageMarks(markdown) {
+  const out = [];
+  forEachProseLine(markdown, (line, lineStart, index) => {
+    let from = 0;
+    for (; ; ) {
+      const match = findInlinePageMark(line, from);
+      if (!match) break;
+      const text2 = line.slice(match.innerStart, match.innerEnd);
+      out.push({
+        ...match.attrs,
+        text: text2,
+        plainText: inlineMarkdownToPlainText(text2),
+        rawAttrs: match.rawAttrs,
+        start: lineStart + match.start,
+        end: lineStart + match.end,
+        line: index + 1
+      });
+      from = match.end;
+    }
+  });
+  return out;
+}
+
+// packages/cli/src/localWiki/marks.ts
+var MARKS_DEFAULT_LIMIT = 50;
+var byTitle = (a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id);
+async function listMarks(opened, options = {}) {
+  const limit = Math.max(1, Math.floor(options.limit ?? MARKS_DEFAULT_LIMIT));
+  const by = options.by?.trim().toLowerCase();
+  const words = (options.query ?? "").toLowerCase().split(/\s+/).filter(Boolean);
+  const { pages } = await opened.wiki.snapshot();
+  const marks = [];
+  for (const page of pages.filter((p) => p.trashedAt === null && !p.malformed && p.documentType === "markdown" && p.hasContent).sort(byTitle)) {
+    const { markdown } = await opened.wiki.readBody(page.id);
+    for (const mark of findPageMarks(markdown)) {
+      if (options.kind && mark.kind !== options.kind) continue;
+      if (by && !`${mark.by ?? ""}
+${mark.email ?? ""}`.toLowerCase().includes(by)) continue;
+      if (words.length > 0) {
+        const haystack = `${mark.plainText}
+${mark.over ?? ""}
+${page.title}`.toLowerCase();
+        if (!words.every((word) => haystack.includes(word))) continue;
+      }
+      marks.push({
+        pageId: page.id,
+        title: page.title,
+        line: mark.line,
+        kind: mark.kind,
+        ...mark.by ? { by: mark.by } : {},
+        ...mark.email ? { email: mark.email } : {},
+        ...mark.on ? { on: mark.on } : {},
+        ...mark.over ? { over: mark.over } : {},
+        text: mark.plainText
+      });
+    }
+  }
+  return { total: marks.length, marks: marks.slice(0, limit) };
+}
+
+// packages/cli/src/mcp/marksTool.ts
+var LIST_MARKS_TOOL = "listMarks";
+var MOVED_NOTE = "This local wiki was moved to a Nimbalyst Teams project; these marks come from the archive left behind and may be out of date. Ask the team wiki (nimbalyst-team) for current decisions.";
+function marksTool(context) {
+  return localTool(
+    {
+      name: LIST_MARKS_TOOL,
+      description: 'List the decisions and open questions marked in the local wiki\'s pages (`[sentence]{decided by=... on=... over=...}` and `[sentence]{open by=...}`), with the page id and title, line (in the body readCollabDoc returns), kind, by, email, on, over and the sentence as plain text. The first call for "what did we decide about X", "why did we", or "what is still open": filter by `query` words, `kind` or `by`, then read the pages it names for the reasoning around a mark. `total` counts every match; at most `limit` are returned.',
+      inputSchema: {
+        type: "object",
+        properties: {
+          kind: { type: "string", enum: ["decided", "open"], description: "Only decisions, or only open questions. Default: both." },
+          by: { type: "string", description: "Part of the name or email of who decided or owns the question, any case." },
+          query: { type: "string", description: "Words that must all appear in the sentence, what it was chosen over, or the page title." },
+          limit: { type: "number", description: `Most marks to return. Default ${MARKS_DEFAULT_LIMIT}.` }
+        }
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }
+    },
+    context,
+    async (opened, args) => {
+      const kind = args.kind === "decided" || args.kind === "open" ? args.kind : void 0;
+      const result = await listMarks(opened, {
+        kind,
+        by: str3(args, "by"),
+        query: str3(args, "query"),
+        limit: typeof args.limit === "number" && args.limit > 0 ? args.limit : void 0
+      });
+      const moved = readMigratedTo(opened.projectRoot);
+      return moved ? { movedToTeam: { ...moved, note: MOVED_NOTE }, ...result } : result;
+    }
+  );
+}
+
 // packages/cli/src/localWiki/writes.ts
 async function ensureFolderPath(wiki, folderPath) {
   let parentId = null;
@@ -7336,7 +8179,19 @@ var LOCAL_CREATE_DOC_ARGS = {
     description: "The page's whole file text in its editor's format: markdown for a markdown page, the .excalidraw JSON for a drawing, the Prisma schema for a data model, and so on. Empty gives that editor's empty file."
   }
 };
-var stripNodePrefix = (ref) => ref.replace(/^(document|item|page):/, "");
+function withPathsField(definition2) {
+  const properties = definition2.inputSchema.properties;
+  const fields = properties.fields ?? {};
+  properties.fields = {
+    ...fields,
+    properties: {
+      ...fields.properties,
+      paths: { type: ["array", "null"], items: { type: "string" }, description: 'Repository-relative globs of the code the page explains, coarse (a folder, not a file list): ["src/sync/**"]. A glob starting with ! takes back files earlier ones matched: ["src/**", "!src/generated/**"].' }
+    }
+  };
+  return definition2;
+}
+var stripNodePrefix = (ref2) => ref2.replace(/^(document|item|page):/, "");
 async function resolveParent(wiki, args, idKey) {
   const folderPath = str3(args, "folderPath");
   if (folderPath) return ensureFolderPath(wiki, folderPath);
@@ -7354,8 +8209,8 @@ function pageSummary(page) {
   return { id: page.id, title: page.title, type: page.type, documentType: page.documentType, uri: localPageUri(page.id), path: page.path };
 }
 function subtree(nodes, rootRef) {
-  const ref = stripNodePrefix(rootRef.replace(/^type:/, ""));
-  const at = nodes.findIndex((n) => n.nodeId === rootRef || n.id === ref || n.path === ref);
+  const ref2 = stripNodePrefix(rootRef.replace(/^type:/, ""));
+  const at = nodes.findIndex((n) => n.nodeId === rootRef || n.id === ref2 || n.path === ref2);
   if (at < 0) throw usageError(`No node "${rootRef}" in the local wiki`);
   const rootDepth = nodes[at].depth;
   let end = at + 1;
@@ -7556,10 +8411,10 @@ function pageTools(context) {
       { refKeys: PAGE_REFS }
     ),
     localTool(
-      contractDefinition(
+      withPathsField(contractDefinition(
         "setPageFields",
-        "Set a local wiki page's own fields: owner, status (draft, current or outdated), summary (one line, at most 280 characters) and tags. Only the fields you pass change; null clears one. A value that does not fit is ignored, and the reply names the fields the page has now. A typed page's fields are set with tracker_update."
-      ),
+        "Set a local wiki page's own fields: owner, status (draft, current or outdated), summary (one line, at most 280 characters), tags, and paths (the repository-relative globs of the code the page explains, such as src/sync/**; pagesForFiles reads them). Only the fields you pass change; null clears one. A value that does not fit is ignored, and the reply names the fields the page has now. A typed page's fields are set with tracker_update."
+      )),
       context,
       async ({ wiki }, args) => {
         const page = findPage(await wiki.snapshot(), stripNodePrefix(requireStr2(args, "itemId")));
@@ -7567,8 +8422,8 @@ function pageTools(context) {
         const patch = {};
         const ignored = [];
         for (const [key, value] of Object.entries(input)) {
-          const fits = value === null || key === "owner" && typeof value === "string" || key === "status" && ["draft", "current", "outdated"].includes(value) || key === "summary" && typeof value === "string" && value.length <= 280 && !value.includes("\n") || key === "tags" && Array.isArray(value) && value.every((t) => typeof t === "string");
-          if (fits && ["owner", "status", "summary", "tags"].includes(key)) patch[key] = value;
+          const fits = value === null || key === "owner" && typeof value === "string" || key === "status" && ["draft", "current", "outdated"].includes(value) || key === "summary" && typeof value === "string" && value.length <= 280 && !value.includes("\n") || key === "tags" && Array.isArray(value) && value.every((t) => typeof t === "string") || key === "paths" && Array.isArray(value) && value.every((glob) => typeof glob === "string" && glob.trim() !== "" && !glob.includes("\n"));
+          if (fits && ["owner", "status", "summary", "tags", "paths"].includes(key)) patch[key] = value;
           else ignored.push(key);
         }
         if (Object.keys(patch).length) await wiki.command({ type: "set-document-fields", documentId: page.id, fields: patch });
@@ -7880,18 +8735,19 @@ function trackerTools(context) {
 }
 
 // packages/cli/src/mcp/serverTools.ts
+var LOCAL_SERVER_INSTRUCTIONS = 'These tools read and write this project\'s local wiki, a folder of markdown pages, if it has one. Before design work or a change in an area, call `searchPages` for it and read what matches; a page whose `paths` cover files you are about to change is worth reading first (`pagesForFiles` lists them). For "what did we decide" or "why did we", call `listMarks` first. After changing code, call `pagesForFiles` and update or flag the pages it returns; after deciding something, follow the `capture` skill from the nimbalyst-wiki plugin. Before writing or changing any wiki page, including architecture or product maps, diagrams, HTML pages and other visuals, load the `update` skill from the nimbalyst-wiki plugin and follow it. Every result names the wiki folder in use; if the session has moved to another project, call `useLocalWiki` with that project folder first.';
 function localWikiContext(startDir, location) {
   const cache = /* @__PURE__ */ new Map();
   let current = { startDir, location };
   return {
     open: () => openLocalWiki(current.startDir, current.location, cache),
     // An agent's location is relative to the project root, not the server's cwd.
-    init: (at) => initLocalWiki(current.startDir, at ? path11.resolve(projectRoot(current.startDir), at) : current.location),
+    init: (at) => initLocalWiki(current.startDir, at ? path13.resolve(projectRoot(current.startDir), at) : current.location),
     workspace: () => current,
     use: (folder) => {
-      const target = path11.resolve(projectRoot(current.startDir), folder);
+      const target = path13.resolve(projectRoot(current.startDir), folder);
       if (!fs2.statSync(target, { throwIfNoEntry: false })?.isDirectory()) throw usageError(`${target} is not a folder`);
-      const next = workspaceForFolder(target, (dir) => fs2.existsSync(path11.join(dir, MARKER_FILE)));
+      const next = workspaceForFolder(target, (dir) => fs2.existsSync(path13.join(dir, MARKER_FILE)));
       const where = resolveWikiLocation(next.startDir, next.location);
       current = next;
       return where;
@@ -7916,7 +8772,7 @@ function useTool(context) {
       try {
         refuseTeamScope(USE_TOOL_NAME, args);
         const where = context.use(requireStr2(args, "folder"));
-        if (!fs2.existsSync(path11.join(where.dir, MARKER_FILE))) {
+        if (!fs2.existsSync(path13.join(where.dir, MARKER_FILE))) {
           return textResult(
             `Now using project ${where.projectRoot}, which has no local wiki at ${where.dir}. Call \`${INIT_TOOL_NAME}\` to create one there.`,
             true
@@ -7964,14 +8820,14 @@ function initTool(context) {
 }
 function createLocalToolMap(context, extra = []) {
   const tools = new ToolMap();
-  for (const tool of [initTool(context), useTool(context), ...pageTools(context), ...trackerTools(context), ...extra]) tools.register(tool);
+  for (const tool of [initTool(context), useTool(context), ...pageTools(context), ...trackerTools(context), coverageTool(context), doctorTool(context), marksTool(context), ...extra]) tools.register(tool);
   return tools;
 }
 
 // packages/cli/src/serve/assets.ts
-import { existsSync as existsSync5, readFileSync as readFileSync2 } from "node:fs";
+import { existsSync as existsSync5, readFileSync as readFileSync3 } from "node:fs";
 import { createRequire } from "node:module";
-import * as path13 from "node:path";
+import * as path15 from "node:path";
 import { fileURLToPath } from "node:url";
 
 // packages/cli/src/serve/api.ts
@@ -8062,7 +8918,7 @@ function tooLarge(maxBytes) {
 // packages/cli/src/serve/static.ts
 import { createReadStream } from "node:fs";
 import { stat as stat4 } from "node:fs/promises";
-import * as path12 from "node:path";
+import * as path14 from "node:path";
 var HTML_EMBED_SHELL_PATH = "/html-embed/shell";
 function serveHtmlEmbedShell(res) {
   res.writeHead(200, {
@@ -8099,7 +8955,7 @@ var CONTENT_TYPES = {
   ".mp3": "audio/mpeg"
 };
 function contentTypeFor(file) {
-  return CONTENT_TYPES[path12.extname(file).toLowerCase()] ?? "application/octet-stream";
+  return CONTENT_TYPES[path14.extname(file).toLowerCase()] ?? "application/octet-stream";
 }
 function streamWikiFile(res, abs) {
   res.writeHead(200, {
@@ -8117,8 +8973,8 @@ function resolveInside(root, urlPath) {
     return null;
   }
   if (decoded.includes("\0")) return null;
-  const abs = path12.resolve(root, "." + path12.posix.normalize("/" + decoded));
-  return abs === root || abs.startsWith(root + path12.sep) ? abs : null;
+  const abs = path14.resolve(root, "." + path14.posix.normalize("/" + decoded));
+  return abs === root || abs.startsWith(root + path14.sep) ? abs : null;
 }
 async function isFile(abs) {
   try {
@@ -8137,18 +8993,18 @@ function stream(res, abs, immutable) {
   createReadStream(abs).pipe(res);
 }
 async function serveStatic(res, assetsDir, urlPath) {
-  const root = path12.resolve(assetsDir);
+  const root = path14.resolve(assetsDir);
   const abs = resolveInside(root, urlPath);
   if (abs && abs !== root && await isFile(abs)) {
     stream(res, abs, urlPath.startsWith("/assets/"));
     return;
   }
-  if (urlPath.startsWith("/assets/") || path12.extname(urlPath)) {
+  if (urlPath.startsWith("/assets/") || path14.extname(urlPath)) {
     res.writeHead(404, { ...BASE_HEADERS, "Content-Type": "text/plain; charset=utf-8" });
     res.end("Not found");
     return;
   }
-  stream(res, path12.join(root, "index.html"), false);
+  stream(res, path14.join(root, "index.html"), false);
 }
 
 // packages/cli/src/serve/api.ts
@@ -8270,13 +9126,13 @@ async function handleApi(ctx, req, res, url) {
 var WIKI_WEB_PACKAGE = "@nimbalyst/wiki-web";
 function readManifest(packageDir) {
   try {
-    return JSON.parse(readFileSync2(path13.join(packageDir, "package.json"), "utf8"));
+    return JSON.parse(readFileSync3(path15.join(packageDir, "package.json"), "utf8"));
   } catch {
     return null;
   }
 }
 function fromPackageDir(packageDir, source) {
-  const dir = path13.join(packageDir, "dist");
+  const dir = path15.join(packageDir, "dist");
   const manifest = readManifest(packageDir);
   if (manifest?.nimbalystWikiApi !== void 0 && manifest.nimbalystWikiApi !== WIKI_API_VERSION) {
     return {
@@ -8285,31 +9141,31 @@ function fromPackageDir(packageDir, source) {
       detail: `${packageDir} speaks wiki API ${manifest.nimbalystWikiApi}; this nim speaks ${WIKI_API_VERSION}`
     };
   }
-  if (!existsSync5(path13.join(dir, "index.html"))) return { ok: false, reason: "unbuilt", detail: `${dir} has no index.html` };
+  if (!existsSync5(path15.join(dir, "index.html"))) return { ok: false, reason: "unbuilt", detail: `${dir} has no index.html` };
   return { ok: true, assets: { dir, version: manifest?.version ?? null, source } };
 }
 function installedPackageDir(from) {
   try {
-    const require2 = createRequire(path13.join(from, "noop.js"));
-    return path13.dirname(require2.resolve(`${WIKI_WEB_PACKAGE}/package.json`));
+    const require2 = createRequire(path15.join(from, "noop.js"));
+    return path15.dirname(require2.resolve(`${WIKI_WEB_PACKAGE}/package.json`));
   } catch {
     return null;
   }
 }
 function workspacePackageDir(from) {
-  for (let dir = from; ; dir = path13.dirname(dir)) {
-    const candidate = path13.join(dir, "packages", "wiki-web");
-    if (existsSync5(path13.join(candidate, "package.json"))) return candidate;
-    if (path13.dirname(dir) === dir) return null;
+  for (let dir = from; ; dir = path15.dirname(dir)) {
+    const candidate = path15.join(dir, "packages", "wiki-web");
+    if (existsSync5(path15.join(candidate, "package.json"))) return candidate;
+    if (path15.dirname(dir) === dir) return null;
   }
 }
 function resolveWikiWebAssets(options) {
   if (options.flag) {
-    const dir = path13.resolve(options.flag);
-    if (!existsSync5(path13.join(dir, "index.html"))) return { ok: false, reason: "unbuilt", detail: `${dir} has no index.html` };
+    const dir = path15.resolve(options.flag);
+    if (!existsSync5(path15.join(dir, "index.html"))) return { ok: false, reason: "unbuilt", detail: `${dir} has no index.html` };
     return { ok: true, assets: { dir, version: null, source: "flag" } };
   }
-  const selfDir = options.selfDir ?? path13.dirname(fileURLToPath(import.meta.url));
+  const selfDir = options.selfDir ?? path15.dirname(fileURLToPath(import.meta.url));
   let firstFailure = null;
   for (const from of [selfDir, options.projectRoot].filter((d) => Boolean(d))) {
     const packageDir = installedPackageDir(from);
@@ -8340,11 +9196,11 @@ import { spawn } from "node:child_process";
 // packages/cli/src/serve/session.ts
 import { createHash as createHash2 } from "node:crypto";
 import * as fs3 from "node:fs";
-import * as path15 from "node:path";
+import * as path17 from "node:path";
 
 // packages/cli/src/cloud/config.ts
 import * as os2 from "node:os";
-import * as path14 from "node:path";
+import * as path16 from "node:path";
 var DEFAULT_SERVER = "https://sync.nimbalyst.com";
 var LOOPBACK_HOSTS = /* @__PURE__ */ new Set(["localhost", "127.0.0.1", "[::1]"]);
 function checkedOrigin(envName, raw) {
@@ -8366,12 +9222,12 @@ function resolveConfigDir() {
   if (process.env.NIM_CONFIG_DIR) return process.env.NIM_CONFIG_DIR;
   const home = os2.homedir();
   if (process.platform === "win32") {
-    return path14.join(process.env.APPDATA || path14.join(home, "AppData", "Roaming"), "nimbalyst-cli");
+    return path16.join(process.env.APPDATA || path16.join(home, "AppData", "Roaming"), "nimbalyst-cli");
   }
   if (process.platform === "darwin") {
-    return path14.join(home, "Library", "Application Support", "nimbalyst-cli");
+    return path16.join(home, "Library", "Application Support", "nimbalyst-cli");
   }
-  return path14.join(process.env.XDG_CONFIG_HOME || path14.join(home, ".config"), "nimbalyst-cli");
+  return path16.join(process.env.XDG_CONFIG_HOME || path16.join(home, ".config"), "nimbalyst-cli");
 }
 
 // packages/cli/src/serve/auth.ts
@@ -8500,12 +9356,12 @@ function plain(res, status, text2) {
   res.end(text2);
 }
 function listen(server, port) {
-  return new Promise((resolve7, reject) => {
+  return new Promise((resolve8, reject) => {
     const onError = (err) => reject(err);
     server.once("error", onError);
     server.listen(port, HOST, () => {
       server.off("error", onError);
-      resolve7(server.address().port);
+      resolve8(server.address().port);
     });
   });
 }
@@ -8550,9 +9406,9 @@ async function startWikiServer(options) {
     token,
     origin,
     url: `${origin}/?token=${token}`,
-    close: () => new Promise((resolve7) => {
+    close: () => new Promise((resolve8) => {
       events.close();
-      server.close(() => resolve7());
+      server.close(() => resolve8());
       server.closeAllConnections();
     })
   };
@@ -8560,8 +9416,8 @@ async function startWikiServer(options) {
 
 // packages/cli/src/serve/session.ts
 function defaultSessionStore(wikiRoot, configDir = resolveConfigDir()) {
-  const key = createHash2("sha256").update(path15.resolve(wikiRoot)).digest("hex").slice(0, 24);
-  return { file: path15.join(configDir, "wiki-serve", `${key}.json`), root: wikiRoot };
+  const key = createHash2("sha256").update(path17.resolve(wikiRoot)).digest("hex").slice(0, 24);
+  return { file: path17.join(configDir, "wiki-serve", `${key}.json`), root: wikiRoot };
 }
 function recall(store) {
   try {
@@ -8572,7 +9428,7 @@ function recall(store) {
   }
 }
 function remember(store, session) {
-  const dir = path15.dirname(store.file);
+  const dir = path17.dirname(store.file);
   fs3.mkdirSync(dir, { recursive: true, mode: 448 });
   if (process.platform !== "win32" && (fs3.statSync(dir).mode & 511) !== 448) fs3.chmodSync(dir, 448);
   const tmp = `${store.file}.${process.pid}.tmp`;
@@ -8670,7 +9526,7 @@ function serveTool(options) {
 
 // packages/cli/src/mcp/editorTools.ts
 import { existsSync as existsSync6 } from "node:fs";
-import path16 from "node:path";
+import path18 from "node:path";
 import { pathToFileURL } from "node:url";
 var EDITOR_MODELS_VERSION = 2;
 var EditorModelsUnavailable = class extends Error {
@@ -8680,7 +9536,7 @@ function editorModelsFromWikiWeb(options) {
   return async (opened) => {
     const resolution = resolveWikiWebAssets({ flag: options.assetsDir, projectRoot: opened.projectRoot });
     if (!resolution.ok) throw new EditorModelsUnavailable(installHint(options.version, resolution));
-    const file = path16.join(resolution.assets.dir, "models", "editor-models.mjs");
+    const file = path18.join(resolution.assets.dir, "models", "editor-models.mjs");
     if (!existsSync6(file)) {
       throw new EditorModelsUnavailable(`${resolution.assets.dir} has no models/editor-models.mjs; install a newer @nimbalyst/wiki-web (npm install -g @nimbalyst/wiki-web@${options.version}).`);
     }
@@ -8710,13 +9566,13 @@ function definition(name, description, properties, required, readOnly) {
 }
 async function editorPage(wiki, args, suffix) {
   const snapshot = await wiki.snapshot();
-  const ref = requireStr2(args, "filePath");
+  const ref2 = requireStr2(args, "filePath");
   let page;
   try {
-    page = findPage(snapshot, ref);
+    page = findPage(snapshot, ref2);
   } catch (err) {
-    if (!ref.toLowerCase().endsWith(suffix)) throw err;
-    page = findPage(snapshot, ref.slice(0, -suffix.length));
+    if (!ref2.toLowerCase().endsWith(suffix)) throw err;
+    page = findPage(snapshot, ref2.slice(0, -suffix.length));
   }
   if (page.fileExtension !== suffix) throw usageError(`${page.title} is not a ${suffix} page (it is ${page.fileExtension})`);
   const body = await wiki.readBody(page.id);
@@ -8783,11 +9639,11 @@ function labelOf(element, elements) {
   const bound = live(elements).find((other) => other.type === "text" && other.containerId === element.id);
   return typeof bound?.text === "string" ? bound.text : "";
 }
-function findElement(elements, ref) {
+function findElement(elements, ref2) {
   const items = live(elements);
-  const byId = items.find((element) => element.id === ref);
+  const byId = items.find((element) => element.id === ref2);
   if (byId) return byId;
-  const labelled = items.find((element) => element.type !== "text" && element.type !== "arrow" && labelOf(element, elements) === ref) ?? items.find((element) => labelOf(element, elements) === ref);
+  const labelled = items.find((element) => element.type !== "text" && element.type !== "arrow" && labelOf(element, elements) === ref2) ?? items.find((element) => labelOf(element, elements) === ref2);
   if (labelled?.type === "text" && typeof labelled.containerId === "string") return items.find((element) => element.id === labelled.containerId) ?? labelled;
   return labelled;
 }
@@ -9017,10 +9873,10 @@ function editorTools(context, loadModels) {
         const scene = parseScene(text2);
         const gone = /* @__PURE__ */ new Set();
         const missing = [];
-        for (const ref of args.elements) {
-          const element = typeof ref === "string" ? findElement(scene.elements, ref) : void 0;
+        for (const ref2 of args.elements) {
+          const element = typeof ref2 === "string" ? findElement(scene.elements, ref2) : void 0;
           if (!element) {
-            missing.push(String(ref));
+            missing.push(String(ref2));
             continue;
           }
           gone.add(element.id);
@@ -9041,9 +9897,9 @@ function editorTools(context, loadModels) {
 // packages/cli/src/cloud/credentials.ts
 import { AsyncLocalStorage } from "node:async_hooks";
 import * as fs4 from "node:fs";
-import * as path17 from "node:path";
+import * as path19 from "node:path";
 function credentialsPath() {
-  return path17.join(resolveConfigDir(), "credentials.json");
+  return path19.join(resolveConfigDir(), "credentials.json");
 }
 function readFile9() {
   const file = credentialsPath();
@@ -9072,7 +9928,7 @@ function ensurePrivateDir(dir) {
 }
 function writeFile3(data) {
   const file = credentialsPath();
-  ensurePrivateDir(path17.dirname(file));
+  ensurePrivateDir(path19.dirname(file));
   const tmp = `${file}.${process.pid}.tmp`;
   fs4.writeFileSync(tmp, JSON.stringify(data, null, 2) + "\n", { mode: 384 });
   fs4.chmodSync(tmp, 384);
@@ -9130,7 +9986,7 @@ function takeOverIfStale(lock, owner) {
 async function withCredentialsLock(fn) {
   if (heldLock.getStore()) return fn();
   const lock = `${credentialsPath()}.lock`;
-  ensurePrivateDir(path17.dirname(lock));
+  ensurePrivateDir(path19.dirname(lock));
   const owner = `${process.pid}:${Math.random().toString(36).slice(2)}`;
   const deadline = Date.now() + lockTimeoutMs();
   for (; ; ) {
@@ -9309,7 +10165,7 @@ async function fetchUserInfo(server) {
 }
 
 // packages/cli/src/localWiki/moveToTeam.ts
-import * as path21 from "node:path";
+import * as path23 from "node:path";
 
 // packages/cli/src/cloud/pagesClient.ts
 var nextId = 1;
@@ -9414,22 +10270,22 @@ async function callTool(server, name, args) {
 }
 
 // packages/cli/src/cloud/repo.ts
-import { execFileSync as execFileSync3 } from "node:child_process";
+import { execFileSync as execFileSync4 } from "node:child_process";
 import * as fs5 from "node:fs";
-import * as path18 from "node:path";
-function git2(dir, args) {
+import * as path20 from "node:path";
+function git3(dir, args) {
   try {
-    return execFileSync3("git", args, { cwd: dir, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() || void 0;
+    return execFileSync4("git", args, { cwd: dir, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() || void 0;
   } catch {
     return void 0;
   }
 }
 function locateCheckout(startDir) {
-  const root = git2(startDir, ["rev-parse", "--show-toplevel"]) ?? startDir;
-  return { root, origin: git2(root, ["remote", "get-url", "origin"]) };
+  const root = git3(startDir, ["rev-parse", "--show-toplevel"]) ?? startDir;
+  return { root, origin: git3(root, ["remote", "get-url", "origin"]) };
 }
 function wikiFilePath(root) {
-  return path18.join(root, ".nimbalyst", "wiki.json");
+  return path20.join(root, ".nimbalyst", "wiki.json");
 }
 function readProjectPin(root) {
   let raw;
@@ -9471,7 +10327,7 @@ function resolveTeamsTarget(startDir, opts = {}) {
 // packages/cli/src/cloud/teamContent.ts
 import { createHash as createHash3 } from "node:crypto";
 import { readFile as readFile10, stat as stat5 } from "node:fs/promises";
-import * as path19 from "node:path";
+import * as path21 from "node:path";
 var MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 var CONNECT_TIMEOUT_MS = 15e3;
 var FLUSH_TIMEOUT_MS = 15e3;
@@ -9518,8 +10374,8 @@ function createTeamContentWriter(options) {
       if (!models) return { ok: false, code: "editor_code_unavailable", message: "The editors' document code is not installed." };
       const issued = await currentCredential();
       let resolveFirstSync;
-      const firstSync = new Promise((resolve7) => {
-        resolveFirstSync = resolve7;
+      const firstSync = new Promise((resolve8) => {
+        resolveFirstSync = resolve8;
       });
       const provider = new models.DocumentSyncProvider({
         serverUrl: syncUrlFor(options.server),
@@ -9534,8 +10390,8 @@ function createTeamContentWriter(options) {
         await provider.connect();
         const serverEmpty = await Promise.race([
           firstSync,
-          new Promise((resolve7) => {
-            timer = setTimeout(() => resolve7(null), options.connectTimeoutMs ?? CONNECT_TIMEOUT_MS);
+          new Promise((resolve8) => {
+            timer = setTimeout(() => resolve8(null), options.connectTimeoutMs ?? CONNECT_TIMEOUT_MS);
           })
         ]);
         if (serverEmpty === null) {
@@ -9574,7 +10430,7 @@ function createTeamContentWriter(options) {
       }
       const bytes = await readFile10(file.abs);
       const assetId = assetIdFor(bytes);
-      const name = path19.basename(file.abs);
+      const name = path21.basename(file.abs);
       const url = `${options.server}/api/collab/docs/${encodeURIComponent(file.documentId)}/assets/${assetId}`;
       const put = async (token) => fetchImpl(url, {
         method: "PUT",
@@ -9583,7 +10439,7 @@ function createTeamContentWriter(options) {
           [ASSET_HEADER_WIRE_FORMAT]: ASSET_WIRE_FORMAT_PLAINTEXT,
           // Header values are latin-1 on the wire; percent-encoded so any file name survives.
           [ASSET_HEADER_FILE_NAME]: encodeURIComponent(name.slice(0, 200)),
-          [ASSET_HEADER_MIME]: MIME_TYPES[path19.extname(name).toLowerCase()] ?? "application/octet-stream",
+          [ASSET_HEADER_MIME]: MIME_TYPES[path21.extname(name).toLowerCase()] ?? "application/octet-stream",
           [ASSET_HEADER_PLAINTEXT_SIZE]: String(bytes.byteLength)
         },
         body: bytes
@@ -9605,7 +10461,7 @@ function createTeamContentWriter(options) {
 
 // packages/cli/src/localWiki/teamExport.ts
 import * as fs6 from "node:fs";
-import * as path20 from "node:path";
+import * as path22 from "node:path";
 var EDITOR_IDS = {
   excalidraw: "com.nimbalyst.excalidraw",
   mindmap: "com.nimbalyst.mindmap",
@@ -9683,7 +10539,7 @@ async function collectLocalWiki(wiki, options = {}) {
   const pages = [];
   const editorFiles = /* @__PURE__ */ new Map();
   const linkedFiles = /* @__PURE__ */ new Map();
-  const pagePaths = new Set(live2.flatMap((page) => page.path ? [page.path.toLowerCase()] : []));
+  const pagePaths2 = new Set(live2.flatMap((page) => page.path ? [page.path.toLowerCase()] : []));
   const locations = /* @__PURE__ */ new Map();
   const usedTypes = /* @__PURE__ */ new Set();
   const relationFieldsByType = new Map(
@@ -9734,7 +10590,7 @@ async function collectLocalWiki(wiki, options = {}) {
       });
       continue;
     }
-    const files = await linkedFilesOf(wiki, page.id, markdown, { path: page.path, dir: page.dir }, pagePaths);
+    const files = await linkedFilesOf(wiki, page.id, markdown, { path: page.path, dir: page.dir }, pagePaths2);
     if (files.length) linkedFiles.set(page.id, files);
     if (page.type) usedTypes.add(page.type);
     pages.push({
@@ -9768,11 +10624,11 @@ async function collectLocalWiki(wiki, options = {}) {
     relations
   };
 }
-async function linkedFilesOf(wiki, pageId, body, from, pagePaths) {
+async function linkedFilesOf(wiki, pageId, body, from, pagePaths2) {
   const linkPaths = /* @__PURE__ */ new Set();
   rewriteFileLinks(body, (linkPath) => {
     const resolved = resolveRelative(linkBase(from), linkPath);
-    if (resolved === null || !pagePaths.has(resolved)) linkPaths.add(linkPath);
+    if (resolved === null || !pagePaths2.has(resolved)) linkPaths.add(linkPath);
     return null;
   });
   const files = [];
@@ -9780,11 +10636,11 @@ async function linkedFilesOf(wiki, pageId, body, from, pagePaths) {
   return files;
 }
 function linkBase(location) {
-  return location.path ? path20.posix.dirname(location.path).replace(/^\.$/, "") : location.dir;
+  return location.path ? path22.posix.dirname(location.path).replace(/^\.$/, "") : location.dir;
 }
 function resolveRelative(base, linkPath) {
-  const joined = path20.posix.normalize(path20.posix.join(base === "" ? "." : base, linkPath));
-  if (joined === ".." || joined.startsWith("../") || path20.posix.isAbsolute(joined)) return null;
+  const joined = path22.posix.normalize(path22.posix.join(base === "" ? "." : base, linkPath));
+  if (joined === ".." || joined.startsWith("../") || path22.posix.isAbsolute(joined)) return null;
   return (joined === "." ? "" : joined).replace(/\/$/, "").toLowerCase();
 }
 function pathIndex(locations) {
@@ -9835,14 +10691,14 @@ function canvasCardTarget(href, canvasPath, wikiPrefix, wikiDir) {
     return null;
   }
   if (!decoded) return null;
-  if (path20.isAbsolute(decoded)) {
+  if (path22.isAbsolute(decoded)) {
     if (!wikiDir) return null;
-    const rel = path20.relative(wikiDir, path20.normalize(decoded));
-    if (!rel || rel.startsWith("..") || path20.isAbsolute(rel)) return null;
-    return rel.split(path20.sep).join("/").toLowerCase();
+    const rel = path22.relative(wikiDir, path22.normalize(decoded));
+    if (!rel || rel.startsWith("..") || path22.isAbsolute(rel)) return null;
+    return rel.split(path22.sep).join("/").toLowerCase();
   }
-  if (decoded.startsWith("./") || decoded.startsWith("../")) return resolveRelative(path20.posix.dirname(canvasPath).replace(/^\.$/, ""), decoded);
-  const fromRoot = path20.posix.normalize(decoded);
+  if (decoded.startsWith("./") || decoded.startsWith("../")) return resolveRelative(path22.posix.dirname(canvasPath).replace(/^\.$/, ""), decoded);
+  const fromRoot = path22.posix.normalize(decoded);
   if (!wikiPrefix) return resolveRelative("", fromRoot);
   return fromRoot.startsWith(`${wikiPrefix}/`) ? resolveRelative("", fromRoot.slice(wikiPrefix.length + 1)) : null;
 }
@@ -9925,7 +10781,7 @@ function planTypeBatches(types2, { maxTypes = TYPE_BATCH_MAX, maxBytes = BATCH_M
   if (current.length) batches.push(current);
   return { batches, tooLarge: tooLarge2 };
 }
-var defaultSleep = (ms) => new Promise((resolve7) => setTimeout(resolve7, ms));
+var defaultSleep = (ms) => new Promise((resolve8) => setTimeout(resolve8, ms));
 function pacedCaller(deps) {
   const sleep3 = deps.sleep ?? defaultSleep;
   const now = deps.now ?? Date.now;
@@ -10112,7 +10968,7 @@ async function editorModels(opened, load2) {
 }
 async function moveLocalWikiToTeam(opened, options, deps = {}) {
   const { models, editorTypes } = await editorModels(opened, deps.loadEditorModels);
-  const wikiPrefix = path21.relative(opened.projectRoot, opened.dir).split(path21.sep).join("/");
+  const wikiPrefix = path23.relative(opened.projectRoot, opened.dir).split(path23.sep).join("/");
   const exported = await collectLocalWiki(opened.wiki, { editorTypes, wikiPrefix, wikiDir: opened.dir });
   const typedPages = exported.pages.filter((page) => page.kind === "typedPage").length;
   const editorPages = exported.editorFiles.size;
@@ -10237,7 +11093,7 @@ function signInTool(options) {
   });
   const start = async (server) => {
     let resolvePrompt;
-    const prompted = new Promise((resolve7) => resolvePrompt = resolve7);
+    const prompted = new Promise((resolve8) => resolvePrompt = resolve8);
     const login = deviceLogin(server, (userCode, uri, completeUri) => {
       const verificationUrl = String(completeUri ?? uri);
       resolvePrompt({ userCode: String(userCode), verificationUrl });
@@ -10286,7 +11142,7 @@ function signInTool(options) {
         }
         const current = flow;
         if (!current.finished) {
-          await Promise.race([current.done, new Promise((resolve7) => setTimeout(resolve7, pollWaitMs))]);
+          await Promise.race([current.done, new Promise((resolve8) => setTimeout(resolve8, pollWaitMs))]);
         }
         if (!current.finished) return pending(current.prompt);
         flow = null;
@@ -10376,23 +11232,23 @@ async function runMcp(version, args, takeNotice) {
   const editors = editorTools(context, loadEditorModels);
   process.stderr.write(`nim mcp ${version}: serving on stdio
 `);
-  await runStdioServer({ tools: createLocalToolMap(context, [...editors, serve, ...teamTools(context, { moveDeps: { loadEditorModels } })]), serverInfo: { name: "nimbalyst-local", version }, takeNotice });
+  await runStdioServer({ tools: createLocalToolMap(context, [...editors, serve, ...teamTools(context, { moveDeps: { loadEditorModels } })]), serverInfo: { name: "nimbalyst-local", version }, takeNotice, instructions: LOCAL_SERVER_INSTRUCTIONS });
   await serve.close();
   return 0;
 }
 
 // packages/cli/src/mcp/pluginWorkspace.ts
-import path22 from "node:path";
+import path24 from "node:path";
 function resolvePluginWorkspace(env, cwd, pluginRoot2) {
   if (env.CLAUDE_PROJECT_DIR) return env.CLAUDE_PROJECT_DIR;
-  if (env.PWD && path22.resolve(cwd) === path22.resolve(pluginRoot2)) return env.PWD;
+  if (env.PWD && path24.resolve(cwd) === path24.resolve(pluginRoot2)) return env.PWD;
   return cwd;
 }
 
 // packages/cli/src/mcp/updateCheck.ts
-import { mkdirSync as mkdirSync5, readFileSync as readFileSync7, writeFileSync as writeFileSync5 } from "node:fs";
+import { mkdirSync as mkdirSync5, readFileSync as readFileSync8, writeFileSync as writeFileSync5 } from "node:fs";
 import os3 from "node:os";
-import path23 from "node:path";
+import path25 from "node:path";
 var UPDATE_CHECK_OPT_OUT = "NIMBALYST_WIKI_NO_UPDATE_CHECK";
 var CHECK_INTERVAL_MS = 24 * 60 * 60 * 1e3;
 var FETCH_TIMEOUT_MS = 5e3;
@@ -10408,17 +11264,17 @@ var MANIFEST_URLS = {
   }
 };
 function detectPluginInstall(env, cwd, pluginRoot2) {
-  const parts = path23.resolve(pluginRoot2).split(path23.sep);
+  const parts = path25.resolve(pluginRoot2).split(path25.sep);
   const n = parts.length;
   if (n < 5 || parts[n - 5] !== "plugins" || parts[n - 4] !== "cache" || parts[n - 2] !== PLUGIN_NAME) return null;
   const marketplace = parts[n - 3];
   const urls = MANIFEST_URLS[marketplace];
   if (!urls) return null;
-  const agent = !env.CLAUDE_PROJECT_DIR && path23.resolve(cwd) === path23.resolve(pluginRoot2) ? "codex" : "claude";
-  const manifest = path23.join(pluginRoot2, agent === "codex" ? ".codex-plugin" : ".claude-plugin", "plugin.json");
+  const agent = !env.CLAUDE_PROJECT_DIR && path25.resolve(cwd) === path25.resolve(pluginRoot2) ? "codex" : "claude";
+  const manifest = path25.join(pluginRoot2, agent === "codex" ? ".codex-plugin" : ".claude-plugin", "plugin.json");
   let version;
   try {
-    version = JSON.parse(readFileSync7(manifest, "utf8")).version;
+    version = JSON.parse(readFileSync8(manifest, "utf8")).version;
   } catch {
     return null;
   }
@@ -10442,10 +11298,10 @@ function updateNotice(install2, latest) {
   const steps = install2.agent === "codex" ? `run \`codex plugin marketplace upgrade ${install2.marketplace}\`` : `run \`claude plugin marketplace update ${install2.marketplace}\` and then \`claude plugin update ${PLUGIN_NAME}@${install2.marketplace}\``;
   return `Nimbalyst Wiki ${latest} is available (installed: ${install2.version}). To update, ${steps}, then start a new session. Tell the user this once, briefly, and do not repeat it. Set ${UPDATE_CHECK_OPT_OUT}=1 to stop these notices.`;
 }
-var defaultUpdateCacheFile = () => path23.join(os3.homedir(), ".nimbalyst-wiki", "update-check.json");
+var defaultUpdateCacheFile = () => path25.join(os3.homedir(), ".nimbalyst-wiki", "update-check.json");
 function readCache(file) {
   try {
-    const parsed = JSON.parse(readFileSync7(file, "utf8"));
+    const parsed = JSON.parse(readFileSync8(file, "utf8"));
     if (typeof parsed?.checkedAt === "number" && typeof parsed?.latestVersion === "string") return parsed;
   } catch {
   }
@@ -10474,7 +11330,7 @@ function startUpdateCheck(options) {
         const version = (await response.json())?.version;
         if (typeof version !== "string" || !parseVersion(version)) throw new Error("manifest has no version");
         latest = version;
-        mkdirSync5(path23.dirname(cacheFile), { recursive: true });
+        mkdirSync5(path25.dirname(cacheFile), { recursive: true });
         writeFileSync5(cacheFile, `${JSON.stringify({ checkedAt: now(), latestVersion: version })}
 `);
       } catch (err) {
@@ -10493,10 +11349,10 @@ function startUpdateCheck(options) {
 }
 
 // packages/cli/src/mcp/pluginEntry.ts
-var pluginRoot = path24.dirname(path24.dirname(fileURLToPath2(import.meta.url)));
+var pluginRoot = path26.dirname(path26.dirname(fileURLToPath2(import.meta.url)));
 var workspace = resolvePluginWorkspace(process.env, process.cwd(), pluginRoot);
-var webDir = path24.join(pluginRoot, "web");
-var flags = existsSync7(path24.join(webDir, "index.html")) ? { workspace, assets: webDir } : { workspace };
+var webDir = path26.join(pluginRoot, "web");
+var flags = existsSync7(path26.join(webDir, "index.html")) ? { workspace, assets: webDir } : { workspace };
 var install = detectPluginInstall(process.env, process.cwd(), pluginRoot);
 var updateCheck = install ? startUpdateCheck({ install }) : null;
 runMcp("0.5.0", { noun: "mcp", positionals: [], flags }, updateCheck?.takeNotice).catch((err) => {

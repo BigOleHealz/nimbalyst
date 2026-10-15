@@ -10,9 +10,26 @@ import { projectRoot, resolveWikiLocation, settingPath, workspaceForFolder, type
 import { initLocalWiki, openLocalWiki } from '../localWiki/open.js';
 import { localPageUri } from '../localWiki/tree.js';
 import { INIT_TOOL_NAME, refuseTeamScope, requireStr, str, USE_TOOL_NAME, type LocalWikiContext } from './localTools.js';
+import { coverageTool } from './coverageTool.js';
+import { doctorTool } from './doctorTool.js';
+import { marksTool } from './marksTool.js';
 import { pageTools } from './pageTools.js';
 import { trackerTools } from './trackerTools.js';
 import { textResult, ToolMap, TeamScopeRefusal, type McpTool } from './toolMap.js';
+
+/**
+ * Sent in `initialize`; hosts put it in the agent's system prompt. Static, so
+ * initialize never waits on the disk: the server does not know yet whether a
+ * wiki exists. Codex runs no plugin hooks, so this is also where it learns to
+ * check covered pages after a change.
+ */
+export const LOCAL_SERVER_INSTRUCTIONS =
+  "These tools read and write this project's local wiki, a folder of markdown pages, if it has one. " +
+  'Before design work or a change in an area, call `searchPages` for it and read what matches; a page whose `paths` cover files you are about to change is worth reading first (`pagesForFiles` lists them). ' +
+  'For "what did we decide" or "why did we", call `listMarks` first. ' +
+  'After changing code, call `pagesForFiles` and update or flag the pages it returns; after deciding something, follow the `capture` skill from the nimbalyst-wiki plugin. ' +
+  'Before writing or changing any wiki page, including architecture or product maps, diagrams, HTML pages and other visuals, load the `update` skill from the nimbalyst-wiki plugin and follow it. ' +
+  'Every result names the wiki folder in use; if the session has moved to another project, call `useLocalWiki` with that project folder first.';
 
 export function localWikiContext(startDir: string, location?: string): LocalWikiContext {
   // One LocalWiki per folder for the life of the server, re-scanned per call.
@@ -111,6 +128,6 @@ function initTool(context: LocalWikiContext): McpTool {
 
 export function createLocalToolMap(context: LocalWikiContext, extra: McpTool[] = []): ToolMap {
   const tools = new ToolMap();
-  for (const tool of [initTool(context), useTool(context), ...pageTools(context), ...trackerTools(context), ...extra]) tools.register(tool);
+  for (const tool of [initTool(context), useTool(context), ...pageTools(context), ...trackerTools(context), coverageTool(context), doctorTool(context), marksTool(context), ...extra]) tools.register(tool);
   return tools;
 }

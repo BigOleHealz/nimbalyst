@@ -4,7 +4,7 @@
 import type { ParsedArgs } from '../cli/parse.js';
 import { flagStr } from '../cli/parse.js';
 import { runStdioServer } from '../mcp/stdioServer.js';
-import { createLocalToolMap, localWikiContext } from '../mcp/serverTools.js';
+import { createLocalToolMap, LOCAL_SERVER_INSTRUCTIONS, localWikiContext } from '../mcp/serverTools.js';
 import { serveTool } from '../mcp/serveTool.js';
 import { editorModelsFromWikiWeb, editorTools } from '../mcp/editorTools.js';
 import { teamTools } from '../mcp/teamTools.js';
@@ -26,7 +26,7 @@ export async function runMcp(version: string, args: ParsedArgs, takeNotice?: () 
   const loadEditorModels = editorModelsFromWikiWeb({ assetsDir, version });
   const editors = editorTools(context, loadEditorModels);
   process.stderr.write(`nim mcp ${version}: serving on stdio\n`);
-  await runStdioServer({ tools: createLocalToolMap(context, [...editors, serve, ...teamTools(context, { moveDeps: { loadEditorModels } })]), serverInfo: { name: 'nimbalyst-local', version }, takeNotice });
+  await runStdioServer({ tools: createLocalToolMap(context, [...editors, serve, ...teamTools(context, { moveDeps: { loadEditorModels } })]), serverInfo: { name: 'nimbalyst-local', version }, takeNotice, instructions: LOCAL_SERVER_INSTRUCTIONS });
   // A browser server left listening would keep this process alive after the agent hangs up.
   await serve.close();
   return 0;

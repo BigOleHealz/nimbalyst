@@ -62,17 +62,19 @@ Version 0.3.0 was installed from the `nimbalyst/nimbalyst` marketplace. Switch t
 
 Then restart Claude Code. Your wiki is files in your repository, so nothing in it changes. `/plugin` shows the installed version.
 
-The plugin brings three MCP servers. `/mcp` lists them:
+The plugin brings two MCP servers. `/mcp` lists them:
 
 - `nimbalyst-local`: the local wiki, plus the browser view of it. Runs on your machine and needs nothing else installed. When you move the wiki to a team, it signs in to Nimbalyst on its own to copy the pages.
-- `nimbalyst-team`: the team wiki on the Nimbalyst server. It asks you to sign in to Nimbalyst the first time you connect it in `/mcp`. Leave it disconnected if you only use a local wiki.
 - `nimbalyst-session`: lets Claude cite what you typed in this session when it records a decision. It reads only this session's transcript, on your machine.
+
+The team wiki's server, `nimbalyst-team`, is in a separate add-on plugin, `nimbalyst-wiki-team`, so a local wiki never asks you to sign in. `/nimbalyst-wiki:team` installs it when you need it.
 
 ### Skills
 
 - `/nimbalyst-wiki:start` is a short tour: what the plugin does, which skills exist, and how to begin with a local or team wiki.
 - `/nimbalyst-wiki:setup` builds a wiki that is useful from day one: it asks a few questions about who the wiki is for, then writes a Home page, the writing guide ("How we write this wiki") and a handful of starter pages from your project's README and docs. It can also define types (below). Running it again fills gaps and never duplicates or overwrites what people wrote.
 - `/nimbalyst-wiki:capture` records what this session decided. Claude lists the decisions, answered questions and open questions from the conversation, finds the page each one affects, and writes it there. If nothing is worth keeping, it says so.
+- `/nimbalyst-wiki:recall` answers what the wiki says about a question or an area: the decisions and open questions marked on its pages, and the pages covering the code you are about to change. Claude can also pick it up unasked, for a "why did we..." question or before work in an area the wiki covers.
 - `/nimbalyst-wiki:team` moves the wiki to Nimbalyst Teams: sign-in, creating or choosing the team project, moving the local wiki, opening it in the browser and inviting teammates. See [From a local wiki to Teams](#from-a-local-wiki-to-teams).
 - `/nimbalyst-wiki:update` is the writing guide Claude follows for every wiki edit. You rarely call it yourself.
 
@@ -102,7 +104,7 @@ When the wiki should be shared with your team, run:
 
 Claude walks you through it:
 
-1. **Sign in.** Claude asks you to run `/mcp`, choose `nimbalyst-team` and Authenticate. A browser page opens where you sign in to Nimbalyst or create an account. Claude cannot start this step for you.
+1. **Sign in.** If the `nimbalyst-wiki-team` add-on is not installed, Claude installs it after you agree, then asks you to restart with `claude --continue` so the session loads it. Then Claude asks you to run `/mcp`, choose `nimbalyst-team` and Authenticate. A browser page opens where you sign in to Nimbalyst or create an account. Claude cannot start this step for you.
 2. **Team and project.** With no team yet, Claude proposes a name and creates the team, its first project and a Home page, connected to this repository's git remote. If you are already in a team, you can connect the repository to one of its projects (team admins), create a project, or create a new team.
 3. **A second, one-time approval.** The local server signs in with the same account, so the pages go straight from your files to Nimbalyst without passing through the conversation. Claude opens the approval page; you confirm the code. This is the same sign-in as `nim login`.
 4. **The move.** Claude first shows what will move (pages, typed pages, types, and anything that cannot move yet, such as drawings), then moves everything in one step: hierarchy, order, fields and the links between pages, which now point at the team pages. If it is interrupted, running it again picks up where it stopped.
@@ -117,7 +119,7 @@ From a terminal, `nim login` and then `nim wiki move-to-team` (add `--dry-run` t
 
 An invite email or link signs you in to Nimbalyst in the browser and opens the team's wiki. You can read, edit and comment there with nothing installed.
 
-To use the wiki from Claude Code too, install this plugin (above), run `/mcp`, choose `nimbalyst-team` and Authenticate with the same email. If the repository has a committed `.nimbalyst/wiki.json`, your agent uses that team project right away; otherwise it finds the project through the repository's git remote.
+To use the wiki from Claude Code too, install this plugin (above) and the team add-on (`/plugin install nimbalyst-wiki-team@nimbalyst-wiki`), restart Claude Code, run `/mcp`, choose `nimbalyst-team` and Authenticate with the same email. If the repository has a committed `.nimbalyst/wiki.json`, your agent uses that team project right away; otherwise it finds the project through the repository's git remote.
 
 ### How decisions are recorded
 
@@ -144,7 +146,7 @@ codex plugin marketplace add nimbalyst/nimbalyst-wiki
 codex plugin add nimbalyst-wiki@nimbalyst-wiki
 ```
 
-It brings the same skills (`nimbalyst-wiki:start`, `setup`, `capture`, `update`, `connect`, `team`), the same three MCP servers (`codex mcp list` shows them) and the same browser view. Sign in to the team wiki with `codex mcp login nimbalyst-team`.
+It brings the same skills (`nimbalyst-wiki:start`, `setup`, `capture`, `recall`, `update`, `connect`, `team`), the same two MCP servers (`codex mcp list` shows them) and the same browser view. For the team wiki, add the add-on with `codex plugin add nimbalyst-wiki-team@nimbalyst-wiki` and sign in with `codex mcp login nimbalyst-team`.
 
 To update, run `codex plugin marketplace upgrade nimbalyst-wiki` and start a new session; that one command installs the new version. The plugin checks for a newer version once a day and Codex mentions it the next time it uses the wiki, as in Claude Code.
 

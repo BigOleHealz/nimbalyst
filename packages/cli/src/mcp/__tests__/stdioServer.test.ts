@@ -13,11 +13,12 @@ import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { initWiki, openWiki } from '@nimbalyst/local-wiki';
-import { PAGE_TOOL_NAMES } from '@nimbalyst/collab-protocol';
+import { PAGE_TOOL_NAMES, pageToolContract } from '@nimbalyst/collab-protocol';
 import { handleMessage, runStdioServer } from '../stdioServer.js';
 import { TeamScopeRefusal, ToolMap, textResult } from '../toolMap.js';
 import { resolvePluginWorkspace } from '../pluginWorkspace.js';
-import { createLocalToolMap, localWikiContext } from '../serverTools.js';
+import { writeMigratedTo } from '../../localWiki/locate.js';
+import { createLocalToolMap, LOCAL_SERVER_INSTRUCTIONS, localWikiContext } from '../serverTools.js';
 import { detectPluginInstall, startUpdateCheck, type PluginInstall } from '../updateCheck.js';
 
 const EDITOR_TOOLS = ['mindmap_get_document', 'mindmap_apply_operations', 'excalidraw_get_elements', 'excalidraw_add_elements', 'excalidraw_add_arrows', 'excalidraw_remove_elements'];
@@ -43,6 +44,7 @@ beforeAll(async () => {
       '@nimbalyst/tracker-core': path.join(repoRoot, 'packages/tracker-core/src/index.ts'),
       '@nimbalyst/local-wiki': path.join(repoRoot, 'packages/local-wiki/src/index.ts'),
       '@nimbalyst/collab-protocol': path.join(repoRoot, 'packages/collab-protocol/src/index.ts'),
+      '@nimbalyst/runtime/core/pageMarkSyntax': path.join(repoRoot, 'packages/runtime/src/core/pageMarkSyntax.ts'),
     },
     logLevel: 'silent',
   });
@@ -107,7 +109,7 @@ describe('nim mcp over stdio', () => {
           protocolVersion: '2025-06-18',
           capabilities: { tools: {} },
           serverInfo: { name: 'nimbalyst-local', version: expect.any(String) },
-          instructions: expect.stringContaining('useLocalWiki'),
+          instructions: LOCAL_SERVER_INSTRUCTIONS,
         },
       },
       { jsonrpc: '2.0', id: 2, result: { tools: expect.any(Array) } },
@@ -122,7 +124,7 @@ describe('nim mcp over stdio', () => {
     expect(created).toBe(true);
     // The list is stable without a wiki, and every name but the local-only ones is a contract name.
     const names = responses[1].result.tools.map((t: { name: string }) => t.name);
-    expect(names).toEqual(['initLocalWiki', 'useLocalWiki', ...LOCAL_TOOLS, 'convertTypeStorage', ...EDITOR_TOOLS, 'openWikiInBrowser', 'teamSignIn', 'moveLocalWikiToTeam', 'openUrl']);
+    expect(names).toEqual(['initLocalWiki', 'useLocalWiki', ...LOCAL_TOOLS, 'convertTypeStorage', 'pagesForFiles', 'wikiDoctor', 'listMarks', ...EDITOR_TOOLS, 'openWikiInBrowser', 'teamSignIn', 'moveLocalWikiToTeam', 'openUrl']);
     expect(LOCAL_TOOLS.every((n: string) => (PAGE_TOOL_NAMES as readonly string[]).includes(n))).toBe(true);
     // createSharedDoc makes editor pages locally, so it must not inherit the remote server's markdown-only wording.
     const createDoc = responses[1].result.tools.find((t: { name: string }) => t.name === 'createSharedDoc');
@@ -305,10 +307,83 @@ describe('re-pointing the server at another project', () => {
     expect((await run(tools, 'useLocalWiki', { folder: wiki })).body()).toEqual({ projectRoot: wiki, wikiFolder: wiki });
   });
 
-  it('tells the agent in initialize to load the update skill before writing and to re-point after a project change', async () => {
-    const reply = (await handleMessage({ jsonrpc: '2.0', id: 1, method: 'initialize', params: {} }, new ToolMap(), { name: 'nimbalyst-local', version: 'test' })) as { result: { instructions: string } };
-    expect(reply.result.instructions).toContain('`update` skill');
-    expect(reply.result.instructions).toContain('useLocalWiki');
+  it('pagesForFiles names the pages whose paths cover the given files, and which clock dated them', async () => {
+    const dir = await project(true);
+    writeFileSync(path.join(dir, 'nimbalyst-local', 'wiki', 'Sync.md'), '---\nid: page-sync\npaths: [src/sync/**]\n---\n\nBody.\n');
+    const tools = createLocalToolMap(localWikiContext(dir));
+    const result = (await run(tools, 'pagesForFiles', { files: ['src/sync/a.ts', 'README.md'] })).body();
+    expect(result).toMatchObject({ wikiFolder: path.join(dir, 'nimbalyst-local', 'wiki'), source: 'given' });
+    // Outside git there is no commit to compare, so nothing is stale and the page is dated by mtime.
+    expect(result.pages).toEqual([expect.objectContaining({ id: 'page-sync', title: 'Sync', files: ['src/sync/a.ts'], stale: false, clock: 'mtime' })]);
+    const none = await run(createLocalToolMap(localWikiContext(await project(false))), 'pagesForFiles', {});
+    expect(none.isError).toBe(true);
+    expect(none.text).toContain('initLocalWiki');
+  });
+
+  it('setPageFields records the globs a page covers in paths, and ignores a value that is not a list of globs', async () => {
+    const dir = await project(true);
+    const tools = createLocalToolMap(localWikiContext(dir));
+    const page = (await run(tools, 'createSharedDoc', { title: 'Sync' })).body();
+    const set = (await run(tools, 'setPageFields', { itemId: page.itemId ?? page.documentId, fields: { paths: ['src/sync/**', 'packages/sync'] } })).body();
+    expect(set.fields.paths).toEqual(['src/sync/**', 'packages/sync']);
+    expect(readFileSync(path.join(dir, 'nimbalyst-local', 'wiki', 'Sync.md'), 'utf8')).toContain('src/sync/**');
+    const bad = (await run(tools, 'setPageFields', { itemId: set.itemId, fields: { paths: 'src/**' } })).body();
+    expect(bad.ignored).toEqual(['paths']);
+    expect(bad.fields.paths).toEqual(['src/sync/**', 'packages/sync']);
+    // The model only sends what the schema shows it; the shared contract has no paths.
+    const schema = tools.definitions().find((t) => t.name === 'setPageFields')!.inputSchema.properties.fields as { properties: Record<string, unknown> };
+    expect(Object.keys(schema.properties)).toEqual(['owner', 'status', 'summary', 'tags', 'paths']);
+    expect(Object.keys((pageToolContract('setPageFields')!.inputSchema.properties.fields as { properties: object }).properties)).not.toContain('paths');
+  });
+
+  it('wikiDoctor and listMarks answer over the local wiki, and ask for initLocalWiki without one', async () => {
+    const dir = await project(true);
+    const wikiDir = path.join(dir, 'nimbalyst-local', 'wiki');
+    writeFileSync(path.join(wikiDir, 'Storage.md'), '---\nid: page-storage\n---\n\n[Use SQLite.]{decided by=Dana on=2026-10-01 over=Postgres} [Backups?]{open}\n');
+    const tools = createLocalToolMap(localWikiContext(dir));
+    const doctor = (await run(tools, 'wikiDoctor', {})).body();
+    expect(doctor).toMatchObject({ wikiFolder: wikiDir, summary: { orphans: 1 } });
+    expect(doctor.orphans.pages).toEqual([expect.objectContaining({ id: 'page-storage' })]);
+    const marks = (await run(tools, 'listMarks', { kind: 'decided' })).body();
+    // `line` counts in the body readCollabDoc returns, not the file with its frontmatter.
+    expect(marks.marks).toEqual([{ pageId: 'page-storage', title: 'Storage', line: 2, kind: 'decided', by: 'Dana', on: '2026-10-01', over: 'Postgres', text: 'Use SQLite.' }]);
+    writeMigratedTo(dir, { orgId: 'org-1', projectId: 'proj-1', at: '2026-10-15T00:00:00.000Z' });
+    const archived = (await run(tools, 'listMarks', {})).body();
+    expect(archived.movedToTeam).toMatchObject({ orgId: 'org-1', projectId: 'proj-1', note: expect.stringContaining('archive') });
+    const none = await run(createLocalToolMap(localWikiContext(await project(false))), 'listMarks', {});
+    expect(none.isError).toBe(true);
+    expect(none.text).toContain('initLocalWiki');
+  });
+
+  it('rewords contract arguments that mean something else on a local wiki', () => {
+    const tools = createLocalToolMap(localWikiContext(tmpdir()));
+    const descriptions = tools
+      .definitions()
+      .filter((t) => (PAGE_TOOL_NAMES as readonly string[]).includes(t.name) && !t.name.startsWith('tracker_'))
+      .flatMap((t) => Object.entries(t.inputSchema.properties).map(([key, value]) => [`${t.name}.${key}`, (value as { description?: string }).description ?? '']));
+    // Local typed pages have ids, never issue keys, and the wiki has no sections or projects.
+    expect(descriptions.filter(([, text]) => /issue key|top of the (section|project)/.test(text))).toEqual([]);
+    const parent = tools.definitions().find((t) => t.name === 'createSharedDoc')!.inputSchema.properties.parentFolderId as { description: string };
+    expect(parent.description).toBe('Parent page id, or typed page id. Omit for the top of the wiki.');
+  });
+
+  it('sends the instructions it was given in initialize, and none when given none', async () => {
+    const initialize = { jsonrpc: '2.0', id: 1, method: 'initialize', params: {} };
+    const info = { name: 'nimbalyst-local', version: 'test' };
+    const bare = (await handleMessage(initialize, new ToolMap(), info)) as { result: Record<string, unknown> };
+    expect(bare.result).not.toHaveProperty('instructions');
+    const given = (await handleMessage(initialize, new ToolMap(), info, undefined, 'Read the wiki.')) as { result: { instructions: string } };
+    expect(given.result.instructions).toBe('Read the wiki.');
+  });
+
+  it('the local server tells the agent to consult the wiki before changes and to check covered pages after them', () => {
+    // Static text: the server answers initialize without touching the disk.
+    expect(LOCAL_SERVER_INSTRUCTIONS).toContain('`update` skill');
+    expect(LOCAL_SERVER_INSTRUCTIONS).toContain('useLocalWiki');
+    expect(LOCAL_SERVER_INSTRUCTIONS).toContain('searchPages');
+    expect(LOCAL_SERVER_INSTRUCTIONS).toContain('pagesForFiles');
+    expect(LOCAL_SERVER_INSTRUCTIONS).toContain('`capture` skill');
+    expect(LOCAL_SERVER_INSTRUCTIONS).toContain('listMarks');
   });
 });
 

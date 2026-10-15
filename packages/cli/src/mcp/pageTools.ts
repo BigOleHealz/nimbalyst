@@ -28,6 +28,20 @@ const LOCAL_CREATE_DOC_ARGS = {
   },
 };
 
+/** The contract's setPageFields schema plus `paths`, a local page's covered code (localWiki/coverage.ts). */
+function withPathsField(definition: ReturnType<typeof contractDefinition>): ReturnType<typeof contractDefinition> {
+  const properties = definition.inputSchema.properties as Record<string, { properties?: Record<string, unknown> }>;
+  const fields = properties.fields ?? {};
+  properties.fields = {
+    ...fields,
+    properties: {
+      ...fields.properties,
+      paths: { type: ['array', 'null'], items: { type: 'string' }, description: 'Repository-relative globs of the code the page explains, coarse (a folder, not a file list): ["src/sync/**"]. A glob starting with ! takes back files earlier ones matched: ["src/**", "!src/generated/**"].' },
+    },
+  };
+  return definition;
+}
+
 const stripNodePrefix =(ref: string) => ref.replace(/^(document|item|page):/, '');
 
 async function resolveParent(wiki: LocalWiki, args: Args, idKey: string): Promise<string | null> {
@@ -256,10 +270,10 @@ export function pageTools(context: LocalWikiContext): McpTool[] {
       { refKeys: PAGE_REFS },
     ),
     localTool(
-      contractDefinition(
+      withPathsField(contractDefinition(
         'setPageFields',
-        "Set a local wiki page's own fields: owner, status (draft, current or outdated), summary (one line, at most 280 characters) and tags. Only the fields you pass change; null clears one. A value that does not fit is ignored, and the reply names the fields the page has now. A typed page's fields are set with tracker_update.",
-      ),
+        "Set a local wiki page's own fields: owner, status (draft, current or outdated), summary (one line, at most 280 characters), tags, and paths (the repository-relative globs of the code the page explains, such as src/sync/**; pagesForFiles reads them). Only the fields you pass change; null clears one. A value that does not fit is ignored, and the reply names the fields the page has now. A typed page's fields are set with tracker_update.",
+      )),
       context,
       async ({ wiki }, args) => {
         const page = findPage(await wiki.snapshot(), stripNodePrefix(requireStr(args, 'itemId')));
@@ -272,8 +286,9 @@ export function pageTools(context: LocalWikiContext): McpTool[] {
             (key === 'owner' && typeof value === 'string') ||
             (key === 'status' && ['draft', 'current', 'outdated'].includes(value as string)) ||
             (key === 'summary' && typeof value === 'string' && value.length <= 280 && !value.includes('\n')) ||
-            (key === 'tags' && Array.isArray(value) && value.every((t) => typeof t === 'string'));
-          if (fits && ['owner', 'status', 'summary', 'tags'].includes(key)) patch[key] = value;
+            (key === 'tags' && Array.isArray(value) && value.every((t) => typeof t === 'string')) ||
+            (key === 'paths' && Array.isArray(value) && value.every((glob) => typeof glob === 'string' && glob.trim() !== '' && !glob.includes('\n')));
+          if (fits && ['owner', 'status', 'summary', 'tags', 'paths'].includes(key)) patch[key] = value;
           else ignored.push(key);
         }
         if (Object.keys(patch).length) await wiki.command({ type: 'set-document-fields', documentId: page.id, fields: patch });
