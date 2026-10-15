@@ -44,16 +44,20 @@ describe('HtmlFileEmbedFrame', () => {
       if (!found) throw new Error('no frame yet');
       return found;
     });
-    act(() => {
-      window.dispatchEvent(new MessageEvent('message', {
-        source: iframe.contentWindow,
-        data: { channel: 'nimbalyst-html-embed', v: 1, type: 'navigate', href: './Module.md', newTab: false },
-      }));
+    // The frame can be in the DOM before the effect that listens for its
+    // messages has run, so keep posting until the host has heard one.
+    await waitFor(() => {
+      act(() => {
+        window.dispatchEvent(new MessageEvent('message', {
+          source: iframe.contentWindow,
+          data: { channel: 'nimbalyst-html-embed', v: 1, type: 'navigate', href: './Module.md', newTab: false },
+        }));
+      });
+      expect(navigation.open).toHaveBeenCalledWith(
+        './Module.md',
+        { newTab: false, kind: 'relative' },
+        { kind: 'file', path: '/ws/Maps/Map.html' },
+      );
     });
-    expect(navigation.open).toHaveBeenCalledWith(
-      './Module.md',
-      { newTab: false, kind: 'relative' },
-      { kind: 'file', path: '/ws/Maps/Map.html' },
-    );
   });
 });
