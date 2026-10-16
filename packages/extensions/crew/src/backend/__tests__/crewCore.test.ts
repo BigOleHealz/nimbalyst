@@ -178,6 +178,7 @@ describe('definition and journal files', () => {
     expect(quoted.ok).toBe(false);
     expect(JSON.stringify(quoted)).toContain('remove the quotes');
     expect(JSON.stringify(parseCrewMemberFile('ada', '/ws/ada.md', withBudget('"lots"')))).not.toContain('remove the quotes');
+    expect(JSON.stringify(parseCrewMemberFile('ada', '/ws/ada.md', withBudget('"0"')))).not.toContain('remove the quotes');
   });
 
   it('round-trips structured journal entries into the feed, including "--" in text, and skips hand-written sections', () => {
