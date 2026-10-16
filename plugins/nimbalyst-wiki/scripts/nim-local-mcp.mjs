@@ -11523,7 +11523,7 @@ var webDir = path27.join(pluginRoot, "web");
 var flags = existsSync8(path27.join(webDir, "index.html")) ? { workspace, assets: webDir } : { workspace };
 var install = detectPluginInstall(process.env, process.cwd(), pluginRoot);
 var updateCheck = install ? startUpdateCheck({ install }) : null;
-runMcp("0.9.0", { noun: "mcp", positionals: [], flags }, {
+runMcp("0.10.0", { noun: "mcp", positionals: [], flags }, {
   takeNotice: updateCheck?.takeNotice,
   install: install ?? { kind: "unmanaged", reason: "checkout" },
   executable: fileURLToPath2(import.meta.url)
