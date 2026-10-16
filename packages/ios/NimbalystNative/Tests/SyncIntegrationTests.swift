@@ -320,6 +320,23 @@ final class SyncIntegrationTests: XCTestCase {
         return try JSONDecoder().decode(ClientMetadata.self, from: Data(plaintext.utf8)).draftInput
     }
 
+    /// The server stores the client metadata blob whole, so a draft push that
+    /// dropped the flag would clear "not synced" for every other device.
+    func testDraftPushCarriesTranscriptSyncDisabled() throws {
+        for flag in [true, false] {
+            let session = Session(id: "withheld", projectId: "/test/project", createdAt: 1, updatedAt: 2,
+                                  transcriptSyncDisabled: flag)
+            let json = try SessionIndexUpdates.draft(session: session, draft: "hi", draftUpdatedAt: 3,
+                                                     messageCount: nil, crypto: crypto)
+            let message = try JSONDecoder().decode(IndexUpdateMessage.self, from: Data(json.utf8))
+            let plaintext = try XCTUnwrap(crypto.decryptOrNil(
+                encryptedBase64: XCTUnwrap(message.session.encryptedClientMetadata),
+                ivBase64: XCTUnwrap(message.session.clientMetadataIv)))
+            let meta = try JSONDecoder().decode(ClientMetadata.self, from: Data(plaintext.utf8))
+            XCTAssertEqual(meta.transcriptSyncDisabled ?? false, flag)
+        }
+    }
+
     func testMobileEditsDoNotOverwriteDesktopExecutionState() throws {
         for executing in [false, true] {
             let session = Session(id: "status-owner", projectId: "/test/project",

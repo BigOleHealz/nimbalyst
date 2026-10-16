@@ -351,6 +351,38 @@ describe('SyncConfig.createWebSocket', () => {
 
     provider.disconnectAll();
   });
+
+  it('logs a dropped session socket as one line that never contains the room URL or token', async () => {
+    const sockets: FakeWebSocket[] = [];
+    const provider = createCollabV3Sync({ ...baseConfig(), createWebSocket: url => {
+      const socket = new FakeWebSocket(url); sockets.push(socket); return socket as unknown as WebSocket;
+    } });
+    const lines: string[] = [];
+    const record = (...args: unknown[]) => { lines.push(args.map(arg => typeof arg === 'string' ? arg : JSON.stringify(arg)).join(' ')); };
+    vi.spyOn(console, 'log').mockImplementation(record);
+    vi.spyOn(console, 'error').mockImplementation(record);
+    vi.spyOn(console, 'warn').mockImplementation(record);
+    try {
+      await vi.waitFor(() => expect(sockets).toHaveLength(1)); sockets[0].open();
+      const connecting = provider.connect('dropped');
+      await vi.waitFor(() => expect(sockets).toHaveLength(2)); sockets[1].open(); await connecting;
+      lines.length = 0;
+
+      // Server- and runtime-provided text is never copied: not a URL, not a bare bearer token, not a title.
+      const bearer = 'Bearer eyJhbGciOiJIUzI1NiJ9.c2VjcmV0.c2lnbmF0dXJl';
+      const title = 'Q3 layoffs plan for Acme';
+      const errorEvent = Object.assign(new Event('error'), { message: `connect failed for ${sockets[1].url} with ${bearer}` });
+      sockets[1].onerror?.(errorEvent);
+      sockets[1].onclose?.({ code: 1006, reason: `${bearer} rejected: ${title}`, wasClean: false } as CloseEvent);
+
+      const mentions = lines.filter(line => line.includes('dropped'));
+      expect(mentions).toHaveLength(1);
+      expect(mentions[0]).toMatch(/code=1006 \(abnormal closure\).*reasonLength=\d+.*wasClean=false.*reachedOpen=true.*openFor=\d+ms.*error=other/);
+      expect(mentions[0]).toContain('reconnect on the next write or index reconnect');
+      const logged = lines.join('\n');
+      expect(logged).not.toMatch(/token|wss:\/\/|Bearer|eyJ|c2VjcmV0|layoffs|Acme/);
+    } finally { provider.disconnectAll(); }
+  });
 });
 
 function nodeTokenFor(sub: string, exp = Math.floor(Date.now() / 1000) + 900): string {

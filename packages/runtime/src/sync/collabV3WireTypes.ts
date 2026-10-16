@@ -479,4 +479,11 @@ export interface ClientMetadata {
   draftUpdatedAt?: number;
   /** Marker that the title was AI-chosen; prevents repeated rename attempts. */
   hasBeenNamed?: boolean;
+  /**
+   * True when the desktop lists this session but withholds its transcript rows
+   * because the session's project is not enabled in Settings > Sync. Phones
+   * show a "not synced" state instead of an empty transcript (NIM-7545).
+   * Absent or false means the transcript syncs normally.
+   */
+  transcriptSyncDisabled?: boolean;
 }

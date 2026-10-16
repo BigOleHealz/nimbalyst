@@ -364,6 +364,11 @@ data class ClientMetadata(
     val draftInput: String? = null,
     val draftUpdatedAt: Long? = null,
     val hasBeenNamed: Boolean? = null,
+    /**
+     * The desktop lists the session but withholds its transcript because its
+     * project is not enabled for sync. Absent means false.
+     */
+    val transcriptSyncDisabled: Boolean? = null,
 )
 
 data class ContextInfo(

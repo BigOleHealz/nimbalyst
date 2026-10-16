@@ -88,6 +88,9 @@ struct ClientMetadata: Codable {
     /// Whether the session has been given a real title, as opposed to still
     /// carrying its placeholder one.
     var hasBeenNamed: Bool?
+    /// The desktop lists the session but withholds its transcript because its
+    /// project is not enabled for sync. Absent means false.
+    var transcriptSyncDisabled: Bool?
 }
 
 /// A project entry as received from the server (encrypted fields).

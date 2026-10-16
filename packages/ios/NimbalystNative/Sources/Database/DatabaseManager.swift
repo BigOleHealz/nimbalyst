@@ -378,6 +378,15 @@ public final class DatabaseManager: @unchecked Sendable {
             }
         }
 
+        // Set from client metadata when the desktop lists a session whose
+        // project is not synced, so the phone shows "not synced" instead of an
+        // empty transcript.
+        migrator.registerMigration("v20_session_transcript_sync_disabled") { db in
+            try db.alter(table: "sessions") { t in
+                t.add(column: "transcriptSyncDisabled", .boolean).notNull().defaults(to: false)
+            }
+        }
+
         try migrator.migrate(writer)
         // The projection is derived data with its own shape marker; a recorded
         // migration says nothing about which shape it created.
