@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - With "Allow everything" and Agent-verified checks on, a hook that asks for approval now waits for your answer instead of letting the tool run
 - A file watcher hitting the open-file limit no longer opens a blocking error dialog, which could keep the app from starting with many projects restored
 - The tray menu no longer throws an error dialog when a settings read fails, and projects without a `.mcp.json` no longer leak a folder watcher each time they start
+- Keep All and Revert All on an open Markdown file now write the agent's or the original bytes exactly when you haven't edited during the review, instead of re-saving the whole file through the editor, which broke front matter and `$` math
+- Reloading a Markdown file open in source mode after reviewing agent changes no longer throws an error
 
 ### Removed
 <!-- Removed features go here -->
