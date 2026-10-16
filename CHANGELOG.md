@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - In shared documents, a collaborator's cursor label shows their name, or their email when no name is set, instead of an internal member ID such as `member-live-...`.
 - On iOS and Android, a session from a desktop project that isn't synced to mobile shows "Transcript not synced" and where to turn it on, instead of "Thinking..." over an empty transcript. Adding the project under Settings > Mobile App on the desktop uploads that session's earlier transcript.
 - A session that finished while the desktop's sync connection was down no longer stays marked as running on the phone; the desktop sends the update once the connection is back.
+- Following external Claude Code and Codex sessions watches each session folder instead of keeping every transcript file open, which had reached over 2,000 open files on one machine.
 
 ### Removed
 <!-- Removed features go here -->
