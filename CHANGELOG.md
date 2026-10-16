@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reloading a Markdown file open in source mode after reviewing agent changes no longer throws an error
 - Commit proposals from Codex sessions no longer fail with "Cannot identify this exact commit proposal"
 - A Claude Code session no longer keeps showing "Waiting for your response" after you answer its question while it carries on working.
+- A prompt left at the bottom of the transcript (for example after a failed or retried send, such as `/compact`) no longer stays below later replies
 
 ### Removed
 <!-- Removed features go here -->
