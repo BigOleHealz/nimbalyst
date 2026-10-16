@@ -119,8 +119,10 @@ export async function reconcileSessionIndex<T extends SessionIndexData>(input: I
       warn('[SyncManager] Could not record a delivered transcript backfill; it will be sent again', error);
     }
     const session = byId.get(sessionId);
-    // Delivered: republish the row so its flag clears on the phone.
-    if (settled && session) void input.syncSessionsToIndex([session], { syncMessages: false });
+    if (settled && session) {
+      // Background: republish the delivered row so its flag clears on the phone.
+      void input.syncSessionsToIndex([session], { syncMessages: false });
+    }
   };
 
   const indexOnly = selectIndexOnlyRepublish(input.serverIndex, input.isProjectEnabled, now, input.forceIndexOnlySessionIds);

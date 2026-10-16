@@ -12,6 +12,7 @@ export const UNNAMED_COLLABORATOR_LABEL = 'Teammate';
 export interface CollaboratorIdentity {
   name?: string | null;
   email?: string | null;
+  // identity-scope-allow: only compared against the name to reject a member-id fallback; never authorizes
   memberId?: string | null;
 }
 
