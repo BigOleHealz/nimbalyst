@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Keep All and Revert All on an open Markdown file now write the agent's or the original bytes exactly when you haven't edited during the review, instead of re-saving the whole file through the editor, which broke front matter and `$` math
 - Reloading a Markdown file open in source mode after reviewing agent changes no longer throws an error
 - Commit proposals from Codex sessions no longer fail with "Cannot identify this exact commit proposal"
+- A Claude Code session no longer keeps showing "Waiting for your response" after you answer its question while it carries on working.
 
 ### Removed
 <!-- Removed features go here -->
