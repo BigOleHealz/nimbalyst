@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The tray menu no longer throws an error dialog when a settings read fails, and projects without a `.mcp.json` no longer leak a folder watcher each time they start
 - Keep All and Revert All on an open Markdown file now write the agent's or the original bytes exactly when you haven't edited during the review, instead of re-saving the whole file through the editor, which broke front matter and `$` math
 - Reloading a Markdown file open in source mode after reviewing agent changes no longer throws an error
+- A hook that asks for approval now always prompts, even when the tool was approved for the session, matches a saved Always rule, or would be allowed by the current permission mode
 - Commit proposals from Codex sessions no longer fail with "Cannot identify this exact commit proposal"
 - A Claude Code session no longer keeps showing "Waiting for your response" after you answer its question while it carries on working.
 - A prompt whose send failed, or a retried copy of it, no longer stays at the bottom of the transcript below later replies
