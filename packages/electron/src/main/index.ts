@@ -1334,7 +1334,9 @@ async function openFileWithWorkspaceDetection(filePath: string): Promise<void> {
     // Check if file is already open in a window
     const existingWindow = findWindowByFilePath(filePath);
     if (existingWindow) {
-        // Window is already open - no need to focus, let macOS handle window ordering
+        // state.filePath is the last file opened from the OS, not the active tab: the user
+        // may have switched away or closed it since. Re-send it so the tab is selected again.
+        loadFileIntoWindow(existingWindow, filePath);
         return;
     }
 
