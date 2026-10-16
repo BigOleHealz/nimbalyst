@@ -1334,8 +1334,9 @@ async function openFileWithWorkspaceDetection(filePath: string): Promise<void> {
     // Check if file is already open in a window
     const existingWindow = findWindowByFilePath(filePath);
     if (existingWindow) {
-        // state.filePath is the last file opened from the OS, not the active tab: the user
-        // may have switched away or closed it since. Re-send it so the tab is selected again.
+        // state.filePath is the last file loaded into a new tab in this window, not the active
+        // tab: switching or closing tabs never updates it. Re-send it so the renderer selects
+        // the tab, or reopens it if it was closed.
         loadFileIntoWindow(existingWindow, filePath);
         return;
     }
