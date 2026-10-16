@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 <!-- Bug fixes go here -->
 - With "Allow everything" and Agent-verified checks on, a hook that asks for approval now waits for your answer instead of letting the tool run
+- A file watcher hitting the open-file limit no longer opens a blocking error dialog, which could keep the app from starting with many projects restored
+- The tray menu no longer throws an error dialog when a settings read fails, and projects without a `.mcp.json` no longer leak a folder watcher each time they start
 
 ### Removed
 <!-- Removed features go here -->
