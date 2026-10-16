@@ -1020,12 +1020,15 @@ export class MetaAgentService {
     let processingTriggered = idleEnoughToDrive;
     let interrupted = false;
     let interruptMethod: string | null = null;
+    let interruptDeferred: string | null = null;
     let driveOutcome: string | null = null;
 
     if (shouldInterrupt) {
       const result = await this.aiService.interruptCurrentTurn(sessionId);
       interrupted = result.success;
       interruptMethod = result.method ?? null;
+      // #1682: mid-commit, the interrupt waits for the commit call and then runs.
+      interruptDeferred = result.deferred ?? null;
       // The drive runs even when the interrupt found no live provider: a session
       // that only nominally reports running has nothing else coming to trigger it.
       //
@@ -1053,6 +1056,7 @@ export class MetaAgentService {
       interrupted,
       ...(interruptMethod ? { interruptMethod } : {}),
       ...(interruptSkippedReason ? { interruptSkippedReason } : {}),
+      ...(interruptDeferred ? { interruptDeferred } : {}),
       ...(driveOutcome ? { driveOutcome } : {}),
     }, null, 2);
   }
