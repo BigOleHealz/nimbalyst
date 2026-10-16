@@ -19,12 +19,11 @@ import { appendFileSync, existsSync, renameSync, unlinkSync, writeFileSync } fro
 import {
     createWindow,
     documentServices,
-    findWindowByFilePath,
     findWindowByWorkspace,
     getMostRecentlyFocusedWorkspaceWindow,
 } from './window/WindowManager';
 import { beginStartupActivation, finishStartupWindowCreation } from './window/StartupActivation';
-import { loadFileIntoWindow } from './file/FileOperations';
+import { loadFileIntoWindow, reloadIntoWindowWithFile } from './file/FileOperations';
 import { createApplicationMenu } from './menu/ApplicationMenu';
 import { updateNativeTheme, updateWindowTitleBars } from './theme/ThemeManager';
 import { restoreSessionState, saveSessionState } from './session/SessionState';
@@ -1332,12 +1331,7 @@ app.on('open-file', (event, path) => {
 // Helper function to open a file with workspace detection
 async function openFileWithWorkspaceDetection(filePath: string): Promise<void> {
     // Check if file is already open in a window
-    const existingWindow = findWindowByFilePath(filePath);
-    if (existingWindow) {
-        // state.filePath is the last file loaded into a new tab in this window, not the active
-        // tab: switching or closing tabs never updates it. Re-send it so the renderer selects
-        // the tab, or reopens it if it was closed.
-        loadFileIntoWindow(existingWindow, filePath);
+    if (reloadIntoWindowWithFile(filePath)) {
         return;
     }
 
