@@ -424,6 +424,10 @@ importers:
         version: 0.28.2
 
   packages/cli:
+    dependencies:
+      '@nimbalyst/wiki-web':
+        specifier: workspace:*
+        version: link:../wiki-web
     devDependencies:
       '@nimbalyst/collab-protocol':
         specifier: workspace:*

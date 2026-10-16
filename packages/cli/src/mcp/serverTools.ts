@@ -126,8 +126,8 @@ function initTool(context: LocalWikiContext): McpTool {
   };
 }
 
-export function createLocalToolMap(context: LocalWikiContext, extra: McpTool[] = []): ToolMap {
+export function createLocalToolMap(context: LocalWikiContext, extra: McpTool[] = [], options: { versions?: () => unknown } = {}): ToolMap {
   const tools = new ToolMap();
-  for (const tool of [initTool(context), useTool(context), ...pageTools(context), ...trackerTools(context), coverageTool(context), doctorTool(context), marksTool(context), ...extra]) tools.register(tool);
+  for (const tool of [initTool(context), useTool(context), ...pageTools(context), ...trackerTools(context), coverageTool(context), doctorTool(context, options.versions), marksTool(context), ...extra]) tools.register(tool);
   return tools;
 }

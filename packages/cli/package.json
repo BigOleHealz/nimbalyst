@@ -44,6 +44,9 @@
     "test:watch": "vitest",
     "prepublishOnly": "pnpm run build"
   },
+  "dependencies": {
+    "@nimbalyst/wiki-web": "workspace:*"
+  },
   "optionalDependencies": {
     "better-sqlite3": "13.0.3"
   },

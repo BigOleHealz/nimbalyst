@@ -383,7 +383,9 @@ A decision is a marked sentence in the page it affects:
 
 Once a day the plugin checks GitHub for a newer version, and if there is one, the agent mentions it the next time it uses the wiki. The check sends nothing about you or your wiki. Set `NIMBALYST_WIKI_NO_UPDATE_CHECK=1` to turn it off.
 
-**Claude Code** updates this marketplace only if you turn on auto-update for it (`/plugin`, then Marketplaces). To update by hand, run both commands, then restart Claude Code:
+**With the `nim` CLI installed**, `nim update` updates `nim` and this plugin for Claude Code and Codex in one step, checks that each one is on the new version, and says what to restart. `nim update --check` only reports what is out of date, and `nim doctor` shows which versions are installed.
+
+**Claude Code** updates this marketplace on its own only if you turn on auto-update for it (`/plugin`, then Marketplaces). The Claude desktop app runs Claude Code with its updater turned off, which also stops plugin auto-update there unless `FORCE_AUTOUPDATE_PLUGINS=1` is set. Updating by hand works everywhere; run both commands, then restart Claude Code:
 
 ```sh
 claude plugin marketplace update nimbalyst-wiki
@@ -391,6 +393,8 @@ claude plugin update nimbalyst-wiki@nimbalyst-wiki
 ```
 
 **Codex:** run `codex plugin marketplace upgrade nimbalyst-wiki` and start a new session.
+
+A session that is already open keeps the version it started with: run `/reload-plugins` or start a new session in Claude Code, and start a new session in Codex.
 
 **Coming from 0.3.0?** That version was installed from the `nimbalyst/nimbalyst` marketplace. Switch to this one so you get updates and the browser view, then restart Claude Code. Your wiki is files in your repository, so nothing in it changes.
 
@@ -431,7 +435,9 @@ npm install -g @nimbalyst/cli
 
 If the app cannot find `nim`, use the full path that `which nim` prints. Then ask the agent to "start a wiki for this repo." A wiki started in one agent is ready in the others.
 
-These agents get the wiki tools but not the plugin's skills (`setup`, `capture` and the writing guide), so ask for what you want in your own words. To open the wiki in the browser from them, also install the browser app: `npm install -g @nimbalyst/wiki-web`.
+These agents get the wiki tools but not the plugin's skills (`setup`, `capture` and the writing guide), so ask for what you want in your own words. Opening the wiki in the browser works from them too: the browser app installs with `nim`.
+
+Installing the plugin does not update this `nim`, and updating `nim` does not update the plugin. Once a day `nim mcp` checks npm for a newer `nim`, and the agent mentions it the next time it uses the wiki. Run `nim update` in a terminal, then start a new session so the agent restarts the server.
 
 ### `nim` command line
 
@@ -447,11 +453,14 @@ nim wiki search "deploy"
 nim wiki move "Notes" --parent "Product"
 nim wiki serve                        # open the wiki in your browser
 nim wiki move-to-team --dry-run       # preview moving the local wiki to Teams
+nim update                            # update nim and the Claude Code and Codex plugins
+nim doctor                            # which versions are installed, and from where
 ```
 
 - `list`, `read`, `move` and `search` use the local wiki when the project has one, and the team wiki otherwise. `--team` or `--local` picks one.
 - `write` replaces a page body from stdin or `--file`. With `--expected-version` (from `read --json`) it refuses to overwrite a page that changed since you read it.
-- `nim wiki serve` needs `npm install -g @nimbalyst/wiki-web` once. `--no-open` prints the URL instead of opening a browser; `--port` picks the port.
+- `nim wiki serve` uses the browser app that installs with `nim`. `--no-open` prints the URL instead of opening a browser; `--port` picks the port.
+- In a terminal, `nim` prints one line when a newer version is published (checked at most once a day, in the background).
 - `nim tracker list/get/create/update` work on typed pages in the local wiki.
 - Team commands (`status`, `edit`, `create`, `items` and more) need `nim login`. `nim --help` lists them all.
 
