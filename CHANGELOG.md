@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Commit proposals from Codex sessions no longer fail with "Cannot identify this exact commit proposal"
 - A Claude Code session no longer keeps showing "Waiting for your response" after you answer its question while it carries on working.
 - A prompt whose send failed, or a retried copy of it, no longer stays at the bottom of the transcript below later replies
+- The Pages sidebar now highlights the open page when it is a typed page in a local wiki or sits under a typed page, opening the collapsed rows above it
 
 ### Removed
 <!-- Removed features go here -->
