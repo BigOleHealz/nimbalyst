@@ -10,6 +10,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 <!-- New features go here -->
+
+### Changed
+<!-- Changes to existing functionality go here -->
+
+### Fixed
+<!-- Bug fixes go here -->
+
+### Removed
+<!-- Removed features go here -->
+
+## [0.81.7] - 2026-10-16
+
+
+### Added
+<!-- New features go here -->
 - After enlarging an image in an AI session transcript, the Left and Right arrow keys (or Prev and Next) step through the session's other images: your attachments, editor screenshots and images the agent displayed.
 
 ### Changed
