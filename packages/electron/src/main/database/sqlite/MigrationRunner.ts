@@ -254,6 +254,7 @@ export function getMigrations(schemaDir: string): Migration[] {
     { version: 51, name: 'personal_pages_parents_and_order', sqlFile: path.join(schemaDir, '0051_personal_pages_parents_and_order.sql') },
     { version: 52, name: 'personal_pages_fields', sqlFile: path.join(schemaDir, '0052_personal_pages_fields.sql') },
     { version: 53, name: 'index_hygiene', sqlFile: path.join(schemaDir, '0053_index_hygiene.sql') },
+    { version: 54, name: 'project_file_sync_disk_stamp', sqlFile: path.join(schemaDir, '0054_project_file_sync_disk_stamp.sql') },
   ];
 }
 

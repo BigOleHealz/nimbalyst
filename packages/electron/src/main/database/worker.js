@@ -3282,6 +3282,22 @@ class PGLiteWorker {
       throw error;
     }
 
+    // Migration: project file sync disk stamp (schema version 54).
+    // Mirror of SQLite migration 0054_project_file_sync_disk_stamp.sql -- keep in sync.
+    // Columns only, IF NOT EXISTS, so rerunning it every launch is safe. Runs
+    // after the CREATE TABLE above, which this block follows in createSchemas.
+    try {
+      await this.db.exec(`
+        ALTER TABLE project_file_sync_baseline ADD COLUMN IF NOT EXISTS disk_hash TEXT;
+        ALTER TABLE project_file_sync_baseline ADD COLUMN IF NOT EXISTS disk_size BIGINT;
+        ALTER TABLE project_file_sync_baseline ADD COLUMN IF NOT EXISTS disk_mtime BIGINT;
+      `);
+      console.log('[PGLite Worker] project file sync disk stamp migration applied');
+    } catch (error) {
+      console.error('[PGLite Worker] Failed to apply the project file sync disk stamp migration:', error);
+      throw error;
+    }
+
     // Migration: team-shared tracker saved views (schema version 28).
     // Mirror of SQLite migration 0028_tracker_shared_saved_views.sql.
     // Payload is stored as TEXT (not JSONB) so the row round-trips byte-for-byte
