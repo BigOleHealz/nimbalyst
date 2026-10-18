@@ -20,6 +20,7 @@ import {
 } from '../utils/store';
 import type { RetentionResult } from '../database/toolOutputRetentionPass';
 import { runMessageKindBackfill, type MessageKindBackfillDb } from './messageKindBackfill';
+import { runScheduledTrackerBodyCacheRetention } from './tracker/trackerBodyCacheRetention';
 
 export const DAILY_MS = 24 * 60 * 60 * 1000;
 
@@ -156,4 +157,5 @@ export function scheduleDatabaseRetention(
     () => opts.queuedPromptsStore.cleanup(QUEUED_PROMPT_RETENTION_MS),
     deps,
   );
+  scheduleDailyMaintenance('tracker-body-cache-retention', () => runScheduledTrackerBodyCacheRetention(opts.getToolRetentionRunner), deps);
 }

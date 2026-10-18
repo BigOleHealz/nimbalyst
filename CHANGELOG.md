@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Completed and failed queued prompts older than 30 days are now deleted automatically
 - Old document history is now pruned once a day while the app stays open, and the pruning runs after the first window loads instead of during startup
 - Document history no longer stores snapshots of images and other binary files
+- Saving a tracker item's body no longer keeps a full copy of every earlier version in the local database; on the SQLite database, copies already stored are removed by a daily background pass. The original body from creation and the latest body are kept
+- Editing a tracker item now shortens the before and after values of its older activity entries to the 500-character limit new entries already use, so items edited before that limit stop carrying whole old descriptions in every save
 
 ### Fixed
 <!-- Bug fixes go here -->
