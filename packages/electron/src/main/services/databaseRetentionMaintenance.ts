@@ -19,6 +19,7 @@ import {
   setToolOutputRetentionCursor,
 } from '../utils/store';
 import type { RetentionResult } from '../database/toolOutputRetentionPass';
+import { runMessageKindBackfill, type MessageKindBackfillDb } from './messageKindBackfill';
 
 export const DAILY_MS = 24 * 60 * 60 * 1000;
 
@@ -75,6 +76,22 @@ export function scheduleDailyMaintenance(
 /** The slice of `SQLiteDatabaseProxy` the tool-output task needs. */
 export interface ToolRetentionRunner {
   toolRetentionRun(retentionDays: number, maxRows?: number, startAfterId?: number): Promise<unknown>;
+  /** Used by the message-kind backfill that runs before retention. */
+  query?: MessageKindBackfillDb['query'];
+}
+
+/**
+ * Relabel historical rows to the current `message_kind` classification before
+ * retention reads them. A no-op once the backfill has drained, and on PGLite.
+ */
+export async function runMessageKindBackfillStep(
+  getRunner: () => ToolRetentionRunner | null,
+  backfill: (db: MessageKindBackfillDb) => Promise<unknown> = runMessageKindBackfill,
+): Promise<void> {
+  const runner = getRunner();
+  if (!runner?.query) return;
+  const query = runner.query.bind(runner);
+  await backfill({ query });
 }
 
 /**
@@ -125,7 +142,15 @@ export function scheduleDatabaseRetention(
   },
   deps: MaintenanceSchedulerDeps = {},
 ): void {
-  scheduleDailyMaintenance('tool-output-retention', () => runToolOutputRetention(opts.getToolRetentionRunner), deps);
+  scheduleDailyMaintenance('tool-output-retention', async () => {
+    // A backfill failure must not cost the day's retention run.
+    try {
+      await runMessageKindBackfillStep(opts.getToolRetentionRunner);
+    } catch (err) {
+      logger.main.error('[DatabaseRetention] message-kind backfill failed:', err);
+    }
+    await runToolOutputRetention(opts.getToolRetentionRunner);
+  }, deps);
   scheduleDailyMaintenance(
     'queued-prompts-retention',
     () => opts.queuedPromptsStore.cleanup(QUEUED_PROMPT_RETENTION_MS),
