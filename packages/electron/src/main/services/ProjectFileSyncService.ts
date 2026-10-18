@@ -916,10 +916,11 @@ export class ProjectFileSyncService {
   private async walkDir(dir: string, results: ScannedFile[], root: string): Promise<void> {
     const basename = path.basename(dir);
 
-    // Skip common non-content directories
+    // Skip common non-content directories (the report folders hold generated .html)
     const skipDirs = new Set([
       'node_modules', '.git', '.nimbalyst', 'dist', 'build', '.build',
       'out', '.next', '.nuxt', '.svelte-kit', 'coverage', '.cache',
+      'playwright-report', 'test-results', 'htmlcov', 'storybook-static',
       '.turbo', '.vercel', '.output', '__pycache__', '.venv', 'venv',
       'target', 'Pods', '.gradle', 'DerivedData',
     ]);

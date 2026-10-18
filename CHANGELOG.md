@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 <!-- New features go here -->
 - Agents can propose a commit into another worktree of the session's repository; the commit card shows its branch and path and always asks for approval on desktop
+- In the iOS and Android apps, a synced Markdown file now shows an embedded `.html` diagram live instead of as a link; document sync now carries `.html` files so the phone has them
 
 ### Changed
 <!-- Changes to existing functionality go here -->

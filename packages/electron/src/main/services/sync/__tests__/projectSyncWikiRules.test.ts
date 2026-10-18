@@ -195,6 +195,27 @@ describe('project file sync inside a Local wiki', () => {
     await expect(stat(path.join(ws, 'elsewhere', 'Stray.csv'))).rejects.toThrow();
   });
 
+  // Phones render `[Label](diagram.html "height=...")` embeds from the synced copy.
+  it('carries .html files anywhere outside the wiki trash so phones can render embeds', async () => {
+    const { isProjectSyncPath } = await import('../projectSyncWikiRules');
+    await mkdir(path.join(ws, 'docs'), { recursive: true });
+    await writeFile(path.join(ws, 'docs', 'flow.html'), '<p>flow</p>', 'utf-8');
+    await writeFile(path.join(wiki, 'map.html'), '<p>map</p>', 'utf-8');
+    await mkdir(path.join(ws, 'playwright-report'), { recursive: true });
+    await writeFile(path.join(ws, 'playwright-report', 'index.html'), '<p>report</p>', 'utf-8');
+
+    expect(isProjectSyncPath(path.join(ws, 'docs', 'flow.html'), ws)).toBe(true);
+    expect(isProjectSyncPath(path.join(wiki, '.trash', `1-${ID}`, 'map.html'), ws)).toBe(false);
+
+    const manifest = await (service as any).buildManifest(ws, 'proj', { seedBaseline: true });
+    expect(manifest.map((f: any) => f.syncId).sort()).toEqual(
+      [syncIdOf(`${WIKI}/.nimbalyst-wiki.yaml`), syncIdOf('docs/flow.html'), syncIdOf(`${WIKI}/map.html`)].sort(),
+    );
+
+    await (service as any).handleRemoteFileUpdate('proj', remoteFile('docs/other.html', '<p>other</p>'));
+    expect(await readFile(path.join(ws, 'docs', 'other.html'), 'utf-8')).toBe('<p>other</p>');
+  });
+
   it('syncs tables only once the wiki exists, but always accepts its marker so a second desktop can bootstrap', async () => {
     const { isProjectSyncPath } = await import('../projectSyncWikiRules');
     const marker = path.join(wiki, '.nimbalyst-wiki.yaml');
