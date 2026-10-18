@@ -14,9 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 <!-- Changes to existing functionality go here -->
+- On the SQLite database, tool output older than 30 days in agent transcripts is now replaced with a placeholder by a daily background pass; your prompts, agent replies and tool calls are kept. Shrinking the file on disk is still the Vacuum action in the database dashboard
+- Completed and failed queued prompts older than 30 days are now deleted automatically
+- Old document history is now pruned once a day while the app stays open, and the pruning runs after the first window loads instead of during startup
+- Document history no longer stores snapshots of images and other binary files
 
 ### Fixed
 <!-- Bug fixes go here -->
+- The local slow-query log is now capped at 2,000 rows instead of growing past its limit
 - With "Allow everything" and Agent-verified checks on, a hook that asks for approval now waits for your answer instead of letting the tool run
 - A file watcher hitting the open-file limit no longer opens a blocking error dialog, which could keep the app from starting with many projects restored
 - The tray menu no longer throws an error dialog when a settings read fails, and projects without a `.mcp.json` no longer leak a folder watcher each time they start

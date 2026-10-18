@@ -64,6 +64,12 @@ export interface RetentionResult extends RetentionProgress {
   durationMs: number;
   cutoffIso: string;
   stoppedEarly: boolean;
+  /**
+   * Highest row id examined. Pass it back as `startAfterId` so a scheduled run
+   * resumes where the last one stopped instead of re-reading every row it
+   * already tombstoned.
+   */
+  lastId: number;
 }
 
 export interface RetentionOptions {
@@ -71,6 +77,8 @@ export interface RetentionOptions {
   retentionDays: number;
   /** Cap on rows examined in one run so a first pass on a huge table ends. */
   maxRows?: number;
+  /** Resume after this row id. Omit to walk from the start of the table. */
+  startAfterId?: number;
   onProgress?: (p: RetentionProgress) => void;
   /**
    * Log sink. Injected rather than imported because this pass executes inside
@@ -387,13 +395,13 @@ export function createToolOutputRetentionWork(
   const maxRows = options.maxRows ?? Number.POSITIVE_INFINITY;
 
   const progress: RetentionProgress = { scanned: 0, rewritten: 0, bytesSaved: 0 };
-  let lastId = 0;
+  let lastId = options.startAfterId ?? 0;
 
   return {
     name: 'tool-output-retention',
     chunk(db: SqliteDatabase): { done: boolean } {
       if (progress.scanned >= maxRows) {
-        onDone({ ...progress, durationMs: now() - startedAt, cutoffIso: cutoff, stoppedEarly: true });
+        onDone({ ...progress, durationMs: now() - startedAt, cutoffIso: cutoff, stoppedEarly: true, lastId });
         return { done: true };
       }
 
@@ -407,7 +415,7 @@ export function createToolOutputRetentionWork(
           `[ToolRetention] complete: scanned=${progress.scanned} rewritten=${progress.rewritten} `
             + `saved=${(progress.bytesSaved / 1024 / 1024).toFixed(1)}MB`,
         );
-        onDone({ ...progress, durationMs: now() - startedAt, cutoffIso: cutoff, stoppedEarly: false });
+        onDone({ ...progress, durationMs: now() - startedAt, cutoffIso: cutoff, stoppedEarly: false, lastId });
         return { done: true };
       }
 
