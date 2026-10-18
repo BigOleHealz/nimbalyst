@@ -276,7 +276,9 @@ export class ProjectFileSyncService {
    * was missing were refused. Ask again; they return through the normal path.
    */
   resync(encryptedProjectId: string, opts: { fullRehash?: boolean } = {}): void {
-    void this.provider?.resync(encryptedProjectId, opts);
+    void (opts.fullRehash
+      ? this.provider?.resync(encryptedProjectId, { fullRehash: true })
+      : this.provider?.resync(encryptedProjectId));
   }
 
   /**

@@ -181,8 +181,10 @@ describe('project file sync inside a Local wiki', () => {
       [syncIdOf(`${WIKI}/.nimbalyst-wiki.yaml`), syncIdOf(`${WIKI}/Partners.csv`)].sort(),
     );
 
+    // An edit after the sweep (a save at the agreed baseline pushes nothing).
+    await writeFile(path.join(wiki, 'Partners.csv'), 'id,title\n1,Acme\n2,Bolt\n', 'utf-8');
     await service.handleFileSaved(path.join(wiki, 'Partners.csv'), ws, 'proj');
-    expect(pushFileContent).toHaveBeenCalledWith('proj', syncIdOf(`${WIKI}/Partners.csv`), 'id,title\n1,Acme\n', `${WIKI}/Partners.csv`, 'Partners', expect.any(Number));
+    expect(pushFileContent).toHaveBeenCalledWith('proj', syncIdOf(`${WIKI}/Partners.csv`), 'id,title\n1,Acme\n2,Bolt\n', `${WIKI}/Partners.csv`, 'Partners', expect.any(Number));
     await service.handleFileSaved(path.join(ws, 'data', 'Export.csv'), ws, 'proj');
     expect(pushFileContent).toHaveBeenCalledTimes(1);
 
