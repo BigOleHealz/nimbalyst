@@ -556,7 +556,7 @@ export class MetaAgentService {
     // self-describing identifier wrongly trips the claude-code mismatch guard.
     const explicitModelProvider =
       args.provider
-      ?? (args.model?.includes(':') ? ModelIdentifier.tryParse(args.model)?.provider ?? null : null)
+      ?? (args.model?.includes(':') ? ModelIdentifier.tryParse(args.model)?.provider : undefined)
       ?? parentProvider;
     const explicitModel = normalizeStoredChildModelIdentifier(explicitModelProvider, args.model ?? null);
     const model = explicitModel || defaultModel;
