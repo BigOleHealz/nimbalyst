@@ -12,6 +12,7 @@ import { themeIdAtom } from '@nimbalyst/runtime/store';
 import { TerminalContextMenu } from './TerminalContextMenu';
 import { sanitizeScrollback, stripProblematicEscapeSequences, cleanScrollback } from './scrollbackSanitization';
 import { loadTerminalGhostty, isGhosttyWasmTrap, writeGuardingWasmTrap } from './ghosttyInstance';
+import { logger } from '../../utils/logger';
 import {
   isElementMeasurable,
   waitUntilElementMeasurable,
@@ -792,8 +793,10 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
           handleWasmTrap(error);
           return;
         }
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        console.error('[TerminalPanel] Error initializing terminal:', error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        // #1818: console output is not saved in packaged builds; the logger
+        // writes to main.log, so the cause survives a Retry click.
+        logger.renderer.error('[TerminalPanel] Error initializing terminal:', error);
         setInitError(errorMessage);
       }
     };
