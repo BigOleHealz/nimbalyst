@@ -140,7 +140,9 @@ describe('ProjectFileSyncService.handleFileSaved', () => {
     await writeFile(filePath, '# Same\n', 'utf-8');
     (service as any).projectStates.get('proj-enc').set(syncId, { syncId, contentHash: sha256('# Same\n'), lastSyncedMtime: 1 });
 
-    const touched = new Date(Date.now() + 5_000);
+    // A whole second: utimes takes fractional seconds, and reading a
+    // millisecond time back can land 1 ms low, so the stamp check flaked.
+    const touched = new Date(Math.floor((Date.now() + 5_000) / 1000) * 1000);
     await fsp.utimes(filePath, touched, touched);
     await service.handleFileSaved(filePath, tmpDir, 'proj-enc');
 
