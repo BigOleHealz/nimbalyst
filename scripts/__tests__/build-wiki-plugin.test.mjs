@@ -4,12 +4,13 @@
 // and staging the nimbalyst-wiki repository. The hooks are tested with the CLI
 // that runs them (packages/cli/src/mcp/__tests__/wikiContext.test.ts).
 import assert from 'node:assert/strict';
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { applyBranch, buildGeneratedFiles, checkGenerated, checkManifestVersions, checkToolNames, cliSpec, PLUGIN_DIR, TEAM_PLUGIN_DIR, writeGenerated } from '../build-wiki-plugin.mjs';
+import { applyBranch, buildGeneratedFiles, buildPluginConfigs, checkGenerated, checkManifestVersions, checkToolNames, cliSpec, PLUGIN_DIR, TEAM_PLUGIN_DIR, writeGenerated } from '../build-wiki-plugin.mjs';
 import { canRunPinnedCli, directoryLimitFindings, unbumpedChanges } from '../stage-wiki-repo.mjs';
 
 const REMOTE_SKILLS = fileURLToPath(new URL('../../plugins/nimbalyst-wiki/skills', import.meta.url));
@@ -167,16 +168,39 @@ test('the plugin runs its servers and hooks from @nimbalyst/cli pinned to its ow
   const spec = cliSpec();
   assert.equal(spec, `@nimbalyst/cli@${JSON.parse(readFileSync(path.join(PLUGIN_DIR, '.claude-plugin', 'plugin.json'), 'utf8')).version}`);
   const mcp = JSON.parse(readFileSync(path.join(PLUGIN_DIR, '.mcp.json'), 'utf8')).mcpServers;
-  assert.deepEqual(mcp['nimbalyst-local'].args, ['-y', spec, 'mcp', '--plugin-root', '${CLAUDE_PLUGIN_ROOT}']);
-  assert.deepEqual(mcp['nimbalyst-session'].args, ['-y', spec, 'hook', 'session-inputs']);
+  assert.deepEqual(mcp['nimbalyst-local'].args, ['--prefix', '/', '-y', spec, 'mcp', '--plugin-root', '${CLAUDE_PLUGIN_ROOT}']);
+  assert.deepEqual(mcp['nimbalyst-session'].args, ['--prefix', '/', '-y', spec, 'hook', 'session-inputs']);
   // Codex expands no variables, and npx replaces PWD, so Codex starts the server in the project and names itself.
   // Codex passes servers a filtered environment; a custom CODEX_HOME must be forwarded for the server to find its install.
   const codex = JSON.parse(readFileSync(path.join(PLUGIN_DIR, '.codex-mcp.json'), 'utf8')).mcpServers['nimbalyst-local'];
-  assert.deepEqual(codex, { command: 'npx', env_vars: ['CODEX_HOME'], args: ['-y', spec, 'mcp', '--plugin-agent', 'codex'] });
+  assert.deepEqual(codex, { command: 'npx', env_vars: ['CODEX_HOME'], args: ['--prefix', '/', '-y', spec, 'mcp', '--plugin-agent', 'codex'] });
   const hooks = JSON.parse(readFileSync(path.join(PLUGIN_DIR, 'hooks', 'hooks.json'), 'utf8')).hooks;
-  assert.equal(hooks.SessionStart[0].hooks[0].command, `npx -y ${spec} hook session-start`);
-  assert.equal(hooks.Stop[0].hooks[0].command, `npx -y ${spec} hook stop`);
+  assert.equal(hooks.SessionStart[0].hooks[0].command, `npx --prefix / -y ${spec} hook session-start`);
+  assert.equal(hooks.Stop[0].hooks[0].command, `npx --prefix / -y ${spec} hook stop`);
   assert.ok(!existsSync(path.join(PLUGIN_DIR, 'scripts')), 'the plugin ships no scripts');
+});
+
+test('npx runs the published CLI even in a project that has its own @nimbalyst/cli at the pinned version', () => {
+  // This monorepo links packages/cli into node_modules at the plugin's version, so a bare npx ran its stale local build.
+  const project = mkdtempSync(path.join(tmpdir(), 'wiki-npx-'));
+  try {
+    const version = '0.0.0-local-only';
+    const pkg = path.join(project, 'node_modules', '@nimbalyst', 'cli');
+    mkdirSync(path.join(pkg, 'bin'), { recursive: true });
+    writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: '@nimbalyst/cli', version, bin: { nim: 'bin/nim.js' } }));
+    writeFileSync(path.join(pkg, 'bin', 'nim.js'), '#!/usr/bin/env node\nconsole.log("LOCAL COPY");\n', { mode: 0o755 });
+    mkdirSync(path.join(project, 'node_modules', '.bin'));
+    symlinkSync('../@nimbalyst/cli/bin/nim.js', path.join(project, 'node_modules', '.bin', 'nim'));
+    writeFileSync(path.join(project, 'package.json'), JSON.stringify({ name: 'host', private: true }));
+    const configs = buildPluginConfigs();
+    const args = JSON.parse(configs.get('.mcp.json')).mcpServers['nimbalyst-session'].args
+      .map((arg) => (arg === cliSpec() ? `@nimbalyst/cli@${version}` : arg));
+    // --offline: the fake version is in no registry, so npx fails unless it picks the project's copy.
+    const run = spawnSync('npx', ['--offline', ...args], { cwd: project, encoding: 'utf8', input: '' });
+    assert.doesNotMatch(run.stdout, /LOCAL COPY/);
+  } finally {
+    rmSync(project, { recursive: true, force: true });
+  }
 });
 
 function fixturePlugin(dir, version, script = 'v1') {

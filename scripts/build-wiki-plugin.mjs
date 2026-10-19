@@ -216,11 +216,16 @@ export function cliSpec(pluginDir = PLUGIN_DIR) {
  * Codex expands no variables in MCP args (and npx would replace a forwarded
  * `PWD`), so it says `--plugin-agent codex` and the server finds its install
  * by version (packages/cli/src/mcp/pluginEntry.ts). Codex runs no plugin hooks.
+ *
+ * `--prefix /` keeps npx from running a copy of the CLI in the project's own
+ * node_modules at the same version (this monorepo links packages/cli there, so
+ * a stale local build ran instead of the published one). The command still
+ * runs in the project folder.
  */
 export function buildPluginConfigs(pluginDir = PLUGIN_DIR) {
   const spec = cliSpec(pluginDir);
   const json = (value) => `${JSON.stringify(value, null, 2)}\n`;
-  const npx = (...args) => ['-y', spec, ...args];
+  const npx = (...args) => ['--prefix', '/', '-y', spec, ...args];
   const hook = (verb) => ({ hooks: [{ type: 'command', command: ['npx', ...npx('hook', verb)].join(' '), timeout: 30 }] });
   return new Map([
     ['.mcp.json', json({
