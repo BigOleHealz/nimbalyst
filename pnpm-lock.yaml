@@ -180,6 +180,7 @@ patchedDependencies:
   '@lexical/yjs@0.44.0': 81c6b5edf6a448a1b58989a2f66ee89f52e78871c1dba49750e93b7739de3020
   '@revolist/revogrid@4.21.4': c1fbe0323c46436ce9bf37b5f96fbeff48a5755ed400b4452b80555a92e728dd
   app-builder-lib@26.15.3: 15db002513a1606730bfa3575668ce8edccfbcdd5b3381e48768ccf73764989e
+  ghostty-web@0.4.0-next.20.g1858a59: a70c3bb0f157195d17505fc2837ad9b7a9477e0a282265838ce3da4b896ca413
 
 importers:
 
@@ -766,7 +767,7 @@ importers:
         version: 6.0.3
       ghostty-web:
         specifier: 0.4.0-next.20.g1858a59
-        version: 0.4.0-next.20.g1858a59
+        version: 0.4.0-next.20.g1858a59(patch_hash=a70c3bb0f157195d17505fc2837ad9b7a9477e0a282265838ce3da4b896ca413)
       gifwrap:
         specifier: ^0.10.1
         version: 0.10.1
@@ -15190,7 +15191,7 @@ snapshots:
     dependencies:
       pump: 3.0.3
 
-  ghostty-web@0.4.0-next.20.g1858a59: {}
+  ghostty-web@0.4.0-next.20.g1858a59(patch_hash=a70c3bb0f157195d17505fc2837ad9b7a9477e0a282265838ce3da4b896ca413): {}
 
   gifuct-js@2.1.2:
     dependencies:
