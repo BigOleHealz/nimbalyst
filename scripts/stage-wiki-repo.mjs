@@ -17,7 +17,7 @@
 //   README.md, LICENSE, FORMAT.md, CONTRIBUTING.md
 //
 //   node scripts/stage-wiki-repo.mjs <dir>                      stage into <dir>
-//   node scripts/stage-wiki-repo.mjs <dir> --skip-npm-check     stage before @nimbalyst/cli@<version> is on npm (testing only)
+//   node scripts/stage-wiki-repo.mjs <dir> --skip-npm-check     stage before npx can install @nimbalyst/cli@<version> (testing only)
 //
 // <dir> is usually a clone of nimbalyst/nimbalyst-wiki. Everything in it but
 // .git is replaced. Committing, tagging and pushing that clone is a separate,
@@ -25,6 +25,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkGenerated, checkManifestVersions, cliSpec, listFiles, PLUGIN_DIR, TEAM_PLUGIN_DIR } from './build-wiki-plugin.mjs';
@@ -93,10 +94,17 @@ export function directoryLimitFindings(outDir) {
   return { blocking, held };
 }
 
-/** Whether `spec` (`name@x.y.z`) is published: the plugin must never point at a version npm can't serve. */
-export function isPublished(spec, view = (args) => execFileSync('npm', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 30_000 })) {
+/**
+ * Whether npx can install and run `spec` (`name@x.y.z`) the way the plugin
+ * does: the plugin must never point at a version a user can't install. For a
+ * few minutes after a publish `npm view` already reports the CLI while npx
+ * still fails with ETARGET on its pinned wiki-web, so this runs npx itself,
+ * with fresh registry metadata, from outside this repository (whose devEngines
+ * npm refuses).
+ */
+export function canRunPinnedCli(spec, run = (command, args, options) => execFileSync(command, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 180_000, ...options })) {
   try {
-    return view(['view', spec, 'version']).trim() === spec.slice(spec.lastIndexOf('@') + 1);
+    return run('npx', ['-y', '--prefer-online', spec, '--version'], { cwd: tmpdir() }).trim() === spec.slice(spec.lastIndexOf('@') + 1);
   } catch {
     return false;
   }
@@ -116,7 +124,7 @@ export function stage(outDir, { npmCheck = true } = {}) {
     fail(`The plugin changed since the last staging but its version did not; bump .claude-plugin and .codex-plugin plugin.json:\n  ${unbumped.join('\n  ')}`);
   }
   const spec = cliSpec();
-  if (npmCheck && !isPublished(spec)) fail(`${spec} is not on npm; publish it first (/publish-npm cli), since the plugin runs it`);
+  if (npmCheck && !canRunPinnedCli(spec)) fail(`npx can't install ${spec} yet; publish it first (/publish-npm cli), or wait a few minutes after publishing for the registry to serve it and its wiki-web`);
 
   mkdirSync(outDir, { recursive: true });
   for (const entry of readdirSync(outDir)) {

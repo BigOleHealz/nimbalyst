@@ -232,7 +232,8 @@ export function buildPluginConfigs(pluginDir = PLUGIN_DIR) {
     ['.codex-mcp.json', json({
       mcpServers: {
         'nimbalyst-session': { command: 'npx', args: npx('hook', 'session-inputs') },
-        'nimbalyst-local': { command: 'npx', args: npx('mcp', '--plugin-agent', 'codex') },
+        // Codex passes servers a filtered environment; a custom CODEX_HOME is where the server finds its install.
+        'nimbalyst-local': { command: 'npx', env_vars: ['CODEX_HOME'], args: npx('mcp', '--plugin-agent', 'codex') },
       },
     })],
     ['hooks/hooks.json', json({

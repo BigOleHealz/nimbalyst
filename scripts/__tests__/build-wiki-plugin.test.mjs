@@ -10,7 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { applyBranch, buildGeneratedFiles, checkGenerated, checkManifestVersions, checkToolNames, cliSpec, PLUGIN_DIR, TEAM_PLUGIN_DIR, writeGenerated } from '../build-wiki-plugin.mjs';
-import { directoryLimitFindings, isPublished, unbumpedChanges } from '../stage-wiki-repo.mjs';
+import { canRunPinnedCli, directoryLimitFindings, unbumpedChanges } from '../stage-wiki-repo.mjs';
 
 const REMOTE_SKILLS = fileURLToPath(new URL('../../plugins/nimbalyst-wiki/skills', import.meta.url));
 const DESKTOP_SKILLS = fileURLToPath(new URL('../../packages/extensions/knowledge/claude-plugin/skills', import.meta.url));
@@ -170,8 +170,9 @@ test('the plugin runs its servers and hooks from @nimbalyst/cli pinned to its ow
   assert.deepEqual(mcp['nimbalyst-local'].args, ['-y', spec, 'mcp', '--plugin-root', '${CLAUDE_PLUGIN_ROOT}']);
   assert.deepEqual(mcp['nimbalyst-session'].args, ['-y', spec, 'hook', 'session-inputs']);
   // Codex expands no variables, and npx replaces PWD, so Codex starts the server in the project and names itself.
+  // Codex passes servers a filtered environment; a custom CODEX_HOME must be forwarded for the server to find its install.
   const codex = JSON.parse(readFileSync(path.join(PLUGIN_DIR, '.codex-mcp.json'), 'utf8')).mcpServers['nimbalyst-local'];
-  assert.deepEqual(codex, { command: 'npx', args: ['-y', spec, 'mcp', '--plugin-agent', 'codex'] });
+  assert.deepEqual(codex, { command: 'npx', env_vars: ['CODEX_HOME'], args: ['-y', spec, 'mcp', '--plugin-agent', 'codex'] });
   const hooks = JSON.parse(readFileSync(path.join(PLUGIN_DIR, 'hooks', 'hooks.json'), 'utf8')).hooks;
   assert.equal(hooks.SessionStart[0].hooks[0].command, `npx -y ${spec} hook session-start`);
   assert.equal(hooks.Stop[0].hooks[0].command, `npx -y ${spec} hook stop`);
@@ -257,8 +258,18 @@ test('staging refuses what the plugin directory cannot validate and lists what h
   assert.deepEqual(blocking.sort(), ['skills/.DS_Store is a system file the directory refuses', 'web/assets/ts.worker.js is 5.0 MiB; every file must be under 5 MiB']);
 });
 
-test('staging refuses a plugin whose pinned CLI npm can\'t serve', () => {
-  assert.equal(isPublished('@nimbalyst/cli@1.2.3', () => '1.2.3\n'), true);
-  assert.equal(isPublished('@nimbalyst/cli@1.2.3', () => ''), false, 'npm view prints nothing for an unpublished version');
-  assert.equal(isPublished('@nimbalyst/cli@1.2.3', () => { throw new Error('E404'); }), false);
+test('staging refuses a plugin until npx can install and run its pinned CLI', () => {
+  const calls = [];
+  const runs = (out) => (command, args, options) => {
+    calls.push({ command, args, cwd: options.cwd });
+    return out;
+  };
+  assert.equal(canRunPinnedCli('@nimbalyst/cli@1.2.3', runs('1.2.3\n')), true);
+  // What a user's plugin runs, with fresh registry metadata, from outside this repository (whose devEngines npm refuses).
+  assert.deepEqual(calls[0].args, ['-y', '--prefer-online', '@nimbalyst/cli@1.2.3', '--version']);
+  assert.equal(calls[0].command, 'npx');
+  assert.ok(!calls[0].cwd.startsWith(path.resolve(PLUGIN_DIR, '../..')), calls[0].cwd);
+  assert.equal(canRunPinnedCli('@nimbalyst/cli@1.2.3', runs('1.2.2\n')), false, 'a different version answered');
+  // Right after a publish the CLI resolves before its pinned wiki-web does: npx fails with ETARGET.
+  assert.equal(canRunPinnedCli('@nimbalyst/cli@1.2.3', () => { throw new Error('ETARGET'); }), false);
 });

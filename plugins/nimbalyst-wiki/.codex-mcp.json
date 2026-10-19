@@ -11,6 +11,9 @@
     },
     "nimbalyst-local": {
       "command": "npx",
+      "env_vars": [
+        "CODEX_HOME"
+      ],
       "args": [
         "-y",
         "@nimbalyst/cli@0.11.0",
