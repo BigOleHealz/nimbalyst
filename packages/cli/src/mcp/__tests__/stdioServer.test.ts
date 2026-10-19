@@ -389,6 +389,13 @@ describe('re-pointing the server at another project', () => {
     expect(LOCAL_SERVER_INSTRUCTIONS).toContain('`capture` skill');
     expect(LOCAL_SERVER_INSTRUCTIONS).toContain('listMarks');
   });
+
+  it('the local server steers the agent to its own tools, not a separately installed `nim` on PATH', () => {
+    // A user on plugin 0.11.0 had an agent read `nim --version` from an older global install and report the wrong version.
+    expect(LOCAL_SERVER_INSTRUCTIONS).toContain('`openWikiInBrowser`');
+    expect(LOCAL_SERVER_INSTRUCTIONS).toContain('`wikiDoctor`');
+    expect(LOCAL_SERVER_INSTRUCTIONS).toMatch(/`nim` command on the shell's PATH is a separate install/);
+  });
 });
 
 describe('plugin workspace', () => {
