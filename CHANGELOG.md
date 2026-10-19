@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 <!-- Bug fixes go here -->
+- Files deleted from a synced project, including a whole deleted folder or files deleted while Nimbalyst was closed, are now removed from document sync instead of being written back to disk on the next sync; a file edited on another device since is still restored
 - The local slow-query log is now capped at 2,000 rows instead of growing past its limit
 - The expanded tray panel reads each session's latest reply from an index instead of scanning every assistant message in the database, which could stall other database work for seconds on large histories
 - Session search now finds error messages from Codex sessions; on the SQLite database, existing Codex messages are relabeled once by a background pass
