@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- New features go here -->
 - Agents can propose a commit into another worktree of the session's repository; the commit card shows its branch and path and always asks for approval on desktop
 - In the iOS and Android apps, a synced Markdown file now shows an embedded `.html` diagram live instead of as a link; document sync now carries `.html` files so the phone has them
+- The Project Graph timeline has a "24 hours" time range with an hourly ruler and times in its tooltips
 
 ### Changed
 <!-- Changes to existing functionality go here -->
@@ -37,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A hook that asks for approval now always prompts, even when the tool was approved for the session, matches a saved Always rule, or would be allowed by the current permission mode
 - Sending a queued prompt now, an orchestrator interrupt, or a teammate message no longer cuts off a commit in progress, and a commit that timed out waiting for the git lock now reports whether it actually committed
 - Commit proposals from Codex sessions no longer fail with "Cannot identify this exact commit proposal"
+- In the Project Graph timeline, an AI session's bar now ends at its last activity or phase change instead of running to today, and when there are more than 1,000 rows the most recent ones are shown instead of the oldest
 - A Claude Code session no longer keeps showing "Waiting for your response" after you answer its question while it carries on working.
 - A prompt whose send failed, or a retried copy of it, no longer stays at the bottom of the transcript below later replies
 - The macOS Window menu now drops a project when you close its window and checks the window that has focus
