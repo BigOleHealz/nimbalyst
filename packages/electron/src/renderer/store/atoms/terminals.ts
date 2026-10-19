@@ -44,6 +44,29 @@ export interface TerminalWorkspaceState {
 export const terminalListAtom = atom<TerminalInstance[]>([]);
 
 /**
+ * The project that `terminalListAtom` was loaded for (GitHub #1818).
+ *
+ * One window can switch between projects, but the terminal list is shared by the
+ * whole window. After a switch, the list still holds the old project's terminals
+ * until the new project's list arrives. Readers compare this value with their own
+ * project and ignore the list when the two differ.
+ */
+export const terminalListWorkspaceAtom = atom<string | undefined>(undefined);
+
+/**
+ * The terminals that belong to `workspacePath`. Returns an empty list while the
+ * shared list still belongs to another project, so a terminal is never shown, or
+ * started, inside the wrong project.
+ */
+export function terminalsForWorkspace(
+  terminals: TerminalInstance[],
+  listWorkspacePath: string | undefined,
+  workspacePath: string
+): TerminalInstance[] {
+  return listWorkspacePath === workspacePath ? terminals : [];
+}
+
+/**
  * Active terminal ID atom
  */
 export const activeTerminalIdAtom = atom<string | undefined>(undefined);
@@ -206,7 +229,10 @@ export async function loadTerminals(workspacePath: string): Promise<void> {
       .map((id: string) => state.terminals[id])
       .filter((t: TerminalInstance | undefined): t is TerminalInstance => t !== undefined);
 
+    // Set the list first and its project second, so a reader never sees a new
+    // project name paired with the previous project's list.
     store.set(terminalListAtom, terminalList);
+    store.set(terminalListWorkspaceAtom, workspacePath);
     store.set(activeTerminalIdAtom, state.activeTerminalId);
   } catch (error) {
     console.error('[terminals] Failed to load terminals:', error);
