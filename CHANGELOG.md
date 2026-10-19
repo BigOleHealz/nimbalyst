@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Editing a tracker item now shortens the before and after values of its older activity entries to the 500-character limit new entries already use, so items edited before that limit stop carrying whole old descriptions in every save
 - When a project with document sync connects or reconnects, only files whose size or modification time changed since they were last read are read and hashed again, instead of every synced file. The first connect after updating still reads every file once
 - Saving a synced document without changing its content no longer uploads it again
+- Session groups in the session list no longer show a count of unread child sessions, which took up row space
 
 ### Fixed
 <!-- Bug fixes go here -->
