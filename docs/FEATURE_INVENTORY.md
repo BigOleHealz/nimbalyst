@@ -120,6 +120,7 @@ Twelve built-in provider lanes, plus any agent an extension contributes. Every l
 - Model-aware reasoning effort selector, including Ultra for supported Codex models
 - Model selector (per-session or per-workstream)
 - Context window usage display with pace tracking
+- Optional context-usage bar under each session-list row (session list menu, **Show context usage**, off by default; providers that report a context window only)
 - Files-edited sidebar with per-session scope
 - Pending review banner (approve/reject AI changes)
 - Red/green diff display per tool call

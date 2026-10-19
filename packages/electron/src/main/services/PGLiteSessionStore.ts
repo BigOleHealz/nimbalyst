@@ -28,6 +28,7 @@ import type {
   AgentMessage
 } from '@nimbalyst/runtime';
 import { filterSessionsForPersonalSync } from '@nimbalyst/runtime/sync';
+import { readSessionContextUsage } from '@nimbalyst/runtime/ai/sessionContextUsage';
 
 type PGliteLike = {
   query<T = any>(sql: string, params?: any[]): Promise<{ rows: T[] }>;
@@ -922,6 +923,7 @@ export function createPGLiteSessionStore(db: PGliteLike, ensureDbReady?: EnsureR
           tags: Array.isArray(metadata.tags) ? metadata.tags : undefined,
           // Linked tracker item IDs from metadata JSONB
           linkedTrackerItemIds: Array.isArray(metadata.linkedTrackerItemIds) ? metadata.linkedTrackerItemIds : undefined,
+          contextUsage: readSessionContextUsage(metadata.tokenUsage),
         } satisfies SessionMeta & { hasPendingInteractivePrompt?: boolean; phase?: string; tags?: string[]; linkedTrackerItemIds?: string[] };
       });
       return sessions.sort((a, b) => b.updatedAt - a.updatedAt);
@@ -976,6 +978,7 @@ export function createPGLiteSessionStore(db: PGliteLike, ensureDbReady?: EnsureR
             s.branched_from_session_id,
             s.branch_point_message_id,
             s.branched_at,
+            s.metadata,
             COALESCE(child_stats.child_count, 0) as child_count
           FROM ai_sessions s
           LEFT JOIN worktrees w ON s.worktree_id = w.id
@@ -1052,6 +1055,7 @@ export function createPGLiteSessionStore(db: PGliteLike, ensureDbReady?: EnsureR
           s.branched_from_session_id,
           s.branch_point_message_id,
           s.branched_at,
+          s.metadata,
           ts_rank_cd(to_tsvector('english', COALESCE(s.title, '')), plainto_tsquery('english', $2)) * 2 as rank,
           COALESCE(child_stats.child_count, 0) as child_count
         FROM ai_sessions s
@@ -1170,6 +1174,7 @@ export function createPGLiteSessionStore(db: PGliteLike, ensureDbReady?: EnsureR
           branchedFromSessionId: row.branched_from_session_id ?? undefined,
           branchPointMessageId: row.branch_point_message_id ? parseInt(row.branch_point_message_id) : undefined,
           branchedAt,
+          contextUsage: readSessionContextUsage(normalizeJsonObject(row.metadata).tokenUsage),
         } satisfies SessionMeta;
       });
     },
