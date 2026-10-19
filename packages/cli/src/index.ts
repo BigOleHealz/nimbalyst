@@ -5,11 +5,14 @@
  * stable exit codes. All command output goes to stdout; diagnostics to stderr.
  */
 import { fileURLToPath } from 'node:url';
-import { parseArgs, flagBool, type ParsedArgs } from './cli/parse.js';
+import { parseArgs, flagBool, flagStr, type ParsedArgs } from './cli/parse.js';
 import { terminalNotice, wantsTerminalNotice } from './cli/updateNotice.js';
 import { detectNpmInstall, startUpdateCheck } from './mcp/updateCheck.js';
+import { pluginServerSetup } from './mcp/pluginEntry.js';
+import { machineEnv } from './update/installs.js';
 import { runUpdate } from './commands/update.js';
 import { runDoctor } from './commands/doctor.js';
+import { runHookCommand } from './commands/hook.js';
 import { setColorEnabled } from './cli/colors.js';
 import { CliError, ExitCode } from './cli/exitCodes.js';
 import { safeText } from './cli/output.js';
@@ -86,6 +89,7 @@ Nouns:
   workspace   list / show workspaces
   status      what nim is connected to (live or direct), schema, workspaces
   mcp         MCP server on stdio for agents: local wiki pages and typed pages (stdout is protocol only)
+  hook        the Nimbalyst Wiki plugin hooks: session-start, stop, session-inputs (stdin is the hook input)
   update      update nim and the Nimbalyst Wiki plugins for Claude Code and Codex
   doctor      which nim and browser app this is, how they were installed, and the installed plugins
 
@@ -212,7 +216,14 @@ async function dispatch(args: ParsedArgs): Promise<number> {
         if (args.verb === 'serve') return await runWikiServe(args, { version: VERSION });
         return isLocalWikiCall(args) ? await runLocalWiki(args, VERSION) : await runPages(args);
       case 'mcp': {
-        // The plugin starts its server through mcp/pluginEntry.ts, which runs its own check.
+        const pluginFlags = { root: flagStr(args, 'plugin-root'), agent: flagStr(args, 'plugin-agent') };
+        if (pluginFlags.root || pluginFlags.agent) {
+          // The nimbalyst-wiki plugin's server; see mcp/pluginEntry.ts.
+          const setup = pluginServerSetup(machineEnv(), process.cwd(), pluginFlags, VERSION);
+          const check = setup.install.kind === 'plugin' ? startUpdateCheck({ install: setup.install }) : null;
+          const pluginArgs = { ...args, flags: { ...args.flags, workspace: setup.workspace } };
+          return await runMcp(VERSION, pluginArgs, { takeNotice: check?.takeNotice, install: setup.install, executable: ENTRY_FILE });
+        }
         const install = detectNpmInstall(ENTRY_FILE, VERSION);
         const check = install.kind === 'npm' ? startUpdateCheck({ install }) : null;
         return await runMcp(VERSION, args, { takeNotice: check?.takeNotice, install, executable: ENTRY_FILE });
@@ -221,6 +232,8 @@ async function dispatch(args: ParsedArgs): Promise<number> {
         return await runUpdate(args, { version: VERSION, entryFile: ENTRY_FILE });
       case 'doctor':
         return await runDoctor(args, { version: VERSION, entryFile: ENTRY_FILE });
+      case 'hook':
+        return await runHookCommand(args);
       default:
         process.stderr.write(`nim: unknown command '${args.noun}'. Run 'nim --help'.\n`);
         return ExitCode.USAGE;
