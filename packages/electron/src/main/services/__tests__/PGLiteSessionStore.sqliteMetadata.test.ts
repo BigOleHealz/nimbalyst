@@ -284,3 +284,48 @@ it('carries the persisted context fill from list and search through both list pr
     expect(registry.get('spent')).toBeUndefined();
   }
 });
+
+it('lists and searches sessions from projected metadata, never the whole blob', async () => {
+  await sqlite.query(
+    `INSERT INTO ai_sessions (id, provider, workspace_id, title, metadata) VALUES ('s1', 'claude-code', '/p', 'Projection probe', $1)`,
+    [JSON.stringify({
+      metadata: { hasUnread: true },
+      hasPendingPrompt: true,
+      externalSource: 'openai-codex',
+      externalLastActivityAt: 1792500000000,
+      phase: 'validating',
+      tags: ['bug-fix', 'electron'],
+      linkedTrackerItemIds: ['bug_1'],
+      tokenUsage: { totalTokens: 10, currentContext: { tokens: 5, contextWindow: 100 } },
+      currentTasks: Array.from({ length: 50 }, (_, i) => ({ taskId: `t${i}`, summary: 'x'.repeat(1000) })),
+    })],
+  );
+  const adapter = createSQLiteStoreAdapter(sqlite);
+  const returnedRows: any[] = [];
+  const store = createPGLiteSessionStore({
+    ...adapter,
+    query: async (sql: string, params?: any[]) => {
+      const result = await adapter.query(sql, params);
+      returnedRows.push(...result.rows);
+      return result;
+    },
+  } as typeof adapter);
+
+  const [listed] = await store.list('/p');
+  expect(listed).toMatchObject({
+    hasUnread: true,
+    hasPendingInteractivePrompt: true,
+    externalSource: 'openai-codex',
+    externalLastActivityAt: 1792500000000,
+    phase: 'validating',
+    tags: ['bug-fix', 'electron'],
+    linkedTrackerItemIds: ['bug_1'],
+    contextUsage: { tokens: 5, contextWindow: 100 },
+  });
+  const [found] = await store.search('/p', 'Projection probe');
+  expect(found.contextUsage).toEqual({ tokens: 5, contextWindow: 100 });
+
+  const withMetadata = returnedRows.filter(row => row.metadata != null);
+  expect(withMetadata.length).toBeGreaterThan(0);
+  expect(withMetadata.some(row => JSON.stringify(row.metadata).includes('currentTasks'))).toBe(false);
+});

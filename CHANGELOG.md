@@ -46,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A hook that asks for approval now always prompts, even when the tool was approved for the session, matches a saved Always rule, or would be allowed by the current permission mode
 - Sending a queued prompt now, an orchestrator interrupt, or a teammate message no longer cuts off a commit in progress, and a commit that timed out waiting for the git lock now reports whether it actually committed
 - Commit proposals from Codex sessions no longer fail with "Cannot identify this exact commit proposal"
+- Claude Agent sessions no longer keep every command they have ever run in the session record. The session list re-read those records on each refresh, which could make the app run out of memory and crash. The Agents panel now lists running tasks and the 20 most recent finished ones. After updating, existing records are trimmed to the same limit once, and the removed entries are first saved to an export file in the app's data folder
 - In the Project Graph timeline, an AI session's bar now ends at its last activity or phase change instead of running to today, and when there are more than 1,000 rows the most recent ones are shown instead of the oldest
 - A Claude Code session no longer keeps showing "Waiting for your response" after you answer its question while it carries on working.
 - A prompt whose send failed, or a retried copy of it, no longer stays at the bottom of the transcript below later replies
