@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 <!-- Bug fixes go here -->
+- A Claude Code session file that keeps failing to import is now retried after a growing wait, up to 30 minutes, instead of several times a second, which stops the log from filling with the same error
 - Files deleted from a synced project, including a whole deleted folder or files deleted while Nimbalyst was closed, are now removed from document sync instead of being written back to disk on the next sync; a file edited on another device since is still restored
 - The local slow-query log is now capped at 2,000 rows instead of growing past its limit
 - The expanded tray panel reads each session's latest reply from an index instead of scanning every assistant message in the database, which could stall other database work for seconds on large histories
