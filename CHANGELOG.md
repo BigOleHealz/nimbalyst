@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - When a project with document sync connects or reconnects, only files whose size or modification time changed since they were last read are read and hashed again, instead of every synced file. The first connect after updating still reads every file once
 - Saving a synced document without changing its content no longer uploads it again
 - Session groups in the session list no longer show a count of unread child sessions, which took up row space
+- The table of contents menu in a document's header now indents each heading under the heading it belongs to, and shows deeper headings in smaller, lighter text
 
 ### Fixed
 <!-- Bug fixes go here -->
