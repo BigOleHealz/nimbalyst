@@ -147,6 +147,10 @@ Local wiki (a folder of markdown pages in this project):
   nim wiki move-to-team [--org <id> --project <id>] [--dry-run]
                                              (the whole wiki into this repo's team project; needs nim login;
                                               local files are kept, re-running resumes)
+  nim wiki export --static <dir> [--title T] [--subtree <page>] [--exclude-type a,b]
+                 [--outside-refs text|console] [--keep-identity]
+                                             (the wiki as a static website, read-only; pages with
+                                              export: false and person fields are left out)
   nim tracker list/get/show/create/update   use the local wiki for wiki types (storage: pages|table
                                              in the type's YAML) and items already there; --local forces it
   --location overrides the folder.

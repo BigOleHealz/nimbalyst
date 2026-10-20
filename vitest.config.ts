@@ -42,6 +42,10 @@ const alias = [
     replacement: path.resolve(__dirname, './packages/local-wiki/src/index.ts'),
   },
   {
+    find: /^@nimbalyst\/local-wiki\/browser$/,
+    replacement: path.resolve(__dirname, './packages/local-wiki/src/browser.ts'),
+  },
+  {
     find: '@nimbalyst/collab-protocol',
     replacement: path.resolve(__dirname, './packages/collab-protocol/src'),
   },

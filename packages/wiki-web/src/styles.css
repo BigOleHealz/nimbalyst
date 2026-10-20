@@ -65,3 +65,34 @@ body {
 .wiki-web-html-page-frame {
   height: 100% !important;
 }
+
+/*
+ * A published wiki (static export): the page tree is a column on wide screens
+ * and a panel opened from the top bar on narrow ones. Two classes deep on
+ * purpose: the mockup editor's bundle injects unscoped `.flex`/`.hidden` rules
+ * after this stylesheet, which beat single-class utilities such as `md:hidden`.
+ */
+.wiki-static-app .wiki-static-topbar {
+  display: none;
+}
+.wiki-static-app .wiki-static-sidebar-panel {
+  display: flex;
+}
+@media (max-width: 767px) {
+  .wiki-web-app.wiki-static-app {
+    flex-direction: column;
+  }
+  .wiki-static-app .wiki-static-topbar {
+    display: flex;
+  }
+  .wiki-static-app .wiki-static-sidebar-panel {
+    display: none;
+    width: 100%;
+    max-height: 60vh;
+    border-right-width: 0;
+    border-bottom-width: 1px;
+  }
+  .wiki-static-app .wiki-static-sidebar-panel[data-open='true'] {
+    display: flex;
+  }
+}
