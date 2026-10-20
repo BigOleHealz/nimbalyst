@@ -417,7 +417,7 @@ describe("ExternalSessionWatcher", () => {
         expect(h.warning).toHaveBeenCalledTimes(3);
         expect(h.warning).toHaveBeenNthCalledWith(
           1,
-          "[ExternalSessions] Import batch failed; next scoped scan retries",
+          "[ExternalSessions] Import batch failed; retrying after a wait",
           expect.any(Error),
           expect.objectContaining({
             filePath: BAD,
@@ -454,6 +454,49 @@ describe("ExternalSessionWatcher", () => {
         }
       }
     );
+
+    it("tries a file again on the next poll after the ingest queue was full, with no wait", async () => {
+      const h = backoffHarness();
+      try {
+        let queueFull = true;
+        h.ingest.mockImplementation(async (_source, ref) => {
+          if (ref.filePath === BAD && queueFull) {
+            queueFull = false;
+            // Same text as ExternalSessionIngestor.ingest throws.
+            throw new Error("External ingestion queue is full; retry on next scan");
+          }
+          return { messagesAdded: 0, hasMore: false };
+        });
+        await h.watcher.start();
+        expect(h.attempts(BAD)).toBe(1);
+        // The next poll is 5 seconds away, not a minute.
+        await vi.advanceTimersByTimeAsync(5_000);
+        expect(h.attempts(BAD)).toBe(2);
+      } finally {
+        await h.cleanup();
+      }
+    });
+
+    it("starts the count over when a failing file has changed", async () => {
+      const h = backoffHarness();
+      try {
+        await h.watcher.start();
+        // Fails at 0 s, 60 s and 180 s. The wait after the third failure is 4 minutes.
+        await vi.advanceTimersByTimeAsync(180_000);
+        expect(h.attempts(BAD)).toBe(3);
+        // The file changes. It is tried at once and fails again.
+        h.disk.set(BAD, { size: 20, mtimeMs: 1 });
+        await vi.advanceTimersByTimeAsync(5_000);
+        expect(h.attempts(BAD)).toBe(4);
+        // The wait is 1 minute again. A kept count would make it 8 minutes.
+        await vi.advanceTimersByTimeAsync(55_000);
+        expect(h.attempts(BAD)).toBe(4);
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect(h.attempts(BAD)).toBe(5);
+      } finally {
+        await h.cleanup();
+      }
+    });
 
     it("keeps importing other files while one file is backing off", async () => {
       const h = backoffHarness();

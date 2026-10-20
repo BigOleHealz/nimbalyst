@@ -31,6 +31,10 @@ const RETRY_BACKOFF_BASE_MS = 60_000;
 const RETRY_BACKOFF_MAX_MS = 30 * 60_000;
 // Same size limit as the settled-file list below: the oldest entry goes first.
 const MAX_FAILING_FILES = 8192;
+// GitHub #1812: ExternalSessionIngestor.ingest rejects with this text when its
+// queue is full. That says nothing about the file, so it earns no wait. The
+// ingestor exports no error class or constant, so the watcher matches the text.
+const INGEST_QUEUE_FULL_MESSAGE = "External ingestion queue is full";
 
 /** Bounded discovery is also the recovery path for dropped events, absent roots,
  * new workspaces and Codex date rollover. No filesystem work occurs before start. */
@@ -163,7 +167,14 @@ export class ExternalSessionWatcher {
   }
   /** Remembers a failure and returns when the next try is allowed. */
   private recordFailure(ref: ExternalSessionRef, stamp?: string) {
-    const failures = (this.failing.get(ref.filePath)?.failures ?? 0) + 1;
+    const previous = this.failing.get(ref.filePath);
+    // A file that changed since its last failure starts over at one.
+    const failures =
+      previous &&
+      previous.stamp === stamp &&
+      previous.updatedAt === ref.updatedAt
+        ? previous.failures + 1
+        : 1;
     const wait = Math.min(
       RETRY_BACKOFF_BASE_MS * 2 ** (failures - 1),
       RETRY_BACKOFF_MAX_MS
@@ -344,9 +355,20 @@ export class ExternalSessionWatcher {
           }
         } catch (error) {
           this.settled.delete(ref.filePath);
+          if (
+            error instanceof Error &&
+            error.message.startsWith(INGEST_QUEUE_FULL_MESSAGE)
+          ) {
+            // No wait: the next scan tries this file again.
+            logger.main.warn(
+              "[ExternalSessions] Import queue full; next scoped scan retries",
+              { filePath: ref.filePath }
+            );
+            continue;
+          }
           const { failures, retryAt } = this.recordFailure(ref, stamp);
           logger.main.warn(
-            "[ExternalSessions] Import batch failed; next scoped scan retries",
+            "[ExternalSessions] Import batch failed; retrying after a wait",
             error,
             {
               filePath: ref.filePath,
