@@ -43,7 +43,9 @@ vi.mock('../../../store/atoms/sessions', () => {
 import { TerminalBottomPanel } from '../TerminalBottomPanel';
 import {
   activeTerminalIdAtom,
+  loadTerminals,
   terminalListAtom,
+  terminalListWorkspaceAtom,
   terminalPanelVisibleAtom,
 } from '../../../store/atoms/terminals';
 
@@ -81,6 +83,7 @@ beforeEach(() => {
   shown.panels = [];
   pendingLoads = {};
   store.set(terminalListAtom, []);
+  store.set(terminalListWorkspaceAtom, undefined);
   store.set(activeTerminalIdAtom, undefined);
   store.set(terminalPanelVisibleAtom, true);
 
@@ -132,5 +135,23 @@ describe('TerminalBottomPanel across a project switch', () => {
 
     expect(shown.panels).toContainEqual({ terminalId: 'b1', workspacePath: '/proj-b' });
     expect(shown.panels.filter((p) => p.terminalId.startsWith('a'))).toEqual([]);
+  });
+});
+
+describe('loadTerminals when answers arrive out of order', () => {
+  // GitHub #1821: an older project's answer that arrives after a newer project's
+  // answer used to overwrite it, so the new project showed no terminals.
+  it('ignores an older project answer that arrives after a newer one', async () => {
+    const loadA = loadTerminals('/proj-a');
+    const loadB = loadTerminals('/proj-b');
+
+    pendingLoads['/proj-b'](workspaceState(['b1'], '/proj-b'));
+    await loadB;
+    pendingLoads['/proj-a'](workspaceState(['a1', 'a2'], '/proj-a'));
+    await loadA;
+
+    expect(store.get(terminalListWorkspaceAtom)).toBe('/proj-b');
+    expect(store.get(terminalListAtom).map((t) => t.id)).toEqual(['b1']);
+    expect(store.get(activeTerminalIdAtom)).toBe('b1');
   });
 });

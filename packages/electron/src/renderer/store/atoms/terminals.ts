@@ -219,12 +219,19 @@ export const cliTerminalHeightAtom = atomFamily((_sessionId: string) =>
   atom(DEFAULT_CLI_TERMINAL_HEIGHT)
 );
 
+// Counts load calls so a slow answer for an old project cannot overwrite the
+// answer for the current project (GitHub #1821).
+let latestLoadNumber = 0;
+
 /**
  * Load terminals from backend and update atoms
  */
 export async function loadTerminals(workspacePath: string): Promise<void> {
+  const loadNumber = ++latestLoadNumber;
   try {
     const state = await window.electronAPI.terminal.getWorkspaceState(workspacePath);
+    // A newer load started while this one waited. Its answer wins.
+    if (loadNumber !== latestLoadNumber) return;
     const terminalList = state.tabOrder
       .map((id: string) => state.terminals[id])
       .filter((t: TerminalInstance | undefined): t is TerminalInstance => t !== undefined);

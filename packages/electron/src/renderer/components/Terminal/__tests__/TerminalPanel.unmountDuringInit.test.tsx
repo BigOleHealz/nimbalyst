@@ -19,6 +19,7 @@ import { act, cleanup, render } from '@testing-library/react';
 const engines = vi.hoisted(() => ({
   disposed: [] as number[],
   created: 0,
+  writes: 0,
   // Called on every write; a test can use it to remove the panel mid-replay.
   onWrite: null as null | (() => void),
 }));
@@ -34,6 +35,7 @@ vi.mock('ghostty-web', () => {
     loadAddon() {}
     open() {}
     write() {
+      engines.writes += 1;
       engines.onWrite?.();
     }
     onData() {
@@ -82,6 +84,7 @@ import { TerminalPanel } from '../TerminalPanel';
 type Snapshot = { sequence: number; scrollback?: string };
 
 let resolveSnapshot: (snapshot: Snapshot) => void;
+let rejectSnapshot: (error: Error) => void;
 let snapshotRequested: Promise<void>;
 let subscriptions: { name: string; unsubscribed: boolean }[];
 let observed: unknown[];
@@ -99,6 +102,7 @@ function track(name: string) {
 beforeEach(() => {
   engines.disposed = [];
   engines.created = 0;
+  engines.writes = 0;
   engines.onWrite = null;
   subscriptions = [];
   observed = [];
@@ -134,8 +138,9 @@ beforeEach(() => {
       onExited: track('onExited'),
       getRestoreSnapshot: vi.fn(
         () =>
-          new Promise<Snapshot>((resolve) => {
+          new Promise<Snapshot>((resolve, reject) => {
             resolveSnapshot = resolve;
+            rejectSnapshot = reject;
             markRequested();
           })
       ),
@@ -177,6 +182,46 @@ describe('TerminalPanel removed while it is still starting up', () => {
     unmount();
     await act(async () => {
       resolveSnapshot({ sequence: 0 });
+    });
+    await flush();
+
+    expectQuietShutdown(errorLog);
+  });
+
+  it('writes no saved history when removed before the history arrives', async () => {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const { unmount } = render(
+      <TerminalPanel terminalId="t1" workspacePath="/proj" isActive panelVisible />
+    );
+    await act(async () => {
+      await snapshotRequested;
+    });
+
+    // The history arrives after the panel is gone and has text to replay.
+    unmount();
+    await act(async () => {
+      resolveSnapshot({ sequence: 0, scrollback: 'hello\r\n' });
+    });
+    await flush();
+
+    expect(engines.writes).toBe(0);
+    expectQuietShutdown(errorLog);
+  });
+
+  it('logs no start-up error when loading saved history fails after removal', async () => {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const { unmount } = render(
+      <TerminalPanel terminalId="t1" workspacePath="/proj" isActive panelVisible />
+    );
+    await act(async () => {
+      await snapshotRequested;
+    });
+
+    unmount();
+    await act(async () => {
+      rejectSnapshot(new Error('history unavailable'));
     });
     await flush();
 

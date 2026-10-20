@@ -447,6 +447,9 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
         if (terminalRef.current && !disposed) {
           terminal.open(terminalRef.current);
           await new Promise((resolve) => setTimeout(resolve, 0));
+          // #1821: the panel may have been removed during this wait. Do not
+          // start a terminal backend for a panel nobody is looking at.
+          if (disposed) return;
           let initialDims: { cols: number; rows: number } | undefined;
           try {
             fitAddon.fit();
@@ -796,6 +799,8 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
           }
         }
       } catch (error) {
+        // #1821: a failure after the panel was removed is not a start-up error.
+        if (disposed) return;
         // Any other init-time write (screen stamp, cursor restore) that trapped.
         if (isGhosttyWasmTrap(error)) {
           handleWasmTrap(error);
