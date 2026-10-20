@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ExternalSessionWatcher } from "../ExternalSessionWatcher";
 import { logger } from "../../../utils/logger";
 import type { ExternalSessionIngestor } from "../ExternalSessionIngestor";
+import { ExternalIngestQueueFullError } from "../types";
 
 type DirListener = (type: string, filename: string | null) => void;
 
@@ -462,8 +463,7 @@ describe("ExternalSessionWatcher", () => {
         h.ingest.mockImplementation(async (_source, ref) => {
           if (ref.filePath === BAD && queueFull) {
             queueFull = false;
-            // Same text as ExternalSessionIngestor.ingest throws.
-            throw new Error("External ingestion queue is full; retry on next scan");
+            throw new ExternalIngestQueueFullError();
           }
           return { messagesAdded: 0, hasMore: false };
         });
