@@ -21,6 +21,7 @@
  *   {type:'result', subtype:'success'|..., result, usage, session_id}
  */
 
+import fs from 'fs/promises';
 import {
   runHeadlessNdjson,
   HeadlessNdjsonExitError,
@@ -171,20 +172,41 @@ export class CursorAgentProtocol implements AgentProtocol {
 }
 
 /**
- * The CLI takes only prompt text — it has no image or file input flag. Images
+ * The prompt is a single argv entry, which the OS caps (Windows allows 32,767
+ * characters for the whole command line, Linux 128 KiB per argument). Text
+ * documents beyond this budget are referenced by path instead of inlined, so a
+ * large attachment cannot make the spawn fail with E2BIG.
+ */
+export const CURSOR_INLINE_DOCUMENT_BUDGET = 24_000;
+
+/**
+ * The CLI takes only prompt text; it has no image or file input flag. Images
  * and PDFs are referenced by absolute path so the agent opens them with its
  * read tool (measured: it reads images staged outside the workspace); text
- * documents are inlined as Codex does.
+ * documents are inlined as Codex does, up to CURSOR_INLINE_DOCUMENT_BUDGET.
  */
 export async function buildPromptWithAttachments(message: ProtocolMessage): Promise<string> {
   const documents: string[] = [];
   const fileReferences: string[] = [];
+  let inlinedLength = 0;
   for (const attachment of message.attachments ?? []) {
     if (!attachment.filepath) continue;
     if (attachment.type === 'document') {
-      documents.push(await buildDocumentAttachmentPromptText(attachment));
-    } else {
+      const text = await buildDocumentAttachmentPromptText(attachment);
+      if (inlinedLength + text.length <= CURSOR_INLINE_DOCUMENT_BUDGET) {
+        documents.push(text);
+        inlinedLength += text.length;
+        continue;
+      }
+    }
+    try {
+      await fs.access(attachment.filepath);
       fileReferences.push(`- ${attachment.filename}: ${attachment.filepath}`);
+    } catch (error) {
+      // Same marker as an unreadable document, so the agent is told why
+      // instead of failing to open a path that is gone.
+      const errMsg = error instanceof Error ? error.message : String(error);
+      documents.push(`<file name="${attachment.filename}" error="failed to read attachment: ${errMsg}" />`);
     }
   }
   const sections = [message.content, ...documents];
