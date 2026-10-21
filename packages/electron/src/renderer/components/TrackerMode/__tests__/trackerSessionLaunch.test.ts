@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { TrackerRecord } from '@nimbalyst/runtime/core/TrackerRecord';
 
 import {
+  assertTrackerItemInWorkspace,
   buildTrackerLaunchContext,
   deriveTrackerWorktreeName,
 } from '../trackerSessionLaunch';
@@ -73,6 +74,23 @@ describe('buildTrackerLaunchContext', () => {
     expect(context.draftInput).toContain('implement tracker item plan-branching: Branching Plan');
     expect(context.draftInput).toContain('Source: @nimbalyst-local/plans/branching.md');
     expect(context.worktreeName).toBe('plan-branching-branching-plan');
+  });
+});
+
+describe('assertTrackerItemInWorkspace', () => {
+  it('accepts an item that belongs to the board project', () => {
+    expect(() => assertTrackerItemInWorkspace(makeTrackerRecord(), '/repo')).not.toThrow();
+  });
+
+  // A board showing another project's items (#1822) must not start an agent
+  // in the board's folder with a prompt about the other project.
+  it('refuses an item from another project', () => {
+    expect(() => assertTrackerItemInWorkspace(makeTrackerRecord(), '/other-repo'))
+      .toThrow('/repo');
+  });
+
+  it('refuses an item that is not loaded', () => {
+    expect(() => assertTrackerItemInWorkspace(undefined, '/repo')).toThrow();
   });
 });
 

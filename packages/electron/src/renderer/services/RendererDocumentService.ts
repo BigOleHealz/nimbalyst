@@ -8,6 +8,8 @@ import {
   TrackerItemChangeEvent,
   TrackerItemType
 } from '@nimbalyst/runtime';
+import { store } from '@nimbalyst/runtime/store';
+import { activeWorkspacePathAtom } from '../store/atoms/openProjects';
 
 /**
  * Renderer-side DocumentService that communicates with the main process
@@ -137,9 +139,16 @@ export class RendererDocumentService implements DocumentService {
   }
 
   // Tracker items API methods
-  async listTrackerItems(): Promise<TrackerItem[]> {
+  // This service is one shared object for the whole window, so it is not tied to
+  // one project. The caller can name the project; with no name, it asks about the
+  // project visible in the rail right now. Main needs a path either way (#1822).
+  async listTrackerItems(workspacePath?: string): Promise<TrackerItem[]> {
     if (!window.electronAPI) return [];
-    return window.electronAPI.invoke('document-service:tracker-items-list');
+    const path = workspacePath ?? store.get(activeWorkspacePathAtom);
+    if (!path) {
+      throw new Error('[RendererDocumentService] listTrackerItems needs a workspacePath and no project is active');
+    }
+    return window.electronAPI.invoke('document-service:tracker-items-list', path);
   }
 
   async getTrackerItemsByType(type: TrackerItemType): Promise<TrackerItem[]> {

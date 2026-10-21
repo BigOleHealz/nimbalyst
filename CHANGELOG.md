@@ -53,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A prompt whose send failed, or a retried copy of it, no longer stays at the bottom of the transcript below later replies
 - The macOS Window menu now drops a project when you close its window and checks the window that has focus
 - The Pages sidebar now highlights the open page when it is a typed page in a local wiki or sits under a typed page, opening the collapsed rows above it
+- With several projects on the rail, the Tracker board no longer shows another project's items after a switch, and starting a session from a tracker item that belongs to a different project is refused instead of running the agent in the wrong project's folder
 
 ### Removed
 <!-- Removed features go here -->
