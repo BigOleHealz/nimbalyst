@@ -8,7 +8,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { initWiki, openWiki, type LocalWiki, type ReadBodyResult, type StaticSiteLink, type StaticSiteManifest } from '@nimbalyst/local-wiki';
-import { exportStaticSite } from '../exportSite.js';
+import { exportStaticSite, type CarriedTrackerItem } from '../exportSite.js';
+import { gatewayTrackerSource } from '../../commands/wikiExport.js';
+import type { TrackerGateway } from '../../gateway/types.js';
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -142,5 +144,56 @@ describe('exportStaticSite', () => {
     writeFileSync(path.join(busy, 'notes.txt'), 'mine');
     await expect(exportStaticSite({ wiki, assetsDir: assets, outDir: busy, nimVersion: '9.9.9' })).rejects.toThrow(/not empty/);
     expect(read(path.join(busy, 'notes.txt'))).toBe('mine');
+  });
+
+  it('carries the app tracker items a page links to, with their own page, and leaves the rest as text', async () => {
+    const { root, wiki, assets } = await fixture();
+    const item = (overrides: Partial<CarriedTrackerItem>): CarriedTrackerItem => ({
+      id: 'q1', issueKey: 'USR.64', type: 'question', title: 'Which plan?', fields: { title: 'Which plan?', status: 'open', owner: 'Dana' },
+      body: 'Depends on [USR.65](nimbalyst://USR.65) and [USR.99](nimbalyst://USR.99).', createdAt: 1, updatedAt: 2, ...overrides,
+    });
+    const items = new Map([['USR.64', item({})], ['USR.65', item({ id: 'q2', issueKey: 'USR.65', title: 'Unreferenced', body: '' })]]);
+    const asked: string[] = [];
+    const trackerItems = { find: async (ref: string) => (asked.push(ref), items.get(ref) ?? null) };
+    await wiki.command({ type: 'register-document', title: 'Home', parentFolderId: null, sortOrder: 0, body: 'See [the plan question](nimbalyst://USR.64) and [gone](nimbalyst://USR.7).' });
+
+    const out = path.join(root, 'site');
+    const report = await exportStaticSite({ wiki, assetsDir: assets, outDir: out, nimVersion: '9.9.9', trackerItems });
+    // Only what the exported pages link to is looked up: not USR.65, which only the item links to.
+    expect(asked.sort()).toEqual(['USR.64', 'USR.7']);
+    expect(report.trackerItems).toBe(1);
+    const manifest = json<StaticSiteManifest>(path.join(out, '_wiki', 'manifest.json'));
+    expect(manifest.pages.q1).toBe('items/q1');
+    expect(manifest.types.question).toBe('types/question');
+    const home = Object.keys(manifest.pages).find((id) => manifest.pages[id] === '')!;
+    expect(json<ReadBodyResult>(path.join(out, '_wiki', 'bodies', `${home}.json`)).markdown).toBe('See [the plan question](/items/q1/) and gone.');
+    // The item: its fields without the person, its body with the uncarried reference as text, and who links to it.
+    const tracker = json<{ items: Array<{ id: string; fields: Record<string, unknown> }> }>(path.join(out, '_wiki', 'trackers', 'question.json'));
+    expect(tracker.items).toEqual([expect.objectContaining({ id: 'q1', fields: { title: 'Which plan?', status: 'open' } })]);
+    expect(json<ReadBodyResult>(path.join(out, '_wiki', 'bodies', 'q1.json')).markdown).toBe('Depends on USR.65 and USR.99.');
+    const links = json<Record<string, StaticSiteLink[]>>(path.join(out, '_wiki', 'links.json'));
+    expect(links.q1).toEqual([expect.objectContaining({ direction: 'in', otherItemId: home })]);
+    // Prerendered: Home links to the item page relatively; the item page shows its key and body.
+    expect(read(path.join(out, 'index.html'))).toContain('<a href="./items/q1/">the plan question</a>');
+    const page = read(path.join(out, 'items', 'q1', 'index.html'));
+    expect(page).toContain('USR.64');
+    expect(page).toContain('Depends on USR.65 and USR.99.');
+  });
+
+  it('reads a carried item from the app without the field header the running app puts on its body', async () => {
+    const record = { id: 'q1', primaryType: 'question', typeTags: [], localKey: 'USR.84', source: 'native', archived: false, system: { createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-02T00:00:00.000Z' }, fields: { title: 'Q3', status: 'open', description: 'x' } };
+    const live = '# Q3\n\n**Type**: question\n**Issue Key**: USR.84\n**Status**: open\n**ID**: q1\n\n---\n\nSpike plan question Q3.';
+    const gateway = (body: string, archived = false) => ({
+      getTracker: async () => ({ ...record, archived }),
+      getTrackerBody: async () => body,
+    }) as unknown as TrackerGateway;
+    expect(await gatewayTrackerSource(gateway(live), '/ws').find('USR.84')).toEqual({
+      id: 'q1', issueKey: 'USR.84', type: 'question', title: 'Q3', fields: { title: 'Q3', status: 'open' },
+      body: 'Spike plan question Q3.', createdAt: Date.parse('2026-10-01T00:00:00.000Z'), updatedAt: Date.parse('2026-10-02T00:00:00.000Z'),
+    });
+    // The database path returns the description as stored; a live item with no description has only the header.
+    expect((await gatewayTrackerSource(gateway('Stored body.'), '/ws').find('USR.84'))?.body).toBe('Stored body.');
+    expect((await gatewayTrackerSource(gateway('# Q3\n\n**Type**: question\n**ID**: q1'), '/ws').find('USR.84'))?.body).toBe('');
+    expect(await gatewayTrackerSource(gateway('', true), '/ws').find('USR.84')).toBeNull();
   });
 });

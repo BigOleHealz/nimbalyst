@@ -42,9 +42,11 @@ function findTarget(site: PrerenderSite, target: string, folder: boolean): Local
 }
 
 /** Where a link or image in `page` points on the site; null when it should not be a link. */
-function siteUrl(site: PrerenderSite, page: LocalPage, prefix: string, href: string): string | null {
+function siteUrl(site: PrerenderSite, page: Pick<LocalPage, 'path' | 'dir'>, prefix: string, href: string): string | null {
   const raw = href.trim();
   if (raw.startsWith('#')) return raw;
+  // A site path the exporter wrote (`/items/<id>/`, a carried tracker item), made relative to this page.
+  if (raw.startsWith('/') && !raw.startsWith('//')) return `${prefix}${raw.slice(1)}`;
   if (SCHEME.test(raw)) return SAFE_SCHEME.test(raw) ? raw : null;
   const hash = raw.indexOf('#');
   const bare = hash >= 0 ? raw.slice(0, hash) : raw;
@@ -61,7 +63,7 @@ function siteUrl(site: PrerenderSite, page: LocalPage, prefix: string, href: str
   return `${prefix}_wiki/files/${encodeLinkPath(target)}`;
 }
 
-export function renderBodyHtml(markdown: string, page: LocalPage, site: PrerenderSite, prefix: string): string {
+export function renderBodyHtml(markdown: string, page: Pick<LocalPage, 'path' | 'dir'>, site: PrerenderSite, prefix: string): string {
   const marked = new Marked({
     gfm: true,
     async: false,
