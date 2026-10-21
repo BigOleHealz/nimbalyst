@@ -26,6 +26,7 @@ import {
   HeadlessNdjsonExitError,
 } from './headless/HeadlessNdjsonProcess';
 import { mapCursorRecord } from './headless/CursorAgentRecordMapper';
+import { buildDocumentAttachmentPromptText } from '../providers/codex/documentAttachmentPrompt';
 import type {
   AgentProtocol,
   ProtocolEvent,
@@ -106,7 +107,7 @@ export class CursorAgentProtocol implements AgentProtocol {
     message: ProtocolMessage,
   ): AsyncIterable<ProtocolEvent> {
     const raw = (session.raw ?? {}) as CursorSessionRaw;
-    const args = this.buildArgs(session, raw, message);
+    const args = this.buildArgs(session, raw, await buildPromptWithAttachments(message));
 
     let sawResult = false;
     try {
@@ -147,7 +148,7 @@ export class CursorAgentProtocol implements AgentProtocol {
   private buildArgs(
     session: ProtocolSession,
     raw: CursorSessionRaw,
-    message: ProtocolMessage,
+    prompt: string,
   ): string[] {
     const args = [
       '--resume', session.id,
@@ -164,9 +165,33 @@ export class CursorAgentProtocol implements AgentProtocol {
     // Nimbalyst gates the turn up front instead; the settings panel says so.
     args.push('--force', '--trust');
     // The prompt is positional; leading dashes must never become CLI options.
-    args.push('--', message.content);
+    args.push('--', prompt);
     return args;
   }
+}
+
+/**
+ * The CLI takes only prompt text — it has no image or file input flag. Images
+ * and PDFs are referenced by absolute path so the agent opens them with its
+ * read tool (measured: it reads images staged outside the workspace); text
+ * documents are inlined as Codex does.
+ */
+export async function buildPromptWithAttachments(message: ProtocolMessage): Promise<string> {
+  const documents: string[] = [];
+  const fileReferences: string[] = [];
+  for (const attachment of message.attachments ?? []) {
+    if (!attachment.filepath) continue;
+    if (attachment.type === 'document') {
+      documents.push(await buildDocumentAttachmentPromptText(attachment));
+    } else {
+      fileReferences.push(`- ${attachment.filename}: ${attachment.filepath}`);
+    }
+  }
+  const sections = [message.content, ...documents];
+  if (fileReferences.length > 0) {
+    sections.push(`Attached files (open each with your read tool):\n${fileReferences.join('\n')}`);
+  }
+  return sections.join('\n\n');
 }
 
 function stripProviderNamespace(modelId: string): string {

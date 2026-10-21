@@ -53,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A prompt whose send failed, or a retried copy of it, no longer stays at the bottom of the transcript below later replies
 - The macOS Window menu now drops a project when you close its window and checks the window that has focus
 - The Pages sidebar now highlights the open page when it is a typed page in a local wiki or sits under a typed page, opening the collapsed rows above it
+- Cursor Agent sessions can now see pasted images and attached documents
 
 ### Removed
 <!-- Removed features go here -->

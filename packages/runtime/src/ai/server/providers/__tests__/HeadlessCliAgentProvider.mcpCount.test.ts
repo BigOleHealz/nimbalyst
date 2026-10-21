@@ -1,4 +1,7 @@
 // @vitest-environment node
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentProtocol, ProtocolSession } from '../../protocols/ProtocolInterface';
 import type { GrokACPProtocol } from '../../protocols/GrokACPProtocol';
@@ -99,6 +102,32 @@ it.each(['- fix the bug', '--plan'])('passes %j as prompt text after the option 
   for await (const _event of protocol.sendMessage(session, { content })) { /* drain */ }
   expect(args.slice(-2)).toEqual(['--', content]);
   expect(args.slice(0, -2)).toEqual(['--resume', 'cursor-session', '-p', '--output-format', 'stream-json', '--model', 'auto', '--force', '--trust']);
+});
+
+it('hands attachments to the Cursor CLI through the prompt, which has no file input flag', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'cursor-attachments-'));
+  const notesPath = join(dir, 'notes.md');
+  writeFileSync(notesPath, 'release checklist body');
+  let args: string[] = [];
+  const protocol = new CursorAgentProtocol({
+    runNdjson: async function* (options) {
+      args = options.args;
+      yield { kind: 'record', value: { type: 'result', subtype: 'success', result: 'done' } };
+    },
+  });
+  const session = await protocol.resumeSession('cursor-session', { workspacePath: process.cwd() });
+  const attachment = { id: 'a', mimeType: '', size: 1, addedAt: 0 };
+  for await (const _event of protocol.sendMessage(session, {
+    content: 'what is in @shot.png?',
+    attachments: [
+      { ...attachment, type: 'image', filename: 'shot.png', filepath: '/staging/saved/shot.png' },
+      { ...attachment, type: 'document', filename: 'notes.md', filepath: notesPath },
+    ],
+  })) { /* drain */ }
+  const prompt = args[args.length - 1];
+  expect(prompt.startsWith('what is in @shot.png?')).toBe(true);
+  expect(prompt).toContain('- shot.png: /staging/saved/shot.png');
+  expect(prompt).toContain('<file name="notes.md">\nrelease checklist body\n</file>');
 });
 
 describe('HeadlessCliAgentProvider MCP delivery count', () => {
