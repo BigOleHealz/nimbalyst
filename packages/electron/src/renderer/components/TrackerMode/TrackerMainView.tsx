@@ -108,6 +108,7 @@ import {
 import { setTrackerFavoriteAtom } from '../../store/atoms/trackerPersonalState';
 import { WorktreeBaseBranchPicker } from '../AgenticCoding/WorktreeBaseBranchPicker';
 import {
+  assertTrackerItemInWorkspace,
   buildTrackerLaunchContext,
   type TrackerLaunchContext,
 } from './trackerSessionLaunch';
@@ -439,12 +440,15 @@ export const TrackerMainView: React.FC<TrackerMainViewProps> = ({
 
   /** Launch a new AI session linked to a tracker item */
   const handleLaunchSession = useCallback(async (trackerItemId: string) => {
+    const trackerItem = store.get(trackerItemsMapAtom).get(trackerItemId);
     try {
-      const itemsMap = store.get(trackerItemsMapAtom);
-      const trackerContext = buildTrackerLaunchContext(
-        trackerItemId,
-        itemsMap.get(trackerItemId),
-      );
+      assertTrackerItemInWorkspace(trackerItem, workspacePath);
+    } catch (err) {
+      errorNotificationService.showError('Session not started', (err as Error).message);
+      return;
+    }
+    try {
+      const trackerContext = buildTrackerLaunchContext(trackerItemId, trackerItem);
 
       // Derive provider from the user's default model rather than hardcoding
       // 'claude-code'. Mirrors AgentMode.createNewSession so a Codex-only
@@ -489,12 +493,15 @@ export const TrackerMainView: React.FC<TrackerMainViewProps> = ({
 
   /** Launch a new isolated worktree session linked to a tracker item. */
   const handleLaunchWorktree = useCallback((trackerItemId: string) => {
-    const itemsMap = store.get(trackerItemsMapAtom);
-    setPendingWorktreeLaunch(buildTrackerLaunchContext(
-      trackerItemId,
-      itemsMap.get(trackerItemId),
-    ));
-  }, []);
+    const trackerItem = store.get(trackerItemsMapAtom).get(trackerItemId);
+    try {
+      assertTrackerItemInWorkspace(trackerItem, workspacePath);
+    } catch (err) {
+      errorNotificationService.showError('Session not started', (err as Error).message);
+      return;
+    }
+    setPendingWorktreeLaunch(buildTrackerLaunchContext(trackerItemId, trackerItem));
+  }, [workspacePath]);
 
   const handleCreateTrackerWorktree = useCallback(async (
     options: { baseBranch: string; name?: string },

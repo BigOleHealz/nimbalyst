@@ -34,6 +34,25 @@ export function deriveTrackerWorktreeName(itemId: string, title: string): string
     .replace(/-+$/g, '');
 }
 
+/**
+ * Refuse a launch whose item belongs to another project. A board that shows
+ * another project's items (#1822) would otherwise start the agent in the
+ * board's folder with a prompt about the other project.
+ */
+export function assertTrackerItemInWorkspace(
+  trackerItem: TrackerRecord | undefined,
+  workspacePath: string | null | undefined,
+): asserts trackerItem is TrackerRecord {
+  if (!trackerItem) {
+    throw new Error('The tracker item is not loaded in this project.');
+  }
+  if (trackerItem.system.workspace !== workspacePath) {
+    throw new Error(
+      `This item belongs to ${trackerItem.system.workspace}, not ${workspacePath ?? 'this project'}.`,
+    );
+  }
+}
+
 export function buildTrackerLaunchContext(
   trackerItemId: string,
   trackerItem?: TrackerRecord,
