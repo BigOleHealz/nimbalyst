@@ -112,6 +112,7 @@ import {
   assertTrackerItemInWorkspace,
   buildTrackerLaunchContext,
   createTrackerWorktreeSession,
+  isTrackerLaunchForWorkspace,
   type TrackerLaunchContext,
 } from './trackerSessionLaunch';
 import { trackTeamAnalyticsEvent } from '../../utils/teamAnalytics';
@@ -190,6 +191,11 @@ export const TrackerMainView: React.FC<TrackerMainViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [quickAddType, setQuickAddType] = useState<string | null>(null);
   const [pendingWorktreeLaunch, setPendingWorktreeLaunch] = useState<TrackerLaunchContext | null>(null);
+  const pendingLaunchIsCurrent = isTrackerLaunchForWorkspace(pendingWorktreeLaunch, workspacePath);
+  // Drop a launch started in another project once the rail switches away from it.
+  useEffect(() => {
+    if (pendingWorktreeLaunch && !pendingLaunchIsCurrent) setPendingWorktreeLaunch(null);
+  }, [pendingWorktreeLaunch, pendingLaunchIsCurrent]);
   const [openFiltersToken, setOpenFiltersToken] = useState(0);
 
   // User's selected default model. Used by handleLaunchSession so the new
@@ -1423,7 +1429,7 @@ export const TrackerMainView: React.FC<TrackerMainViewProps> = ({
         }}
       />
 
-      {workspacePath && pendingWorktreeLaunch && (
+      {workspacePath && pendingWorktreeLaunch && pendingLaunchIsCurrent && (
         <WorktreeBaseBranchPicker
           isOpen
           repoPath={worktreeSourceRepoPath}

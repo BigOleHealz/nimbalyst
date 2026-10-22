@@ -7,6 +7,7 @@ import {
   buildTrackerLaunchContext,
   createTrackerWorktreeSession,
   deriveTrackerWorktreeName,
+  isTrackerLaunchForWorkspace,
 } from '../trackerSessionLaunch';
 
 function makeTrackerRecord(overrides: Partial<TrackerRecord> = {}): TrackerRecord {
@@ -94,6 +95,16 @@ describe('assertTrackerItemInWorkspace', () => {
 
   it('refuses an item that is not loaded', () => {
     expect(() => assertTrackerItemInWorkspace(undefined, '/repo')).toThrow();
+  });
+});
+
+describe('isTrackerLaunchForWorkspace', () => {
+  it('keeps a pending launch only while its own project is on screen', () => {
+    const pending = buildTrackerLaunchContext('feature_1624', makeTrackerRecord());
+
+    expect(isTrackerLaunchForWorkspace(pending, '/repo')).toBe(true);
+    expect(isTrackerLaunchForWorkspace(pending, '/other-repo')).toBe(false);
+    expect(isTrackerLaunchForWorkspace({ ...pending, workspacePath: undefined }, undefined)).toBe(false);
   });
 });
 

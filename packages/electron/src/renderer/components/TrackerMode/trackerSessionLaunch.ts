@@ -15,6 +15,18 @@ export interface TrackerLaunchContext {
   worktreeName: string;
 }
 
+/**
+ * Whether a pending worktree launch still belongs to the project on screen. The
+ * tracker view stays mounted across a rail switch, so without this the branch
+ * picker would stay open and list the new project's branches for the old item.
+ */
+export function isTrackerLaunchForWorkspace(
+  context: TrackerLaunchContext | null,
+  workspacePath: string | null | undefined,
+): context is TrackerLaunchContext {
+  return !!context && !!context.workspacePath && context.workspacePath === workspacePath;
+}
+
 /** Validate at submission: the project can change while the branch picker is open. */
 export async function createTrackerWorktreeSession(
   context: TrackerLaunchContext,

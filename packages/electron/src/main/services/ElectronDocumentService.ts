@@ -3759,7 +3759,8 @@ export function setupDocumentServiceHandlers(resolver: DocumentServiceResolver) 
   // The request names its project (#1822). Without it, a request that arrived
   // just after a rail switch was answered from the previous project. A missing
   // path, or a path this window does not have open, throws so the caller sees the
-  // failure instead of getting another project's items (or an empty board).
+  // failure instead of getting another project's items. A database failure is
+  // different: listTrackerItems() logs it and returns [], so the board shows empty.
   safeHandle('document-service:tracker-items-list', async (event, workspacePath: string) => {
     if (typeof workspacePath !== 'string' || workspacePath.length === 0) {
       throw new Error('[DocumentService] tracker-items-list requires a workspacePath');
