@@ -18,6 +18,11 @@ import { generateToolPattern, buildToolDescription } from './toolPermissionHelpe
 import { getPatternDisplayName } from '../types';
 import type { TrustChecker } from '../providers/ProviderPermissionMixin';
 
+/** Identifies one exact tool call so the model's retry can be matched to the approval. */
+function blockedCallKey(toolName: string, toolInput: unknown): string {
+  return `${toolName}\x1f${JSON.stringify(toolInput ?? null)}`;
+}
+
 /**
  * Configuration options for AgentToolHooks service
  */
@@ -62,6 +67,13 @@ export interface AgentToolHooksOptions {
    * Function to save an approved pattern to persisted settings
    */
   patternSaver?: (workspacePath: string, pattern: string) => Promise<void>;
+
+  /**
+   * Whether a pattern is in the project-local allow list (where "Always"
+   * approvals are saved). Consulted only in auto mode, where the CLI drops
+   * rules such as `Agent` before its classifier runs.
+   */
+  localAllowRuleChecker?: (workspacePath: string, pattern: string) => Promise<boolean>;
 
   /**
    * Current mode ('planning' | 'agent' | 'auto')
@@ -150,6 +162,7 @@ export class AgentToolHooks {
   private readonly logSecurity: (message: string, data?: any) => void;
   private readonly trustChecker?: TrustChecker;
   private readonly patternSaver?: (workspacePath: string, pattern: string) => Promise<void>;
+  private readonly localAllowRuleChecker?: (workspacePath: string, pattern: string) => Promise<boolean>;
   private readonly getCurrentMode?: () => 'planning' | 'agent' | 'auto' | undefined;
   private readonly setCurrentMode?: (mode: 'planning' | 'agent' | 'auto' | undefined) => void;
   private readonly getPendingExitPlanModeConfirmations?: () => Map<string, {
@@ -182,6 +195,15 @@ export class AgentToolHooks {
    */
   private readonly editedFilesThisTurn: Set<string> = new Set();
 
+  /**
+   * Exact calls (tool name + input) the user approved after the auto-mode
+   * classifier blocked them. The model's retry is a new tool_use that the
+   * classifier would block again, so the matching PreToolUse returns `allow`
+   * and consumes the entry. Keyed by the exact call rather than the pattern
+   * because compound Bash patterns are unique per generation.
+   */
+  private readonly approvedBlockedCalls: Set<string> = new Set();
+
   constructor(options: AgentToolHooksOptions) {
     this.workspacePath = options.workspacePath;
     this.sessionId = options.sessionId;
@@ -190,6 +212,7 @@ export class AgentToolHooks {
     this.logSecurity = options.logSecurity;
     this.trustChecker = options.trustChecker;
     this.patternSaver = options.patternSaver;
+    this.localAllowRuleChecker = options.localAllowRuleChecker;
     this.getCurrentMode = options.getCurrentMode;
     this.setCurrentMode = options.setCurrentMode;
     this.getPendingExitPlanModeConfirmations = options.getPendingExitPlanModeConfirmations;
@@ -248,6 +271,14 @@ export class AgentToolHooks {
         return await this.handleExitPlanModeConfirmation(toolInput, toolUseID, options);
       }
 
+      const isFileEdit = toolName === 'Edit' || toolName === 'Write' || toolName === 'MultiEdit';
+      if (!isFileEdit) {
+        const classifierOverride = await this.consumeClassifierOverride(toolName, toolInput);
+        if (classifierOverride) {
+          return classifierOverride;
+        }
+      }
+
       // NOTE: Bash file pre-tagging was removed to eliminate race conditions with
       // watcher-based attribution (WorkspaceFileEditAttributionService). The watcher
       // attribution service is now the single source of truth for pending diff tags.
@@ -282,7 +313,56 @@ export class AgentToolHooks {
       }
 
       // Handle Edit/Write/MultiEdit file operations
-      return await this.handleFileEditOperations(toolName, toolInput, toolUseID, options);
+      const fileEditResult = await this.handleFileEditOperations(toolName, toolInput, toolUseID, options);
+      return (await this.consumeClassifierOverride(toolName, toolInput)) ?? fileEditResult;
+    };
+  }
+
+  /**
+   * In auto mode, `allow` a call the user has approved so the CLI's
+   * classifier does not block it again. A PreToolUse `allow` skips the
+   * classifier; PermissionDenied `retry: true` only tells the model it may
+   * retry, and the classifier never sees the user's approval.
+   *
+   * Approved means: this exact call was approved at a classifier-block
+   * prompt, its pattern was approved for the session, or its pattern is in the
+   * project-local allow list. The CLI ignores local rules for tools like
+   * `Agent` in auto mode, so "Always" never took effect there. Committed
+   * project and user-level settings are not consulted here.
+   */
+  private async consumeClassifierOverride(toolName: string, toolInput: any) {
+    if (this.getCurrentMode?.() !== 'auto') {
+      return null;
+    }
+    const pattern = generateToolPattern(toolName, toolInput);
+    let source: 'blocked-call' | 'session' | 'local-rule' | null = null;
+    if (this.approvedBlockedCalls.delete(blockedCallKey(toolName, toolInput))) {
+      source = 'blocked-call';
+    } else if (this.getSessionApprovedPatterns?.().has(pattern)) {
+      source = 'session';
+    } else if (this.localAllowRuleChecker) {
+      try {
+        if (await this.localAllowRuleChecker(this.workspacePath, pattern)) {
+          source = 'local-rule';
+        }
+      } catch (error) {
+        console.error('[AGENT-HOOKS] PreToolUse: local allow-rule check failed:', error);
+      }
+    }
+    if (!source) {
+      return null;
+    }
+    this.logSecurity('[PreToolUse] Auto mode: user-approved call, allowing without the classifier', {
+      toolName,
+      pattern,
+      source,
+    });
+    return {
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse' as const,
+        permissionDecision: 'allow' as const,
+        permissionDecisionReason: 'Approved by the user after the auto-mode classifier blocked it',
+      },
     };
   }
 
@@ -420,6 +500,8 @@ export class AgentToolHooks {
           return {};
         }
 
+        this.approvedBlockedCalls.add(blockedCallKey(toolName, toolInput));
+
         // Cache session-scoped approvals so the same call is not blocked again
         // mid-turn. Compound bash patterns intentionally skip caching there;
         // here the pattern is for the whole tool call, so the same rule
@@ -451,6 +533,23 @@ export class AgentToolHooks {
           response: { decision: 'deny', scope: 'once' },
           timestamp: Date.now(),
         });
+        // Without a result row the widget stays clickable after the turn is
+        // gone, and a later click resolves nothing.
+        if (this.sessionId) {
+          await this.logAgentMessage(
+            this.sessionId,
+            'claude-code',
+            'output',
+            JSON.stringify({
+              type: 'nimbalyst_tool_result',
+              tool_use_id: requestId,
+              result: JSON.stringify({ decision: 'deny', scope: 'once', cancelled: true, respondedAt: Date.now() }),
+              is_error: true,
+            })
+          ).catch((logError) => {
+            console.error('[AGENT-HOOKS] PermissionDenied: failed to persist cancellation:', logError);
+          });
+        }
         this.logSecurity('[PermissionDenied] Re-prompt failed or aborted:', {
           toolName,
           error: error instanceof Error ? error.message : 'Unknown error',

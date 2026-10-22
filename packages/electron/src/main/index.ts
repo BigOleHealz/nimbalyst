@@ -2472,6 +2472,12 @@ app.whenReady().then(async () => {
 
     ClaudeCodeProvider.setClaudeSettingsPatternSaver(patternSaver);
     ClaudeCodeProvider.setClaudeSettingsPatternChecker(patternChecker);
+    // Project-local rules only: "Always" approvals land there, while committed
+    // project settings stay under the CLI's auto-mode filter.
+    ClaudeCodeProvider.setClaudeLocalAllowRuleChecker(async (workspacePath, pattern) => {
+      const local = await claudeSettingsManager.getLocalPatterns(workspacePath);
+      return (local?.allow ?? []).some((allow) => matchesAllowPattern(pattern, allow));
+    });
     ClaudeCodeProvider.setTrustChecker(trustChecker);
 
     OpenAICodexProvider.setPermissionPatternSaver(patternSaver);

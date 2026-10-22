@@ -475,6 +475,7 @@ export class ClaudeCodeProvider extends BaseAgentProvider {
       logSecurity: this.logSecurity.bind(this),
       trustChecker: BaseAgentProvider.trustChecker || undefined,
       patternSaver: ClaudeCodeDeps.claudeSettingsPatternSaver || undefined,
+      localAllowRuleChecker: ClaudeCodeDeps.claudeLocalAllowRuleChecker || undefined,
       getCurrentMode: () => this.currentMode,
       setCurrentMode: (mode) => { this.currentMode = mode; },
       getPendingExitPlanModeConfirmations: () => this.pendingExitPlanModeConfirmations,
@@ -520,6 +521,7 @@ export class ClaudeCodeProvider extends BaseAgentProvider {
   public static setImageCompressor(compressor: ((buffer: Buffer, mimeType: string, options?: { targetSizeBytes?: number }) => Promise<{ buffer: Buffer; mimeType: string; wasCompressed: boolean }>) | null): void { ClaudeCodeDeps.setImageCompressor(compressor); }
   public static setClaudeSettingsPatternSaver(saver: ((workspacePath: string, pattern: string) => Promise<void>) | null): void { ClaudeCodeDeps.setClaudeSettingsPatternSaver(saver); }
   public static setClaudeSettingsPatternChecker(checker: ((workspacePath: string, pattern: string) => Promise<boolean>) | null): void { ClaudeCodeDeps.setClaudeSettingsPatternChecker(checker); }
+  public static setClaudeLocalAllowRuleChecker(checker: ((workspacePath: string, pattern: string) => Promise<boolean>) | null): void { ClaudeCodeDeps.setClaudeLocalAllowRuleChecker(checker); }
   public static setTrustChecker(checker: ((workspacePath: string) => { trusted: boolean; mode: 'ask' | 'allow-all' | 'bypass-all' | null; allowAllUsesClassifier?: boolean }) | null): void { BaseAgentProvider.setTrustChecker(checker); }
   public static setExtensionFileTypesLoader(loader: (() => Set<string>) | null): void { ClaudeCodeDeps.setExtensionFileTypesLoader(loader); }
 
