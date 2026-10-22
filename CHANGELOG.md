@@ -57,6 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cursor Agent sessions now receive attached text documents and the file paths of pasted images and PDFs, which the agent opens itself
 - On iPhone and iPad, a new session is no longer sent to an offline record of your computer, which left the request unanswered; the connection dot now reflects the selected computer, the picker and Settings mark offline computers, and choosing one shows an error instead of failing silently
 - With several projects on the rail, the Tracker board no longer shows another project's items after a switch, and starting a session from a tracker item that belongs to a different project is refused instead of running the agent in the wrong project's folder
+- The terminal no longer stops starting after many project switches in one window, because a closed terminal now frees its memory; when it cannot start, it shows the real reason instead of "Failed to fetch" and writes it to the app log
+- Editor errors, such as a file that failed to save or an editor that crashed, are now written to the app log instead of being dropped
 
 ### Removed
 <!-- Removed features go here -->
