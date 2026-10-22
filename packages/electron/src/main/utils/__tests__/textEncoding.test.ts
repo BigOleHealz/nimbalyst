@@ -92,6 +92,19 @@ describe('decodeTextFileBuffer', () => {
     expect(content.length).toBe(buf.length);
   });
 
+  it('samples from the first non-ASCII byte when the head is pure ASCII', () => {
+    // A head-only sample of numeric CSV rows looks like ASCII/UTF-8 to chardet,
+    // which would decode the later latin1 accents as replacement characters.
+    const ascii = '12345,67890,13579,24680\n'.repeat(5000);
+    const latin1 = 'Le café est très bon, merci beaucoup. Où est la gare? '.repeat(50);
+    const original = ascii + latin1;
+    const buf = Buffer.from(original, 'latin1');
+    expect(buf.length).toBeGreaterThan(64 * 1024);
+    const { content, encoding } = decodeTextFileBuffer(buf);
+    expect(encoding).toBe('latin1');
+    expect(content).toBe(original);
+  });
+
   it('handles an empty buffer', () => {
     expect(decodeTextFileBuffer(Buffer.alloc(0))).toEqual({ content: '', encoding: 'utf8' });
   });
