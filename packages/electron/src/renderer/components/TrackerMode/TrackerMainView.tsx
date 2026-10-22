@@ -106,10 +106,12 @@ import {
   createNewWorktreeSessionActionAtom,
 } from '../../store/actions/sessionHistoryActions';
 import { setTrackerFavoriteAtom } from '../../store/atoms/trackerPersonalState';
+import { activeWorkspacePathAtom } from '../../store/atoms/openProjects';
 import { WorktreeBaseBranchPicker } from '../AgenticCoding/WorktreeBaseBranchPicker';
 import {
   assertTrackerItemInWorkspace,
   buildTrackerLaunchContext,
+  createTrackerWorktreeSession,
   type TrackerLaunchContext,
 } from './trackerSessionLaunch';
 import { trackTeamAnalyticsEvent } from '../../utils/teamAnalytics';
@@ -509,10 +511,12 @@ export const TrackerMainView: React.FC<TrackerMainViewProps> = ({
     if (!pendingWorktreeLaunch) return;
 
     try {
-      const sessionId = await createNewWorktreeSession({
-        ...options,
-        initialDraft: pendingWorktreeLaunch.draftInput,
-      });
+      const sessionId = await createTrackerWorktreeSession(
+        pendingWorktreeLaunch,
+        store.get(activeWorkspacePathAtom),
+        options,
+        createNewWorktreeSession,
+      );
       if (!sessionId) throw new Error('Worktree session was not created');
 
       await window.electronAPI.invoke('tracker:link-session', {

@@ -1,9 +1,11 @@
-import { describe, expect, it } from 'vitest';
+// @vitest-environment node
+import { describe, expect, it, vi } from 'vitest';
 import type { TrackerRecord } from '@nimbalyst/runtime/core/TrackerRecord';
 
 import {
   assertTrackerItemInWorkspace,
   buildTrackerLaunchContext,
+  createTrackerWorktreeSession,
   deriveTrackerWorktreeName,
 } from '../trackerSessionLaunch';
 
@@ -36,6 +38,7 @@ describe('buildTrackerLaunchContext', () => {
     const context = buildTrackerLaunchContext('feature_1624', makeTrackerRecord());
 
     expect(context).toEqual({
+      workspacePath: '/repo',
       trackerLinkId: 'feature_1624',
       draftInput: [
         'implement tracker item NIM-1624: Launch a Worktree from a Tracker',
@@ -91,6 +94,26 @@ describe('assertTrackerItemInWorkspace', () => {
 
   it('refuses an item that is not loaded', () => {
     expect(() => assertTrackerItemInWorkspace(undefined, '/repo')).toThrow();
+  });
+});
+
+describe('createTrackerWorktreeSession', () => {
+  it('refuses a pending launch after the active project changes without creating a session', async () => {
+    const pending = buildTrackerLaunchContext('feature_1624', makeTrackerRecord());
+    const createSession = vi.fn(async () => 'session');
+
+    await expect(createTrackerWorktreeSession(pending, '/other-repo', { baseBranch: 'main' }, createSession))
+      .rejects.toThrow(/project changed/i);
+    expect(createSession).not.toHaveBeenCalled();
+  });
+
+  it('passes the original draft and branch to creation in the originating project', async () => {
+    const pending = buildTrackerLaunchContext('feature_1624', makeTrackerRecord());
+    const createSession = vi.fn(async () => 'session');
+
+    await expect(createTrackerWorktreeSession(pending, '/repo', { baseBranch: 'main' }, createSession))
+      .resolves.toBe('session');
+    expect(createSession).toHaveBeenCalledWith({ baseBranch: 'main', initialDraft: pending.draftInput });
   });
 });
 
