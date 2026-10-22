@@ -56,14 +56,17 @@ export const terminalListWorkspaceAtom = atom<string | undefined>(undefined);
 /**
  * The terminals that belong to `workspacePath`. Returns an empty list while the
  * shared list still belongs to another project, so a terminal is never shown, or
- * started, inside the wrong project.
+ * started, inside the wrong project. The empty list is one shared array so
+ * callers can use the result as a hook dependency.
  */
+const NO_TERMINALS: TerminalInstance[] = [];
+
 export function terminalsForWorkspace(
   terminals: TerminalInstance[],
   listWorkspacePath: string | undefined,
   workspacePath: string
 ): TerminalInstance[] {
-  return listWorkspacePath === workspacePath ? terminals : [];
+  return listWorkspacePath === workspacePath ? terminals : NO_TERMINALS;
 }
 
 /**
@@ -220,7 +223,7 @@ export const cliTerminalHeightAtom = atomFamily((_sessionId: string) =>
 );
 
 // Counts load calls so a slow answer for an old project cannot overwrite the
-// answer for the current project (GitHub #1821).
+// answer for the current project (GitHub #1818).
 let latestLoadNumber = 0;
 
 /**

@@ -139,7 +139,7 @@ describe('TerminalBottomPanel across a project switch', () => {
 });
 
 describe('loadTerminals when answers arrive out of order', () => {
-  // GitHub #1821: an older project's answer that arrives after a newer project's
+  // GitHub #1818: an older project's answer that arrives after a newer project's
   // answer used to overwrite it, so the new project showed no terminals.
   it('ignores an older project answer that arrives after a newer one', async () => {
     const loadA = loadTerminals('/proj-a');

@@ -22,6 +22,8 @@ const engines = vi.hoisted(() => ({
   writes: 0,
   // Called on every write; a test can use it to remove the panel mid-replay.
   onWrite: null as null | (() => void),
+  // Called when the engine is attached to the page, before the backend starts.
+  onOpen: null as null | (() => void),
 }));
 
 vi.mock('ghostty-web', () => {
@@ -33,7 +35,9 @@ vi.mock('ghostty-web', () => {
     renderer = { setTheme: () => {} };
     buffer = { active: { length: 24, cursorX: 0, cursorY: 0, getLine: () => undefined } };
     loadAddon() {}
-    open() {}
+    open() {
+      engines.onOpen?.();
+    }
     write() {
       engines.writes += 1;
       engines.onWrite?.();
@@ -104,6 +108,7 @@ beforeEach(() => {
   engines.created = 0;
   engines.writes = 0;
   engines.onWrite = null;
+  engines.onOpen = null;
   subscriptions = [];
   observed = [];
 
@@ -169,6 +174,36 @@ function expectQuietShutdown(errorLog: ReturnType<typeof vi.spyOn>) {
 }
 
 describe('TerminalPanel removed while it is still starting up', () => {
+  it('does not start the terminal backend when removed before it starts', async () => {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    // Remove the panel as soon as the engine is attached to the page.
+    let unmountPanel!: () => void;
+    let markOpened!: () => void;
+    const opened = new Promise<void>((resolve) => {
+      markOpened = resolve;
+    });
+    engines.onOpen = () => {
+      engines.onOpen = null;
+      unmountPanel();
+      markOpened();
+    };
+    const { unmount } = render(
+      <TerminalPanel terminalId="t1" workspacePath="/proj" isActive panelVisible />
+    );
+    unmountPanel = unmount;
+    await act(async () => {
+      await opened;
+    });
+    await flush();
+
+    const terminalApi = (window as unknown as {
+      electronAPI: { terminal: { initialize: ReturnType<typeof vi.fn> } };
+    }).electronAPI.terminal;
+    expect(terminalApi.initialize).not.toHaveBeenCalled();
+    expectQuietShutdown(errorLog);
+  });
+
   it('stops quietly when removed while saved history is loading', async () => {
     const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
 
