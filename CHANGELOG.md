@@ -62,6 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - With several projects on the rail, the Tracker board no longer shows another project's items after a switch, and starting a session from a tracker item that belongs to a different project is refused instead of running the agent in the wrong project's folder
 - The terminal no longer stops starting after many project switches in one window, because a closed terminal now frees its memory; when it cannot start, it shows the real reason instead of "Failed to fetch" and writes it to the app log
 - Editor errors, such as a file that failed to save or an editor that crashed, are now written to the app log instead of being dropped
+- Switching projects in one window no longer restarts the previous project's terminals inside the new project
 
 ### Removed
 <!-- Removed features go here -->

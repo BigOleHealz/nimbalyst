@@ -448,6 +448,9 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
         if (terminalRef.current && !disposed) {
           terminal.open(terminalRef.current);
           await new Promise((resolve) => setTimeout(resolve, 0));
+          // #1821: the panel may have been removed during this wait. Do not
+          // start a terminal backend for a panel nobody is looking at.
+          if (disposed) return;
           let initialDims: { cols: number; rows: number } | undefined;
           try {
             fitAddon.fit();
@@ -537,6 +540,10 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
           });
 
           const snapshot = await window.electronAPI.terminal.getRestoreSnapshot(workspacePath, sessionId);
+          // #1818: the panel may have been removed while the history loaded.
+          // Stop here. The cleanup below already disposes the terminal that
+          // was built, because it holds the same `terminal` variable.
+          if (disposed) return;
           lastAppliedSequence = snapshot.sequence;
 
           // NIM-823: for a full-screen TUI (the genuine claude CLI) the raw
@@ -651,6 +658,11 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
               }
             }
           }
+
+          // #1818: the panel may have been removed while saved history was
+          // replayed. Without this check the code below tries to watch a screen
+          // element that no longer exists, and the app logs a false start-up error.
+          if (disposed) return;
 
           // Mark scrollback restoration as complete and flush any queued output
           scrollbackRestoreComplete = true;
@@ -788,6 +800,8 @@ export const TerminalPanel: React.FC<TerminalPanelProps> = ({
           }
         }
       } catch (error) {
+        // #1821: a failure after the panel was removed is not a start-up error.
+        if (disposed) return;
         // Any other init-time write (screen stamp, cursor restore) that trapped.
         if (isGhosttyWasmTrap(error)) {
           handleWasmTrap(error);
