@@ -13,17 +13,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 <!-- Changes to existing functionality go here -->
-- Child sessions no longer send informational reports to their parent by default; the spawning session chooses whether it hears nothing, only the final response, or mid-run reports
-- Document sync skips git worktrees nested inside a project, such as `.claude/worktrees`, since they are copies of files the project already syncs
 
 ### Fixed
 <!-- Bug fixes go here -->
-- Creating a session from iPhone or iPad no longer fails with "The desktop did not confirm session creation" when the computer uses the SQLite database; the desktop sent the session's naming flag as a number, and the phone skipped the session as unreadable. The phone now also accepts that form from older desktops, and a malformed display field no longer hides a session
-- Links, files, and folders opened from WSL now fall back to Windows when no Linux handler works; executable files are revealed instead of launched.
-- A session that finishes while left selected in a project you switched away from, or in a window in the background, now shows as unread until you click it, instead of counting as already viewed.
-- A single-choice decision in a document that allows written answers now shows an Other choice with a text box, instead of only the listed options
-- Moving a local wiki to a team (`nim wiki move-to-team`) keeps embedded diagrams and maps as embeds instead of links, points links inside HTML pages at the moved pages, puts the local Home into the team's Home instead of a second Home, and places the wiki's types in the page tree with table rows under their type
-- Document sync on a project with hundreds of files waiting to upload sends them in pieces of about 1 MB, so they get stored; before, the whole backlog went up as one message, the connection dropped, and the app reconnected and retried the same upload every ~17 seconds. A connection that keeps dropping now waits longer between retries, up to 30 seconds
+
+### Removed
+<!-- Removed features go here -->
+
+## [0.82.1] - 2026-10-23
+
+
+### Added
+<!-- New features go here -->
+
+### Changed
+<!-- Changes to existing functionality go here -->
+- Child sessions no longer send informational reports to their parent by default; the spawning session chooses what it hears back.
+- Document sync skips git worktrees nested inside a project, such as `.claude/worktrees`.
+
+### Fixed
+<!-- Bug fixes go here -->
+- Creating a session from iPhone or iPad no longer fails with "The desktop did not confirm session creation" on desktops using SQLite.
+- A malformed field on one session no longer hides that session on iOS.
+- Links, files, and folders opened from WSL fall back to Windows when no Linux handler works; executables are revealed instead of launched.
+- Sessions that finish in a background project or window now show as unread.
+- Clicking "Always" on one waiting permission prompt now also covers the other waiting prompts.
+- Permission prompts answered while settings were loading stay answered after reload.
+- A notification click opens its session instead of the one previously open in that project.
+- The saved session is restored before the fallback session is chosen on project switch.
+- Single-choice decisions that allow written answers show an Other choice with a text box.
+- Moving a local wiki to a team keeps embeds, map links, Home and types.
+- Document sync with a large upload backlog sends it in ~1 MB pieces instead of dropping and retrying every ~17 seconds; repeated drops back off up to 30 seconds.
 
 ### Removed
 <!-- Removed features go here -->
