@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 <!-- Bug fixes go here -->
+- Moving a local wiki to a team (`nim wiki move-to-team`) keeps embedded diagrams and maps as embeds instead of links, points links inside HTML pages at the moved pages, puts the local Home into the team's Home instead of a second Home, and places the wiki's types in the page tree with table rows under their type
 
 ### Removed
 <!-- Removed features go here -->
