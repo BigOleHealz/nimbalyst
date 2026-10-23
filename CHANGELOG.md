@@ -14,10 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 <!-- Changes to existing functionality go here -->
 - Child sessions no longer send informational reports to their parent by default; the spawning session chooses whether it hears nothing, only the final response, or mid-run reports
+- Document sync skips git worktrees nested inside a project, such as `.claude/worktrees`, since they are copies of files the project already syncs
 
 ### Fixed
 <!-- Bug fixes go here -->
 - Moving a local wiki to a team (`nim wiki move-to-team`) keeps embedded diagrams and maps as embeds instead of links, points links inside HTML pages at the moved pages, puts the local Home into the team's Home instead of a second Home, and places the wiki's types in the page tree with table rows under their type
+- Document sync on a project with hundreds of files waiting to upload sends them in pieces of about 1 MB, so they get stored; before, the whole backlog went up as one message, the connection dropped, and the app reconnected and retried the same upload every ~17 seconds. A connection that keeps dropping now waits longer between retries, up to 30 seconds
 
 ### Removed
 <!-- Removed features go here -->
