@@ -116,9 +116,9 @@ export function checkToolNames(text, side) {
 }
 
 const BLOCK = {
-  desktop: /<!-- desktop-only -->\n([\s\S]*?)<!-- \/desktop-only -->\n/g,
-  remote: /<!-- remote-only -->\n([\s\S]*?)<!-- \/remote-only -->\n/g,
-  local: /<!-- local-only -->\n([\s\S]*?)<!-- \/local-only -->\n/g,
+  desktop: /<!-- desktop-only -->\r?\n([\s\S]*?)<!-- \/desktop-only -->\r?\n/g,
+  remote: /<!-- remote-only -->\r?\n([\s\S]*?)<!-- \/remote-only -->\r?\n/g,
+  local: /<!-- local-only -->\r?\n([\s\S]*?)<!-- \/local-only -->\r?\n/g,
 };
 const STRAY_MARKER = /<!-- \/?(?:desktop|remote|local)-only\b/;
 
@@ -137,7 +137,7 @@ export function applyBranch(text, side, fileLabel = '<text>') {
 }
 
 function injectSkillHeader(text, fileLabel) {
-  const match = /^---\n[\s\S]*?\n---\n/.exec(text);
+  const match = /^---\r?\n[\s\S]*?\r?\n---\r?\n/.exec(text);
   if (!match) throw new Error(`${fileLabel}: SKILL.md has no frontmatter`);
   const frontmatter = match[0];
   const body = text.slice(frontmatter.length).replace(/^\n+/, '');
@@ -198,7 +198,7 @@ export function buildGeneratedFiles(sourceDir = DEFAULT_SOURCE) {
     if (!rels.includes('SKILL.md')) throw new Error(`${skill}: missing SKILL.md in ${skillDir}`);
     for (const rel of rels) {
       const relPath = `${skill}/${rel}`;
-      const text = readFileSync(path.join(skillDir, rel), 'utf8');
+      const text = readFileSync(path.join(skillDir, rel), 'utf8').replace(/\r\n/g, '\n');
       for (const side of SIDES) files.set(`${side}:${names[side]}/${rel}`, transformFile(relPath, text, side));
     }
   }
@@ -265,7 +265,7 @@ export function checkGenerated({ sourceDir = DEFAULT_SOURCE, targets = DEFAULT_T
   for (const [key, content] of expected) {
     const onDisk = targetPath(targets, key);
     if (!existsSync(onDisk)) stale.push(`missing: ${key}`);
-    else if (readFileSync(onDisk, 'utf8') !== content) stale.push(`changed: ${key}`);
+    else if (readFileSync(onDisk, 'utf8').replace(/\r\n/g, '\n') !== content.replace(/\r\n/g, '\n')) stale.push(`changed: ${key}`);
   }
   for (const side of SIDES) {
     for (const skill of outputSkills(side)) {
@@ -279,7 +279,7 @@ export function checkGenerated({ sourceDir = DEFAULT_SOURCE, targets = DEFAULT_T
       const out = path.join(PLUGIN_DIR, rel);
       const label = path.relative(REPO_ROOT, out);
       if (!existsSync(out)) stale.push(`missing: ${label}`);
-      else if (readFileSync(out, 'utf8') !== content) stale.push(`changed: ${label}`);
+      else if (readFileSync(out, 'utf8').replace(/\r\n/g, '\n') !== content.replace(/\r\n/g, '\n')) stale.push(`changed: ${label}`);
     }
   }
   return stale;
