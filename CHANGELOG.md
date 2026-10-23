@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 <!-- Bug fixes go here -->
+- Links, files, and folders opened from WSL now fall back to Windows when no Linux handler works; executable files are revealed instead of launched.
 - A session that finishes while left selected in a project you switched away from, or in a window in the background, now shows as unread until you click it, instead of counting as already viewed.
 - A single-choice decision in a document that allows written answers now shows an Other choice with a text box, instead of only the listed options
 - Moving a local wiki to a team (`nim wiki move-to-team`) keeps embedded diagrams and maps as embeds instead of links, points links inside HTML pages at the moved pages, puts the local Home into the team's Home instead of a second Home, and places the wiki's types in the page tree with table rows under their type
