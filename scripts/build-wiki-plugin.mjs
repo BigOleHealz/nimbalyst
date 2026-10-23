@@ -259,7 +259,7 @@ function targetPath(targets, key) {
 }
 
 /** Lists generated paths that are missing, different, or no longer produced. */
-export function checkGenerated({ sourceDir = DEFAULT_SOURCE, targets = DEFAULT_TARGETS, configs = true } = {}) {
+export function checkGenerated({ sourceDir = DEFAULT_SOURCE, targets = DEFAULT_TARGETS, configs = true, pluginDir = PLUGIN_DIR } = {}) {
   const expected = buildGeneratedFiles(sourceDir);
   const stale = [];
   for (const [key, content] of expected) {
@@ -275,8 +275,8 @@ export function checkGenerated({ sourceDir = DEFAULT_SOURCE, targets = DEFAULT_T
     }
   }
   if (configs) {
-    for (const [rel, content] of buildPluginConfigs()) {
-      const out = path.join(PLUGIN_DIR, rel);
+    for (const [rel, content] of buildPluginConfigs(pluginDir)) {
+      const out = path.join(pluginDir, rel);
       const label = path.relative(REPO_ROOT, out);
       if (!existsSync(out)) stale.push(`missing: ${label}`);
       else if (readFileSync(out, 'utf8').replace(/\r\n/g, '\n') !== content.replace(/\r\n/g, '\n')) stale.push(`changed: ${label}`);
