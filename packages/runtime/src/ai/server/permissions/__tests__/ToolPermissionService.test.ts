@@ -242,6 +242,19 @@ describe('one answer settles every waiting request for the same rule', () => {
     expect(recordReleasedPermission).not.toHaveBeenCalled();
   });
 
+  it('keeps a hook-requested prompt waiting when another call approves its rule', async () => {
+    const { service, recordReleasedPermission } = createService();
+    const first = ask(service, 'first');
+    const hookAsked = ask(service, 'hook', mcpTool, { requiresUserDecision: 'hook-ask' });
+    await vi.waitFor(() => expect(waitingCount(service)).toBe(2));
+    service.resolvePermission('first', { decision: 'allow', scope: 'always' });
+    await first;
+    expect(waitingCount(service)).toBe(1);
+    expect(recordReleasedPermission).not.toHaveBeenCalled();
+    service.resolvePermission('hook', { decision: 'deny', scope: 'once' });
+    expect(await hookAsked).toEqual({ decision: 'deny', scope: 'once' });
+  });
+
   it('lets "allow all WebFetches" through a waiting WebFetch call for a different address', async () => {
     const { service, patternSaver, recordReleasedPermission } = createService();
     const first = ask(service, 'first', 'WebFetch', { pattern: 'WebFetch(domain:example.com)' });

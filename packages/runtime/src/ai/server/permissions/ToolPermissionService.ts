@@ -490,7 +490,9 @@ export class ToolPermissionService {
         pattern,
         toolName,
       });
-      return { decision: 'allow', scope: 'session' };
+      const response: PermissionDecision = { decision: 'allow', scope: 'session' };
+      this.recordReleasedPermission?.(sessionId, requestId, response);
+      return response;
     }
 
     const rawCommand = toolName === 'Bash' ? toolInput?.command || '' : toolDescription;
