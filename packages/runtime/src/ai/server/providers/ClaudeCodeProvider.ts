@@ -408,6 +408,18 @@ export class ClaudeCodeProvider extends BaseAgentProvider {
         patternChecker: ClaudeCodeDeps.claudeSettingsPatternChecker,
         securityLogger: BaseAgentProvider.securityLogger ?? undefined,
         emit: this.emit.bind(this),
+        // A prompt that another answer settled still needs its card closed in the transcript.
+        // The service does not say who gave the answer, so this records it as the desktop.
+        recordReleasedPermission: (sessionId, requestId, response) => {
+          this.logAgentMessage(
+            sessionId,
+            'claude-code',
+            'output',
+            this.createPermissionResultMessage(requestId, response, 'desktop')
+          ).catch(err => {
+            console.error('[CLAUDE-CODE] Failed to persist permission response:', err);
+          });
+        },
       });
     }
 

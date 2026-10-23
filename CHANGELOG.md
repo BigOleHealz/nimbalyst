@@ -88,6 +88,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Editor errors, such as a file that failed to save or an editor that crashed, are now written to the app log instead of being dropped
 - Switching projects in one window no longer restarts the previous project's terminals inside the new project
 - Clicking a notification for a session in another open project opens that session, instead of the session that was open there before.
+- Choosing "Always" on one of several tool permission prompts that are waiting at once now approves the others too, instead of asking again
 
 ### Removed
 <!-- Removed features go here -->
