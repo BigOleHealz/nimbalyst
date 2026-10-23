@@ -87,6 +87,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The terminal no longer stops starting after many project switches in one window, because a closed terminal now frees its memory; when it cannot start, it shows the real reason instead of "Failed to fetch" and writes it to the app log
 - Editor errors, such as a file that failed to save or an editor that crashed, are now written to the app log instead of being dropped
 - Switching projects in one window no longer restarts the previous project's terminals inside the new project
+- Clicking a notification for a session in another open project opens that session, instead of the session that was open there before.
 
 ### Removed
 <!-- Removed features go here -->
