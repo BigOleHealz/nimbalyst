@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 <!-- Bug fixes go here -->
+- A single-choice decision in a document that allows written answers now shows an Other choice with a text box, instead of only the listed options
 - Moving a local wiki to a team (`nim wiki move-to-team`) keeps embedded diagrams and maps as embeds instead of links, points links inside HTML pages at the moved pages, puts the local Home into the team's Home instead of a second Home, and places the wiki's types in the page tree with table rows under their type
 - Document sync on a project with hundreds of files waiting to upload sends them in pieces of about 1 MB, so they get stored; before, the whole backlog went up as one message, the connection dropped, and the app reconnected and retried the same upload every ~17 seconds. A connection that keeps dropping now waits longer between retries, up to 30 seconds
 
