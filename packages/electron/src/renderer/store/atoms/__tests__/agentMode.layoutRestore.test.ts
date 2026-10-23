@@ -1,4 +1,6 @@
-// @vitest-environment node
+// @vitest-environment jsdom
+import { act, cleanup, renderHook } from '@testing-library/react';
+import { useSessionSelectionFallback } from '../../../hooks/useSessionSelectionFallback';
 import { store } from '@nimbalyst/runtime/store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -28,7 +30,7 @@ function installWindow(
   sessionsByProject: Record<string, string[]>,
   getState: (workspacePath: string) => Promise<unknown>,
 ) {
-  (globalThis as any).window = {
+  Object.assign(window, {
     electronAPI: {
       invoke: vi.fn(async (channel: string, ...args: unknown[]) => {
         if (channel === 'sessions:list') {
@@ -43,7 +45,7 @@ function installWindow(
       }),
       on: vi.fn(() => () => {}),
     },
-  };
+  });
 }
 
 /** Persisted state for project A whose answer the test releases by hand. */
@@ -74,7 +76,9 @@ describe('initAgentModeLayout selection restore', () => {
 
   afterEach(() => {
     errorSpy.mockRestore();
-    delete (globalThis as any).window;
+    cleanup();
+    vi.useRealTimers();
+    delete (window as any).electronAPI;
   });
 
   it('keeps the session a notification click opened when the rail restore answers late', async () => {
@@ -119,4 +123,73 @@ describe('initAgentModeLayout selection restore', () => {
 
     expect(store.get(selectedWorkstreamAtom(PROJECT_A))).toEqual({ type: 'session', id: 'session-a-old' });
   });
+
+  it('restores the saved session when the automatic fallback timer fires during a delayed read', async () => {
+    vi.useFakeTimers();
+    store.set(activeWorkspacePathAtom, PROJECT_A);
+    store.set(selectedWorkstreamAtom(PROJECT_A), null);
+    const restore = heldRestore('session-a-old');
+    installWindow({}, () => restore.persisted);
+    const done = initAgentModeLayout(PROJECT_A, { setActive: false });
+    const select = vi.fn((id: string) => {
+      store.set(selectedWorkstreamAtom(PROJECT_A), { type: 'session', id });
+    });
+    renderHook(() => useSessionSelectionFallback(PROJECT_A, null, 'session-a-first', select));
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+    await act(async () => { restore.answer(); await done; });
+    expect(store.get(selectedWorkstreamAtom(PROJECT_A))).toEqual({ type: 'session', id: 'session-a-old' });
+    expect(select).not.toHaveBeenCalled();
+  });
+
+
+  it.each(['empty', 'failed'])('selects the first session after a %s restore finishes', async (result) => {
+    vi.useFakeTimers();
+    store.set(activeWorkspacePathAtom, PROJECT_A);
+    store.set(selectedWorkstreamAtom(PROJECT_A), null);
+    let finish!: () => void;
+    const persisted = new Promise((resolve, reject) => {
+      finish = () => result === 'failed' ? reject(new Error('read failed')) : resolve({});
+    });
+    installWindow({}, () => persisted);
+    const done = initAgentModeLayout(PROJECT_A, { setActive: false });
+    const select = vi.fn();
+    renderHook(() => useSessionSelectionFallback(PROJECT_A, null, 'session-a-first', select));
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+    expect(select).not.toHaveBeenCalled();
+    await act(async () => { finish(); await done; });
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+    expect(select).toHaveBeenCalledExactlyOnceWith('session-a-first');
+    if (result === 'failed') {
+      expect(errorSpy).toHaveBeenCalledWith('[agentMode] Failed to load layout:', expect.any(Error));
+    } else {
+      expect(errorSpy).not.toHaveBeenCalled();
+    }
+  });
+
+  it('waits for overlapping restores and preserves a deliberate click while they are pending', async () => {
+    vi.useFakeTimers();
+    store.set(activeWorkspacePathAtom, PROJECT_A);
+    store.set(selectedWorkstreamAtom(PROJECT_A), null);
+    let finishEmpty!: () => void;
+    const empty = new Promise(resolve => { finishEmpty = () => resolve({}); });
+    const saved = heldRestore('session-a-old');
+    let reads = 0;
+    installWindow({}, () => ++reads === 1 ? empty : saved.persisted);
+    const first = initAgentModeLayout(PROJECT_A, { setActive: false });
+    const second = initAgentModeLayout(PROJECT_A, { setActive: false });
+    const select = vi.fn();
+    renderHook(() => useSessionSelectionFallback(PROJECT_A, null, 'session-a-first', select));
+    await act(async () => { finishEmpty(); await first; });
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+    expect(select).not.toHaveBeenCalled();
+    await act(async () => {
+      store.set(selectedWorkstreamAtom(PROJECT_A), { type: 'session', id: 'clicked-session' });
+      saved.answer();
+      await second;
+    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+    expect(store.get(selectedWorkstreamAtom(PROJECT_A))).toEqual({ type: 'session', id: 'clicked-session' });
+    expect(select).not.toHaveBeenCalled();
+  });
+
 });

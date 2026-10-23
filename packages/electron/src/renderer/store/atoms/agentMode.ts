@@ -639,6 +639,9 @@ export const ensureSessionHistoryVisibleAtom = atom(
 // Initialization
 // ============================================================
 
+// Count overlapping rail and AgentMode restores independently for each project.
+export const pendingAgentModeRestoresAtom = atomFamily((_workspacePath: string) => atom(0));
+
 /**
  * Initialize agent mode layout from workspace state.
  * Call this when workspace path is known (typically in useEffect).
@@ -653,6 +656,8 @@ export async function initAgentModeLayout(
   workspacePath: string,
   options: { setActive?: boolean } = {}
 ): Promise<void> {
+  const pending = pendingAgentModeRestoresAtom(workspacePath);
+  store.set(pending, count => count + 1);
   const { setActive = true } = options;
   if (setActive) {
     store.set(activeWorkspacePathAtom, workspacePath);
@@ -684,5 +689,7 @@ export async function initAgentModeLayout(
     }
   } catch (err) {
     console.error('[agentMode] Failed to load layout:', err);
+  } finally {
+    store.set(pending, count => count - 1);
   }
 }
