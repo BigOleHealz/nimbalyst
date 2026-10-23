@@ -31,22 +31,27 @@ const PG_SCHEMA = `CREATE TABLE worktrees (id TEXT PRIMARY KEY, name TEXT, branc
   CREATE TABLE ai_agent_messages (id INTEGER, session_id TEXT, direction TEXT, hidden BOOLEAN);
   CREATE TABLE queued_prompts (id TEXT PRIMARY KEY, session_id TEXT, prompt TEXT, status TEXT);`;
 
-it.each(['pglite', 'sqlite'] as const)('%s executes recursive fetch/count/archive/heal, safe migration and hierarchy guards', async backend => {
+async function openBackend(backend: 'pglite' | 'sqlite') {
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'nim-session-tree-'));
   const raw = backend === 'pglite' ? new PGlite() : new SQLiteDatabase({ dbDir: temporary,
     schemaDir: path.resolve(__dirname, '../../database/sqlite/schemas'), sampleRate: 0 });
+  if (raw instanceof PGlite) { await raw.waitReady; await raw.exec(PG_SCHEMA); }
+  else await raw.initialize();
+  const db: HierarchyDatabase = raw instanceof PGlite ? {
+    query: (sql, params) => raw.query(sql, params),
+    runTransaction: async statements => { await raw.transaction(async tx => {
+      for (const statement of statements) {
+        const result = await tx.query(statement.sql, statement.params);
+        if (statement.expectedRows !== undefined && result.rows.length !== statement.expectedRows) throw new Error('Transaction conflict');
+      }
+    }); },
+  } : raw;
+  return { db, close: async () => { await raw.close(); fs.rmSync(temporary, { recursive: true, force: true }); } };
+}
+
+it.each(['pglite', 'sqlite'] as const)('%s executes recursive fetch/count/archive/heal, safe migration and hierarchy guards', async backend => {
+  const { db, close } = await openBackend(backend);
   try {
-    if (raw instanceof PGlite) { await raw.waitReady; await raw.exec(PG_SCHEMA); }
-    else await raw.initialize();
-    const db: HierarchyDatabase = raw instanceof PGlite ? {
-      query: (sql, params) => raw.query(sql, params),
-      runTransaction: async statements => { await raw.transaction(async tx => {
-        for (const statement of statements) {
-          const result = await tx.query(statement.sql, statement.params);
-          if (statement.expectedRows !== undefined && result.rows.length !== statement.expectedRows) throw new Error('Transaction conflict');
-        }
-      }); },
-    } : raw;
     const store = createPGLiteSessionStore(db);
     await store.create({ id: 'wrapper', provider: 'claude-code', workspaceId: '/p', sessionType: 'workstream' });
     await store.create({ id: 'root', provider: 'claude-code', workspaceId: '/p', parentSessionId: 'wrapper' });
@@ -95,7 +100,32 @@ it.each(['pglite', 'sqlite'] as const)('%s executes recursive fetch/count/archiv
     }
     expect(await findSessionTreeRoot(db, 'chain-20', '/p')).toBe('chain-0');
     expect(Number((await readSessionSubtree(db, 'chain-0', '/p')).find(row => row.id === 'chain-20')?.depth)).toBe(20);
-  } finally { await raw.close(); fs.rmSync(temporary, { recursive: true, force: true }); }
+  } finally { await close(); }
+});
+
+// The two drivers return different shapes: SQLite gives 0/1 for booleans and
+// text for JSON. A 0/1 hasBeenNamed reached the phone and hid every session
+// created from it, so assert exact types, not truthiness, on both backends.
+it.each(['pglite', 'sqlite'] as const)('%s session reads return booleans and parsed metadata', async backend => {
+  const { db, close } = await openBackend(backend);
+  try {
+    const store = createPGLiteSessionStore(db);
+    await store.create({ id: 'plain', provider: 'claude-code', workspaceId: '/p' });
+    await store.create({ id: 'named', provider: 'claude-code', workspaceId: '/p' });
+    await store.updateMetadata('named', { hasBeenNamed: true, isPinned: true, metadata: { phase: 'planning' } } as any);
+    for (const session of [await store.get('plain'), await store.get('named'), ...await store.getMany!(['plain', 'named'])]) {
+      expect(typeof session?.hasBeenNamed).toBe('boolean');
+      expect(typeof session?.isArchived).toBe('boolean');
+      expect(typeof session?.isPinned).toBe('boolean');
+      expect(typeof session?.metadata).toBe('object');
+    }
+    expect((await store.get('named'))).toMatchObject({ hasBeenNamed: true, isPinned: true, metadata: { phase: 'planning' } });
+    expect((await store.get('plain'))?.hasBeenNamed).toBe(false);
+    for (const row of await store.list('/p')) {
+      expect(typeof row.isArchived).toBe('boolean');
+      expect(typeof row.isPinned).toBe('boolean');
+    }
+  } finally { await close(); }
 });
 
 it('legacy startup conversion preserves real tree parents as sessions', async () => {

@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 <!-- Bug fixes go here -->
-- Creating a session from iPhone or iPad no longer fails with "The desktop did not confirm session creation" when the computer uses the SQLite database; the desktop sent the session's naming flag as a number, and the phone skipped the session as unreadable
+- Creating a session from iPhone or iPad no longer fails with "The desktop did not confirm session creation" when the computer uses the SQLite database; the desktop sent the session's naming flag as a number, and the phone skipped the session as unreadable. The phone now also accepts that form from older desktops, and a malformed display field no longer hides a session
 - Links, files, and folders opened from WSL now fall back to Windows when no Linux handler works; executable files are revealed instead of launched.
 - A session that finishes while left selected in a project you switched away from, or in a window in the background, now shows as unread until you click it, instead of counting as already viewed.
 - A single-choice decision in a document that allows written answers now shows an Other choice with a text box, instead of only the listed options
