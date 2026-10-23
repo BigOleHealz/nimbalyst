@@ -3,7 +3,7 @@ import type { OrchestrationMessageKind } from '@nimbalyst/runtime/ai/server/type
  * Meta-agent (child-session orchestration) tool surface — `create_session`,
  * `spawn_session`, `send_prompt`, `list_queued_prompts`, `respond_to_prompt`,
  * `get_session_status`, `get_session_result`, `list_spawned_sessions`,
- * `list_worktrees`.
+ * `list_worktrees`, `consume_session_inbox`.
  *
  * MCP consolidation: these tools are served by the unified internal MCP HTTP
  * server's `/mcp/host` endpoint (`nimbalyst-host`). This module exports the tool
@@ -24,6 +24,7 @@ type CreateSessionArgs = {
   worktreeId?: string;
   toolScope?: string;
   effortLevel?: string;
+  reporting?: string;
 };
 
 type SpawnSessionArgs = {
@@ -32,6 +33,7 @@ type SpawnSessionArgs = {
   useWorktree?: boolean;
   model?: string;
   notifyOnComplete?: boolean;
+  reporting?: string;
   /**
    * When true, the new session is created at the top level — no parent,
    * no workstream container, no shared files-edited or tabs with the
@@ -168,6 +170,13 @@ export interface MetaAgentOpenAITool {
   };
 }
 
+const REPORTING_SCHEMA = {
+  type: "string",
+  enum: ["none", "final", "messages"],
+  description:
+    "How the new session reports back to you. \"none\" (default): nothing, fire and forget. \"final\": you are notified when it completes, errors or needs input, and its final response is the report. \"messages\": as final, and it may also send material changes mid-run. Choose messages only when you will act on them before it finishes.",
+};
+
 /**
  * The single source-of-truth list of meta-agent tools, in MCP
  * `{ name, description, inputSchema }` shape. Both the SSE MCP server's
@@ -234,13 +243,14 @@ export const META_AGENT_TOOL_DEFS: Array<{
           description:
             "Optional reasoning effort for the child. Omit to leave it on the app-wide default — an omitted value is NOT inherited from the caller. Levels above the model's ceiling are clamped down (Claude models stop at max; only some Codex models reach ultra). Use a lower level for mechanical work and a higher one for hard reasoning.",
         },
+        reporting: REPORTING_SCHEMA,
       },
     },
   },
   {
     name: "spawn_session",
     description:
-      "Spawn a new session from the calling session. By default the new session is a direct child of the caller in its existing session tree (sharing files-edited, tabs, and get_workstream_overview). The new session also inherits the caller's working directory: if the caller is running in a worktree, the spawned session runs in that same worktree (so its edits land where the user is looking). Pass isolated=true to instead create a top-level session with no parent and no workstream — use this when the new session should fix-and-commit work independently without polluting the caller's workstream. Pass besideCaller=true to place it beside the caller instead of under it (for handoffs to a successor). Pass useWorktree=true to give the spawned session its OWN new worktree as a top-level session, managed by the caller. Fire-and-forget by default — the calling session is not notified when the spawned session completes; pass notifyOnComplete=true to opt in. Use this for the /launch-new-session flow.",
+      "Spawn a new session from the calling session. By default the new session is a direct child of the caller in its existing session tree (sharing files-edited, tabs, and get_workstream_overview). The new session also inherits the caller's working directory: if the caller is running in a worktree, the spawned session runs in that same worktree (so its edits land where the user is looking). Pass isolated=true to instead create a top-level session with no parent and no workstream — use this when the new session should fix-and-commit work independently without polluting the caller's workstream. Pass besideCaller=true to place it beside the caller instead of under it (for handoffs to a successor). Pass useWorktree=true to give the spawned session its OWN new worktree as a top-level session, managed by the caller. Fire-and-forget by default; set reporting to be told the result. Use this for the /launch-new-session flow.",
     inputSchema: {
       type: "object",
       properties: {
@@ -280,9 +290,9 @@ export const META_AGENT_TOOL_DEFS: Array<{
         },
         notifyOnComplete: {
           type: "boolean",
-          description:
-            "Default false. When false (the default), the calling session receives no follow-up prompt when the spawned session completes/errors/waits — fire and forget. Set true only when the caller specifically wants to be told the result and continue working with it.",
+          description: "Legacy form of reporting=\"final\"; ignored when reporting is set.",
         },
+        reporting: REPORTING_SCHEMA,
         effortLevel: {
           type: "string",
           enum: ["low", "medium", "high", "xhigh", "max", "ultra"],
@@ -330,7 +340,7 @@ export const META_AGENT_TOOL_DEFS: Array<{
   },
   {
     name: "consume_session_inbox",
-    description: "Receive a bounded batch of reports for your CURRENT active turn and record receipt so they do not replay as another turn. Takes no session ID. When coordinating children, call before delegation/integration decisions, after long validation, and before final synthesis. Read the whole batch before acting. A boundary means yield at a safe point for normal queue delivery. Do not poll an empty inbox; end the turn when no independent work remains. Supports Claude Code and Codex MCP turns with verifiable tool-call identity.",
+    description: "Receive reports queued for you during your CURRENT active turn and record receipt so they do not replay as another turn. Takes no session ID. Call it only when a decision in this turn depends on a report you are waiting for; otherwise reports arrive with your next turn. A boundary means yield at a safe point for normal queue delivery. Never poll.",
     inputSchema: { type: "object", properties: { checkpointId: { type: "string", description: "Unique name for this checkpoint (letters, digits, underscores or hyphens; max 100). Reuse only when retrying this same read; use a new name for a later checkpoint." } }, required: ["checkpointId"] },
   },
   {
@@ -361,7 +371,7 @@ export const META_AGENT_TOOL_DEFS: Array<{
   {
     name: "send_prompt",
     description:
-      "Queue a follow-up prompt for a session. If idle, processing starts immediately. Use messageKind=report for informational handoffs that may be consumed mid-turn; instructions/questions/errors retain normal turn delivery. Send material changes once; avoid acknowledgements and routine progress. Use the final response for automatic completion notifications instead of a duplicate send.",
+      "Queue a follow-up prompt for a session. An instruction to an idle session starts processing immediately; a report or status never wakes it and is read on its next turn. Do not message the session that started you unless it asked for reports.",
     inputSchema: {
       type: "object",
       properties: {
@@ -376,7 +386,7 @@ export const META_AGENT_TOOL_DEFS: Array<{
         messageKind: {
           type: "string",
           enum: ["instruction", "report", "status", "question", "error"],
-          description: "Defaults to instruction. report/status are informational context that the recipient can consume mid-turn; never label a request to change work as a report.",
+          description: "Defaults to instruction. report/status are informational and never wake an idle recipient; never label a request to change work as a report.",
         },
         interrupt: {
           type: "boolean",

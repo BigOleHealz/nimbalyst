@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 <!-- Changes to existing functionality go here -->
+- Child sessions no longer send informational reports to their parent by default; the spawning session chooses whether it hears nothing, only the final response, or mid-run reports
 
 ### Fixed
 <!-- Bug fixes go here -->
