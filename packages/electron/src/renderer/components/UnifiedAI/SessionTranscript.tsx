@@ -2805,6 +2805,7 @@ const LocalSessionTranscript = forwardRef<SessionTranscriptRef, SessionTranscrip
         onQueue={handleQueue}
         queueCount={queuedPrompts.length}
         currentFilePath={currentFilePath}
+        currentFileName={documentContext?.fileName}
         onLaunchActionInNewSession={handleLaunchActionInNewSession}
       />
     </div>

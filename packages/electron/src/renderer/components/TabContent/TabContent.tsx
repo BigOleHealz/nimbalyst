@@ -469,7 +469,7 @@ const TabContentComponent: React.FC<TabContentProps> = ({
     }
 
     // A personal page (Pages mode): its body saves itself through local IPC,
-    // so no save/dirty/getContent wiring.
+    // so only the live content getter needs to reach the chat context.
     if (tab.kind === 'personal-page' || isPersonalPageTabPath(tab.filePath)) {
       const documentId = tab.personalDocumentId ?? tab.filePath.slice(PERSONAL_PAGE_TAB_PREFIX.length);
       const workspacePath = propsRef.current.workspaceId;
@@ -487,7 +487,15 @@ const TabContentComponent: React.FC<TabContentProps> = ({
             }}
           >
             {workspacePath ? (
-              <PersonalPageTab documentId={documentId} workspacePath={workspacePath} fallbackTitle={tab.fileName} />
+              <PersonalPageTab
+                documentId={documentId}
+                workspacePath={workspacePath}
+                fallbackTitle={tab.fileName}
+                onGetContentReady={(getContent) => {
+                  getContentFunctionsRef.current.set(tab.id, getContent);
+                  propsRef.current.onGetContentReady?.(tab.id, getContent);
+                }}
+              />
             ) : null}
           </TabEditorErrorBoundary>
         </JotaiProvider>

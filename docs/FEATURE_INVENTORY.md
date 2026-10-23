@@ -140,7 +140,7 @@ Twelve built-in provider lanes, plus any agent an extension contributes. Every l
 - Optional MCP status chip showing the session's configured, connected, and missing servers (off by default in Agent Features settings)
 - File `@` mention in input
 - Image attachment support
-- Selection chips above the input showing what will be sent as context (selected text, mockup annotations, and extension-provided items from node-like editors such as Excalidraw); each chip has an × to drop it from the prompt, and node-like editors can report multiple selections at once
+- A named file or page context indicator above the chat input, with a separate short preview of selected text, consistent across Files, Agent and Wiki modes (shared, Local and Personal pages). Selection chips show selected text, mockup annotations and extension-provided items from node-like editors such as Excalidraw; each selection chip has an × to drop it from the prompt while keeping the document context, and node-like editors can report multiple selections at once
 - Queued prompts display
 - Slash command typeahead
 - Action prompts dropdown in composer (reusable prompt presets defined in `nimbalyst-local/ai-actions.md`; pick to insert verbatim into the draft, with undo support)
