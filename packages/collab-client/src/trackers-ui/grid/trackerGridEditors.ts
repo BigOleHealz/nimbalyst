@@ -80,7 +80,10 @@ export function commitOnNavigationKeys(
  * it instead of appending ("Alpha" arrives as "lpha", #1199).
  *
  * Comparing the incoming `val` against the model's stored value is what
- * separates the two cases; RevoGrid does not otherwise say which one happened.
+ * separates the two cases; RevoGrid does not otherwise say which one happened
+ * (it overwrites the typed key in `val` with the stored value on Enter/F2). A
+ * one-character cell typed over with that same character still reads as
+ * Enter/F2 and selects all.
  */
 export function shouldSelectAllOnEdit(editCell: EditCell | undefined): boolean {
   if (!editCell) return true;

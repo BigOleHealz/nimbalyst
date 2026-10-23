@@ -9,6 +9,7 @@ function mountTextEditor(editCell: unknown, kind = 'text') {
   let input!: HTMLInputElement;
   const createElement = (tag: string, props: any) => {
     const el = document.createElement(tag) as HTMLInputElement;
+    if (props?.type) el.type = String(props.type);
     if (props?.value != null) el.value = String(props.value);
     if (typeof props?.ref === 'function') props.ref(el);
     if (tag === 'input') input = el;
@@ -89,6 +90,7 @@ describe('tracker text-cell editor caret placement (#1199)', () => {
       { val: '4', prop: 'points', model: { points: 7 } },
       'number',
     );
+    expect(input.type).toBe('number');
     await expect(editor.componentDidRender()).resolves.not.toThrow();
     expect(input.value).toBe('4');
   });
