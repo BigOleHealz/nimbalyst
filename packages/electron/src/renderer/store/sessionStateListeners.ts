@@ -204,6 +204,26 @@ function getCurrentlyViewedSessionId(workspacePath: string): string | null {
   return store.get(workstreamActiveChildAtom(selectedWorkstream.id)) || selectedWorkstream.id;
 }
 
+function isSessionBeingViewed(sessionId: string, workspacePath: string): boolean {
+  const visibleWorkspacePath = store.get(activeWorkspacePathAtom);
+  return store.get(windowFocusedAtom)
+    && (visibleWorkspacePath === null || visibleWorkspacePath === workspacePath)
+    && getCurrentlyViewedSessionId(workspacePath) === sessionId;
+}
+
+function markBackgroundSessionUnread(sessionId: string, workspacePath: string): void {
+  const pendingReadTimer = readStateSyncTimers.get(sessionId);
+  if (pendingReadTimer) clearTimeout(pendingReadTimer);
+  readStateSyncTimers.delete(sessionId);
+  store.set(sessionUnreadAtom(sessionId), true);
+  store.set(markSessionUnreadAtom, { sessionId, workspacePath });
+  window.electronAPI?.invoke('ai:updateSessionMetadata', sessionId, {
+    metadata: { hasUnread: true },
+  }).catch((err: Error) => {
+    console.error('[sessionStateListeners] Failed to persist unread state:', err);
+  });
+}
+
 /**
  * Initialize global session state listeners.
  * Should be called once at app startup (or when AgentMode mounts).
@@ -406,6 +426,10 @@ export function initSessionStateListeners(): () => void {
       case 'session:completed':
       case 'session:error':
       case 'session:interrupted':
+        // Completion may follow the last output after the user switches away.
+        if (type === 'session:completed' && !isSessionBeingViewed(sessionId, resolvedWorkspacePath)) {
+          markBackgroundSessionUnread(sessionId, resolvedWorkspacePath);
+        }
         // The three atoms cleared in the unconditional terminal-event block
         // above (processing, pendingInteractivePrompt, streaming) cover this
         // case. We intentionally do NOT re-clear them here; the streaming
@@ -638,39 +662,10 @@ export function initSessionStateListeners(): () => void {
       store.set(updateSessionStoreAtom, { sessionId, updates: { isArchived: false } });
     }
 
-    // Mark as unread if this is an output message (agent response) and the session
-    // is not currently being viewed. A selected session only counts as viewed
-    // while this window is focused and its project is the one on screen (the
-    // multi-project rail hosts several projects in one window) -- otherwise a
-    // session left selected in the background never reports that it finished,
-    // and the read-sync below would also clear the tray hint main set on
-    // completion. Regaining focus or switching back to the project does not
-    // mark it read; selecting the session does.
+    // Focus or project restoration alone does not read a background answer.
     if (direction === 'output') {
-      const visibleWorkspacePath = store.get(activeWorkspacePathAtom);
-      const isOnScreen = store.get(windowFocusedAtom)
-        && (visibleWorkspacePath === null || visibleWorkspacePath === workspacePath);
-      const currentlyViewedSessionId = isOnScreen
-        ? getCurrentlyViewedSessionId(workspacePath)
-        : null;
-
-      if (sessionId !== currentlyViewedSessionId) {
-        // A read-sync scheduled while the session was still on screen must not
-        // clear this unread state after the fact.
-        const pendingReadTimer = readStateSyncTimers.get(sessionId);
-        if (pendingReadTimer) {
-          clearTimeout(pendingReadTimer);
-          readStateSyncTimers.delete(sessionId);
-        }
-        store.set(sessionUnreadAtom(sessionId), true);
-        store.set(markSessionUnreadAtom, { sessionId, workspacePath });
-
-        // Persist to database metadata for cross-device sync
-        window.electronAPI?.invoke('ai:updateSessionMetadata', sessionId, {
-          metadata: { hasUnread: true },
-        }).catch((err: Error) => {
-          console.error('[sessionStateListeners] Failed to persist unread state:', err);
-        });
+      if (!isSessionBeingViewed(sessionId, workspacePath)) {
+        markBackgroundSessionUnread(sessionId, workspacePath);
       } else {
         // Session IS currently viewed - push lastReadAt (debounced) so other
         // devices (iOS) know the user is reading these messages in real time.
@@ -683,6 +678,7 @@ export function initSessionStateListeners(): () => void {
         }
         readStateSyncTimers.set(sessionId, setTimeout(() => {
           readStateSyncTimers.delete(sessionId);
+          if (!isSessionBeingViewed(sessionId, workspacePath)) return;
           window.electronAPI?.invoke('ai:updateSessionMetadata', sessionId, {
             metadata: { hasUnread: false, lastReadAt: Date.now() },
           }).catch((err: Error) => {

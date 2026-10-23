@@ -1298,6 +1298,47 @@ describe('unread: selected session in a hidden rail project', () => {
     }
   });
 
+  it.each(['focus loss', 'project switch'])('preserves completion after %s with no further output', async (reason) => {
+    vi.useFakeTimers();
+    try {
+      const sid = uniqueSessionId('completion-read-sync');
+      seedRegistry([{ id: sid, workspaceId: WS_A }]);
+      selectSessionIn(WS_A, sid);
+      store.set(activeWorkspacePathAtom, WS_A);
+      store.set(windowFocusedAtom, true);
+      logOutput(sid, WS_A);
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      if (reason === 'focus loss') store.set(windowFocusedAtom, false);
+      else store.set(activeWorkspacePathAtom, WS_B);
+      handlers.get('ai-session-state:event')!({ type: 'session:completed', sessionId: sid, workspacePath: WS_A });
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(store.get(sessionUnreadAtom(sid))).toBe(true);
+      expect(isUnreadInActivity(WS_A, sid)).toBe(true);
+      expect(hasUnreadWrites(sid)).toEqual([true]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('rechecks visibility when a pending read-sync fires without further events', async () => {
+    vi.useFakeTimers();
+    try {
+      const sid = uniqueSessionId('timer-visibility');
+      seedRegistry([{ id: sid, workspaceId: WS_A }]);
+      selectSessionIn(WS_A, sid);
+      store.set(activeWorkspacePathAtom, WS_A);
+      store.set(windowFocusedAtom, true);
+      logOutput(sid, WS_A);
+      store.set(windowFocusedAtom, false);
+      await vi.advanceTimersByTimeAsync(6_000);
+      expect(hasUnreadWrites(sid)).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('keeps the selected session read in single-project mode while its project is visible and focused', async () => {
     vi.useFakeTimers();
     try {
