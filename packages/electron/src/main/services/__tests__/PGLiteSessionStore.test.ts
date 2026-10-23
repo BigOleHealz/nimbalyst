@@ -358,6 +358,7 @@ describe('PGLiteSessionStore JSON-column read normalization', () => {
     };
     const store = createPGLiteSessionStore(db as any);
     expect((await store.get('s1'))?.hasBeenNamed).toBe(false);
+    if (!store.getMany) throw new Error('PGLite session store must support bulk reads');
     expect((await store.getMany(['s1', 's2'])).map(s => s.hasBeenNamed)).toEqual([false, true]);
   });
 
