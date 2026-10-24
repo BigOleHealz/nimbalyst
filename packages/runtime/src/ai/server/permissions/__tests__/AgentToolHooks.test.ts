@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AgentToolHooks } from '../AgentToolHooks';
 import type { AgentToolHooksOptions } from '../AgentToolHooks';
+import { agentToolActivity } from '../../agentToolActivity';
 
 // Mock fs module
 vi.mock('fs', () => ({
@@ -127,6 +128,18 @@ describe('AgentToolHooks', () => {
       expect(options.logAgentMessage).not.toHaveBeenCalled();
       expect(pending.size).toBe(0);
     });
+  });
+
+  it('reports a shell command as a possible writer only while it runs', async () => {
+    const hooks = new AgentToolHooks(createMockOptions({ sessionId: 'activity-session' }));
+    const signal = new AbortController().signal;
+    const input = { tool_name: 'Bash', tool_input: { command: 'node generate.js' } };
+    const file = '/test/workspace/generated.ts';
+    expect(agentToolActivity.writerEvidence('activity-session', file, Date.now())).toBe('idle');
+    await hooks.createPreToolUseHook()(input, 'activity-bash', { signal });
+    expect(agentToolActivity.writerEvidence('activity-session', file, Date.now())).toBe('possible');
+    await hooks.createPostToolUseHook()(input, 'activity-bash', { signal });
+    expect(agentToolActivity.writerEvidence('activity-session', file, Date.now() + 10_000)).toBe('idle');
   });
 
   describe('Bash post-tool hook: editedFilesThisTurn tracking', () => {

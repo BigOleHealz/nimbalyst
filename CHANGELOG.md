@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 <!-- Bug fixes go here -->
 - Automatic CPU profiles no longer accumulate indefinitely and consume disk space.
+- A Codex session running a long shell command no longer lists files that a concurrent Claude Code session edited in the same project; edits whose session can't be determined are now named in the file tracking notice instead of being assigned by guess.
 
 ### Removed
 <!-- Removed features go here -->

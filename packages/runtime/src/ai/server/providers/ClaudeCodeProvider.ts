@@ -154,6 +154,7 @@ import { blockingUsageLimit, rateLimitMarker, usageLimitSystemMessage } from './
 import { buildTurnQuery, prepareTurnAttachments, resolveTurnPaths } from './claudeCode/turnPrologue';
 import { buildTurnCompleteUsage, finishTurn, handleTurnError, type TurnEpilogueHost } from './claudeCode/turnEpilogue';
 import { fromDbBoolean } from '../../../core/dbBoolean';
+import { agentToolActivity } from '../agentToolActivity';
 import { applyTaskListMutation, sortTaskList, type TaskListItem } from './claudeCode/taskListReconstruct';
 
 
@@ -1227,6 +1228,8 @@ export class ClaudeCodeProvider extends BaseAgentProvider {
               }
 
               case 'tool_result': {
+                // A failed or denied call may never reach PostToolUse.
+                if (sessionId) agentToolActivity.finished(sessionId, item.toolUseId);
                 const toolCall = state.toolCallsById.get(item.toolUseId);
                 if (toolCall) {
                   const { isDuplicate, isBackgroundAck } = applyToolResultToToolCall(toolCall, item.content, item.isError);
@@ -1659,6 +1662,8 @@ export class ClaudeCodeProvider extends BaseAgentProvider {
     // against the torn-down control channel and leaks. NIM-1470.
     const queryForDrainCleanup = this.leadQuery;
     this.leadQuery = null;
+    // Background commands drained with the turn; nothing it started is still running.
+    if (sessionId) agentToolActivity.endTurn(sessionId);
     ClaudeCodeProvider.streamingInstances.delete(this);
     this.abortController = null;
     this.wasInterrupted = false;

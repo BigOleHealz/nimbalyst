@@ -17,6 +17,7 @@ import { parseBashForFileOps } from './BashCommandAnalyzer';
 import { generateToolPattern, buildToolDescription } from './toolPermissionHelpers';
 import { getPatternDisplayName } from '../types';
 import type { TrustChecker } from '../providers/ProviderPermissionMixin';
+import { agentToolActivity } from '../agentToolActivity';
 
 /** Identifies one exact tool call so the model's retry can be matched to the approval. */
 function blockedCallKey(toolName: string, toolInput: unknown): string {
@@ -222,6 +223,9 @@ export class AgentToolHooks {
     this.isTeammateSession = options.isTeammateSession || false;
     this.permissionsPath = options.permissionsPath;
     this.historyManager = options.historyManager;
+    // These hooks see every tool call, including subagents', before it runs, so
+    // concurrent sessions can tell this one's idle time from its writes.
+    if (this.sessionId) agentToolActivity.declare(this.sessionId, this.workspacePath);
   }
 
   /**
@@ -254,6 +258,7 @@ export class AgentToolHooks {
     return async (input: any, toolUseID: string | undefined, options: { signal: AbortSignal }) => {
       const toolName = input.tool_name;
       const toolInput = input.tool_input;
+      if (this.sessionId) agentToolActivity.started(this.sessionId, toolUseID, toolName, toolInput);
 
       // TeamDelete should be validated by the SDK against active team members.
       // Do not pre-clean teammates here, or TeamDelete will incorrectly succeed.
@@ -569,6 +574,7 @@ export class AgentToolHooks {
     return async (input: any, toolUseID: string | undefined, options: { signal: AbortSignal }) => {
       const toolName = input.tool_name;
       const toolInput = input.tool_input;
+      if (this.sessionId) agentToolActivity.finished(this.sessionId, toolUseID);
 
       // Handle Bash file operations
       if (toolName === 'Bash') {
