@@ -1255,6 +1255,33 @@ describe('GitCommitConfirmationWidget', () => {
     expect(screen.getByTestId('git-commit-error').textContent).toContain('HOOK_DETAIL: lint failed');
   });
 
+  it.each([
+    ['committed', 'Commit hash: abc1234', 'Changes Committed'],
+    ['error', 'Error: hook failed', 'Commit Failed'],
+  ])('waits for the server result before showing auto-commit %s', async (state, result, title) => {
+    const { interactiveWidgetHostAtom } = await import('../../../../store/atoms/interactiveWidgetHost');
+    const testStore = createStore();
+    const gitCommit = vi.fn();
+    testStore.set(interactiveWidgetHostAtom('auto-result'), {
+      autoCommitEnabled: true, gitCommit, trackEvent: vi.fn(),
+    } as unknown as import('../CustomToolWidgets/InteractiveWidgetHost').InteractiveWidgetHost);
+    const message = makeToolMessage('git_commit_proposal', {
+      commitMessage: 'fix: wait for result', filesToStage: ['file.ts'],
+    });
+    const tree = (msg: typeof message) => <JotaiProvider store={testStore}>
+      <GitCommitConfirmationWidget message={msg} isExpanded={false} onToggle={() => {}} sessionId="auto-result" />
+    </JotaiProvider>;
+    const { rerender } = render(tree(message));
+    expect(screen.queryByText('Changes Committed')).toBeNull();
+    expect(screen.getByTestId('git-commit-widget').dataset.state).toBe('committing');
+    expect(gitCommit).not.toHaveBeenCalled();
+    rerender(tree({ ...message, toolCall: { ...message.toolCall!, result,
+      ...(state === 'error' ? { isError: true } : {}) } }));
+    expect(screen.getByTestId('git-commit-widget').dataset.state).toBe(state);
+    expect(screen.getByText(title).textContent).toBe(title);
+    expect(gitCommit).not.toHaveBeenCalled();
+  });
+
   it('sends cancel through the interactive host', async () => {
     const { interactiveWidgetHostAtom } = await import('../../../../store/atoms/interactiveWidgetHost');
 
