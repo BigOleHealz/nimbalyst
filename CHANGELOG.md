@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 <!-- Bug fixes go here -->
+- Wiki start and team skills load their descriptions correctly, and malformed skill metadata produces concise warnings instead of stack traces.
 - Development builds no longer stop responding when React inspects props containing sandboxed HTML embed windows.
 - Scrolling past an agent-displayed image or editor screenshot in a session transcript no longer jumps back to the image.
 
