@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 <!-- Bug fixes go here -->
+- Opening a project from the rail in a new window now creates a separate window showing the selected project, even when restoring previous projects is enabled.
 - Automatic CPU profiles no longer accumulate indefinitely and consume disk space.
 - A Codex session running a long shell command no longer lists files that a concurrent Claude Code session edited in the same project; edits whose session can't be determined are now named in the file tracking notice instead of being assigned by guess.
 
