@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 <!-- Bug fixes go here -->
+- Development builds no longer stop responding when React inspects props containing sandboxed HTML embed windows.
 
 ### Removed
 <!-- Removed features go here -->
