@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 <!-- Bug fixes go here -->
+- Automatic CPU profiles no longer accumulate indefinitely and consume disk space.
 
 ### Removed
 <!-- Removed features go here -->
