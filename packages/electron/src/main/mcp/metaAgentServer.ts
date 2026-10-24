@@ -201,7 +201,7 @@ export const META_AGENT_TOOL_DEFS: Array<{
   {
     name: "create_session",
     description:
-      "Spawn a new child session for a focused task. Can optionally create a dedicated worktree or attach the session to an existing worktree, then seed it with an initial prompt. Pass toolScope to control the child's capabilities: use \"read\" or \"write\" for analyze/research tasks so the child cannot run builds or claim to have run them; \"full\" (default) grants run_command.",
+      "Create a worker session for part of a task you are coordinating. It nests under you in the session tree, shares your working directory, and is seeded with an initial prompt. Set reporting to \"final\" when you need its result. For unrelated work, or for continuing this work in a fresh session, use spawn_session with isolated=true or besideCaller=true where that tool is available. Pass toolScope to control the child's capabilities: use \"read\" or \"write\" for analyze/research tasks so the child cannot run builds or claim to have run them; \"full\" (default) grants run_command.",
     inputSchema: {
       type: "object",
       properties: {
@@ -250,7 +250,11 @@ export const META_AGENT_TOOL_DEFS: Array<{
   {
     name: "spawn_session",
     description:
-      "Spawn a new session from the calling session. By default the new session is a direct child of the caller in its existing session tree (sharing files-edited, tabs, and get_workstream_overview). The new session also inherits the caller's working directory: if the caller is running in a worktree, the spawned session runs in that same worktree (so its edits land where the user is looking). Pass isolated=true to instead create a top-level session with no parent and no workstream — use this when the new session should fix-and-commit work independently without polluting the caller's workstream. Pass besideCaller=true to place it beside the caller instead of under it (for handoffs to a successor). Pass useWorktree=true to give the spawned session its OWN new worktree as a top-level session, managed by the caller. Fire-and-forget by default; set reporting to be told the result. Use this for the /launch-new-session flow.",
+      "Start another session from this one. Choose the setup from what the user asked for:\n" +
+      "- Unrelated work (\"start a new session to fix that other bug\", \"track this down separately\"): isolated=true and reporting \"none\". It is an independent top-level session that does and commits its own work; do not wait for it or check on it.\n" +
+      "- The same work continued in a fresh session (context is too long, or a handoff to a successor): besideCaller=true and reporting \"none\". It sits beside you, so a chain of handoffs stays flat.\n" +
+      "- Workers for one task you are coordinating (the user asked you to orchestrate, split up or parallelize a piece of work): omit both flags so it nests under you in the session tree, and set reporting \"final\" so you get its result.\n" +
+      "The new session runs in your working directory (your worktree, if you are in one); pass useWorktree=true only when the user asks for a separate branch. Reporting defaults to \"none\" (fire and forget). Used by /launch-new-session.",
     inputSchema: {
       type: "object",
       properties: {
@@ -266,12 +270,12 @@ export const META_AGENT_TOOL_DEFS: Array<{
         isolated: {
           type: "boolean",
           description:
-            "Default false. When true, the new session is created at the top level — no parent, no workstream container, no shared files-edited or tabs with the caller. Use for fix-and-commit-separately work that should not pollute the caller's workstream.",
+            "Default false. Set true for work unrelated to your current task: the new session is created at the top level with no parent and shares no files-edited, tabs or workstream overview with you. Pair with reporting \"none\".",
         },
         besideCaller: {
           type: "boolean",
           description:
-            "Default false. When true, the new session is placed beside the caller (under the caller's parent, or at the top level if the caller has none) instead of nested under it. It still shares the caller's worktree and is managed by the caller. Use when handing work off to a successor session, so a chain of handoffs stays flat instead of nesting one level per handoff.",
+            "Default false. Set true when handing this same work to a successor session: it is placed beside you (under your parent, or at the top level) instead of nested under you, so a chain of handoffs stays flat. It shares your worktree.",
         },
         useWorktree: {
           type: "boolean",

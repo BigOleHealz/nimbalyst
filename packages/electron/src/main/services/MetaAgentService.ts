@@ -1,7 +1,7 @@
 import type { OrchestrationMessageKind } from '@nimbalyst/runtime/ai/server/types';
 import path from 'path';
 import { BrowserWindow } from 'electron';
-import { createUnderParentOrBeside, onHierarchyMove, type HierarchyMove } from './sessionHierarchy';
+import { createUnderParentOrBeside } from './sessionHierarchy';
 import { randomUUID } from 'crypto';
 import { safeHandle } from '../utils/ipcRegistry';
 import { SessionManager } from '@nimbalyst/runtime/ai/server';
@@ -201,7 +201,6 @@ export class MetaAgentService {
   private static instance: MetaAgentService | null = null;
   private starting: Promise<void> | null = null;
   private started = false;
-  private hierarchyMoveUnsubscribe: (() => void) | null = null;
   private serverPort: number | null = null;
   private aiService: AIService | null = null;
   private sessionManager: SessionManager | null = null;
@@ -264,8 +263,6 @@ export class MetaAgentService {
 
     this.starting = (async () => {
       this.aiService = aiService;
-      this.hierarchyMoveUnsubscribe?.();
-      this.hierarchyMoveUnsubscribe = onHierarchyMove((move) => this.reportManagerChange(move));
       this.showNotificationWithResult = showNotificationWithResult;
       this.requestMobilePush = requestMobilePush ?? null;
       this.sessionManager = new SessionManager();
@@ -334,8 +331,6 @@ export class MetaAgentService {
 
     this.unsubscribeStateListener?.();
     this.unsubscribeStateListener = null;
-    this.hierarchyMoveUnsubscribe?.();
-    this.hierarchyMoveUnsubscribe = null;
     this.notificationSignatures.clear();
     this.showNotificationWithResult = null;
     // No standalone HTTP server to tear down (Phase 7); the injected toolFns are
@@ -804,36 +799,6 @@ export class MetaAgentService {
       promotedParent,
       reporting,
     }, null, 2);
-  }
-
-  private async reportManagerChange(move: HierarchyMove): Promise<void> {
-    // Only a local drag is a user move. Snapshot applies and delete-lift
-    // reassignments are system work; reporting them woke idle sessions after
-    // the session-tree migration.
-    if (!this.aiService || move.source || move.previousManagerId === move.managerId) return;
-    if (move.managerId) await this.reportToManager(move.sessionId, move.managerId, move.workspaceId,
-      `You now manage ${move.title} (moved by the user).`);
-    if (move.previousManagerId && await AISessionsRepository.get(move.previousManagerId)) await this.reportToManager(move.sessionId, move.previousManagerId, move.workspaceId,
-      `${move.title} was moved to ${move.managerId ? (await AISessionsRepository.get(move.managerId))?.title || 'a new manager' : 'top level'}.`);
-  }
-
-  /**
-   * A running manager takes the note as a queued report and sees it at turn end.
-   * An idle or archived manager keeps it as a transcript note only: queueing it
-   * would leave a pending row that a later drive turns into a turn.
-   */
-  private async reportToManager(originSessionId: string, managerId: string, workspaceId: string, prompt: string): Promise<void> {
-    const manager = await AISessionsRepository.get(managerId);
-    if (!manager) return;
-    const statusRow = await this.getSessionStatusRow(managerId, workspaceId);
-    const status = (statusRow?.status || 'idle') as SessionStatusValue;
-    if (status === 'running' && !manager.isArchived) {
-      await this.sendPromptToSession(originSessionId, managerId, workspaceId, prompt, false, 'report');
-      return;
-    }
-    await this.persistSyntheticInputMessage(managerId, prompt, {
-      actor: 'agent', origin: 'session-orchestration', messageKind: 'report', originSessionId,
-    });
   }
 
   private async listWorktreesJson(metaSessionId: string, workspaceId: string): Promise<string> {

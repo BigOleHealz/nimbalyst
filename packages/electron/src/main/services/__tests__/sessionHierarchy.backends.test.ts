@@ -90,7 +90,7 @@ it.each(['pglite', 'sqlite'] as const)('%s executes recursive fetch/count/archiv
     expect(intent).toMatchObject({ parentSessionId: null, createdBySessionId: null });
     expect(await store.acknowledgeHierarchyIntent!('leaf', intent.revision, null, null)).toBe(true);
     const remote = await store.applyRemoteHierarchySnapshot!([{ sessionId: 'leaf', parentSessionId: 'root' }], () => true);
-    expect(remote[0]).toMatchObject({ accepted: true, parentSessionId: 'root', createdBySessionId: 'root' });
+    expect(remote[0]).toMatchObject({ accepted: true, parentSessionId: 'root', createdBySessionId: null });
     expect((await store.listPendingHierarchyIntents!()).some(row => row.sessionId === 'leaf')).toBe(false);
     // Handoff chains nest one level per spawn and must not stop at a small fixed depth.
     let previous: string | null = null;
@@ -100,6 +100,32 @@ it.each(['pglite', 'sqlite'] as const)('%s executes recursive fetch/count/archiv
     }
     expect(await findSessionTreeRoot(db, 'chain-20', '/p')).toBe('chain-0');
     expect(Number((await readSessionSubtree(db, 'chain-0', '/p')).find(row => row.id === 'chain-20')?.depth)).toBe(20);
+  } finally { await close(); }
+});
+
+// A manager receives its children's completion reports and is woken by them,
+// so tree placement must never create one (#1858). A move keeps the manager
+// only while the manager is still an ancestor, and otherwise clears it.
+it.each(['pglite', 'sqlite'] as const)('%s moves never assign a manager and clear one the session left', async backend => {
+  const { db, close } = await openBackend(backend);
+  try {
+    const store = createPGLiteSessionStore(db);
+    for (const id of ['peerA', 'peerB', 'spawner']) await store.create({ id, provider: 'claude-code', workspaceId: '/p' });
+    for (const id of ['worker', 'sibling', 'remoteWorker']) await store.create({ id, provider: 'claude-code', workspaceId: '/p', parentSessionId: 'spawner', createdBySessionId: 'spawner' });
+    const manager = async (id: string) => (await store.get(id))?.createdBySessionId ?? null;
+
+    await store.updateMetadata('peerB', { parentSessionId: 'peerA' });
+    expect(await manager('peerB')).toBeNull();
+    await store.updateMetadata('worker', { parentSessionId: 'sibling' });
+    expect(await manager('worker')).toBe('spawner');
+    await store.updateMetadata('worker', { parentSessionId: 'peerA' });
+    expect(await manager('worker')).toBeNull();
+
+    const remote = await store.applyRemoteHierarchySnapshot!([
+      { sessionId: 'remoteWorker', parentSessionId: 'peerA' },
+      { sessionId: 'peerB', parentSessionId: 'spawner' },
+    ], () => true);
+    expect(remote.map(row => [row.sessionId, row.createdBySessionId])).toEqual([['remoteWorker', null], ['peerB', null]]);
   } finally { await close(); }
 });
 

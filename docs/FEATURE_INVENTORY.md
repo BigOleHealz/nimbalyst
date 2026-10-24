@@ -93,7 +93,7 @@ Twelve built-in provider lanes, plus any agent an extension contributes. Every l
 - Read/unread indicators, with mark-all-read actions for a workstream and the macOS menu bar sessions panel
 - Auto-continue sessions after app restart
 - AI auto-naming of sessions after first turn
-- Drag-and-drop session reparenting and searchable move actions, with manager reassignment and Undo
+- Drag-and-drop session reparenting and searchable move actions, with Undo; moves are organizational only and never make a session another session's manager or message either session
 - Session launch history links orchestrating sessions to the sessions they created
 
 ## Workstreams

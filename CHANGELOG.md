@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 <!-- Bug fixes go here -->
 - Codex sessions no longer show duplicate commit cards, and automatic commits show success only after the result arrives.
+- Moving a session under another session in the sidebar no longer makes that session its manager, so the moved session's reports no longer wake it, and neither session is sent a message about the move.
 - When Nimbalyst runs under WSL, an image copied in Windows, such as a screenshot, can now be pasted into the agent chat input and into documents.
 - Wiki start and team skills load their descriptions correctly, and malformed skill metadata produces concise warnings instead of stack traces.
 - Development builds no longer stop responding when React inspects props containing sandboxed HTML embed windows.
