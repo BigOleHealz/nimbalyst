@@ -313,6 +313,7 @@ Companion app; pairs with a desktop over encrypted sync. Voice mode is not inclu
 - Real-time document editing (Lexical + yJS through Cloudflare Workers)
 - Encrypted tracker item sync (server-managed, encrypted at rest per team)
 - Server-managed per-team encryption keys: KMS-wrapped split-knowledge DEK, admin key-recovery, append-only audit log
+- Self-service legacy organization recovery in place: encrypted portable source bundles, preserved ticket identities and attachments, resumable write pauses, independent-client readback, and protection against replaying pre-recovery tracker edits. Requires the updated sync server, and every client that edits recovered items (desktop and web console) must be updated
 - Stytch B2B org management
 - Team invite / join / role management, including shareable invite links (admins create them with a role, project access, expiry and an optional use limit from Members in the web console or through an agent, see who used them, and revoke them; a person who opens one signs in on the web and joins). Requires the updated sync server
 - Personal org + team org separation

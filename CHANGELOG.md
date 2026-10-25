@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 <!-- New features go here -->
+- Organization owners and admins can recover a team organization that still uses the retired team encryption in place from Settings > Security & Encryption, keeping its projects, ticket numbers and attachments instead of creating a new organization. Requires the updated sync server.
 
 ### Changed
 <!-- Changes to existing functionality go here -->
