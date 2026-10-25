@@ -84,6 +84,21 @@ describe('FileTree All Files Mode', () => {
         expect(seen.filter((entry) => entry.truncated)).toHaveLength(1);
     });
 
+    it('applies the per-directory cap to the sorted list, not to raw readdir order', async () => {
+        const names = Array.from({ length: 250 }, (_, i) => `a-${String(i + 1).padStart(3, '0')}.md`);
+        // Create in reverse so the first entries returned by readdir are the ones that sort last.
+        for (const name of [...names].reverse()) fs.writeFileSync(path.join(tempDir, name), '');
+        fs.writeFileSync(path.join(tempDir, 'zz-last.md'), '');
+        fs.mkdirSync(path.join(tempDir, 'zz-dir'));
+
+        const result = await getFolderContents(tempDir);
+
+        expect(result).toHaveLength(200);
+        // Directories sort first, so the late-named folder survives the cap.
+        expect(result[0].name).toBe('zz-dir');
+        expect(result.slice(1).map(item => item.name)).toEqual(names.slice(0, 199));
+    });
+
     it('should return empty folders', async () => {
         fs.mkdirSync(path.join(tempDir, 'emptyFolder1'));
         fs.mkdirSync(path.join(tempDir, 'emptyFolder2'));

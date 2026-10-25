@@ -35,7 +35,8 @@ const naturalCollator = new Intl.Collator(undefined, {
 // MAX_DEPTH: deepest we'll recurse from workspace root. Prevents infinite loops
 //   in circular symlinks and limits scan cost on deeply nested trees.
 // MAX_ITEMS_PER_DIR: max immediate children shown in a single directory.
-//   If a directory has more than this many entries, only the first N are shown.
+//   If a directory has more than this many entries, only the first N after
+//   sorting are shown, so the cut never depends on raw readdir order.
 //   This handles flat-huge directories (e.g., a folder with 50,000 images).
 const MAX_DEPTH = 8;
 const MAX_ITEMS_PER_DIR = 200;
@@ -127,7 +128,6 @@ export async function listFolderFilesRecursive(
 
 export async function getFolderContents(dirPath: string, depth: number = 0, signal?: AbortSignal): Promise<FileTreeItem[]> {
     const result: FileTreeItem[] = [];
-    const directoriesToPopulate: FileTreeItem[] = [];
 
     if (signal?.aborted || depth > MAX_DEPTH) {
         return result;
@@ -135,12 +135,10 @@ export async function getFolderContents(dirPath: string, depth: number = 0, sign
 
     try {
         const entries = await readdir(dirPath, { withFileTypes: true });
-        let visibleCount = 0;
 
         for (const entry of entries) {
             if (signal?.aborted) return [];
             if (entry.name === '.DS_Store') continue;
-            if (visibleCount >= MAX_ITEMS_PER_DIR) break;
 
             const fullPath = join(dirPath, entry.name);
 
@@ -156,16 +154,16 @@ export async function getFolderContents(dirPath: string, depth: number = 0, sign
                     path: fullPath,
                     children: []
                 };
-                directoriesToPopulate.push(dirItem);
                 result.push(dirItem);
-                visibleCount++;
             } else if (isFile) {
                 result.push({ name: entry.name, type: 'file', path: fullPath });
-                visibleCount++;
             }
         }
 
+        // Sort before capping so the cut keeps the first N in display order.
         sortItems(result);
+        if (result.length > MAX_ITEMS_PER_DIR) result.length = MAX_ITEMS_PER_DIR;
+        const directoriesToPopulate = result.filter(item => item.type === 'directory');
 
         // Recurse into each child directory.
         // MAX_DEPTH + MAX_ITEMS_PER_DIR bound the total work per branch:
