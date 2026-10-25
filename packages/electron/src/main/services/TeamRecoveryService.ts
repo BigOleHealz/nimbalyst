@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import { dialog, net } from 'electron';
 import { stripLocalOnlyFields } from '@nimbalyst/tracker-engine';
+import type { TeamMemberId } from '@nimbalyst/runtime/auth/jwtScopes';
 import { safeHandle } from '../utils/ipcRegistry';
 import PrivateSettingsStore from '../utils/privateSettingsStore';
 import { getCollabSyncHttpUrl } from '../utils/collabSyncUrl';
@@ -46,7 +47,7 @@ function releaseClients(orgId: string): void {
 // Unique by default, because the OS dialog's "Replace" cannot succeed: recovery never overwrites a file.
 const timestamp = () => new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
 
-function createClient(orgId: string, memberId: string): TeamRecoveryClient {
+function createClient(orgId: string, memberId: TeamMemberId): TeamRecoveryClient {
   const api = async (path: string, body?: Record<string, unknown>) => {
     if (!isAuthenticated()) throw new Error('Sign in before continuing organization recovery');
     const identity = await getOrgScopedIdentity(orgId);
