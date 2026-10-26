@@ -741,7 +741,10 @@ export class ClaudeCodeRawParser implements IRawMessageParser {
       ? bareName === 'PromptForUserInput' || bareName === 'RequestUserInput'
       : bareName === 'AskUserQuestion';
     if (!matchesTool) return [];
-    if (payload.result !== undefined && payload.result !== null && payload.result !== '') return [];
+    // A backgrounded (#1341) acknowledgement is not a result: the projector
+    // blanks it and the card stays answerable, so the answer still closes it.
+    const hasResult = payload.result !== undefined && payload.result !== null && payload.result !== '';
+    if (hasResult && !isBackgroundedToolAck(payload.result)) return [];
 
     const cancelled = parsed.cancelled === true;
     const answers = parsed.answers && typeof parsed.answers === 'object' ? parsed.answers : {};
@@ -752,6 +755,7 @@ export class ClaudeCodeRawParser implements IRawMessageParser {
       result: JSON.stringify({
         answers: cancelled ? {} : answers,
         cancelled,
+        ...(typeof parsed.reason === 'string' ? { reason: parsed.reason } : {}),
         ...(typeof parsed.respondedBy === 'string' ? { respondedBy: parsed.respondedBy } : {}),
         ...(typeof parsed.respondedAt === 'number' ? { respondedAt: parsed.respondedAt } : {}),
       }),

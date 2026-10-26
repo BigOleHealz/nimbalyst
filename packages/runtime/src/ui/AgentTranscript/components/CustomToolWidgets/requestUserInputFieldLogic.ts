@@ -194,15 +194,29 @@ export interface ParsedRequestUserInputResult {
   answers: Record<string, RequestUserInputAnswer>;
 }
 
+/** The permission layer's refusal of the tool call itself. */
+const PERMISSION_DENIAL = /doesn['\u2019]t want to take this action/i;
+
+function resultTexts(value: unknown): string[] {
+  if (typeof value === 'string') return [value];
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item) => item && typeof item === 'object' && typeof (item as any).text === 'string')
+    .map((item) => (item as any).text as string);
+}
+
 /**
- * Any result closes the form, as `partitionUnansweredQuestions` already counts
- * it: one with no answers in it (a permission denial, an error string) is a
- * declined form, not an open one. A backgrounded-call acknowledgement never
- * reaches here; the parser and projector blank it.
+ * A permission denial closes the form as declined. Any other text without
+ * answers is not a decision and leaves the form answerable: an interrupt
+ * (#1116), an MCP timeout, a backgrounded or released call (#1341).
  */
 export function parseRequestUserInputResult(result: unknown): ParsedRequestUserInputResult | null {
   if (result === undefined || result === null || result === '') return null;
-  return parseFromUnknown(result) ?? { cancelled: true, reason: 'declined', answers: {} };
+  const parsed = parseFromUnknown(result);
+  if (parsed) return parsed;
+  return resultTexts(result).some((text) => PERMISSION_DENIAL.test(text))
+    ? { cancelled: true, reason: 'declined', answers: {} }
+    : null;
 }
 
 function parseFromUnknown(value: unknown): ParsedRequestUserInputResult | null {

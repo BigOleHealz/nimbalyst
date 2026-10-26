@@ -1063,6 +1063,22 @@ describe('ClaudeCodeRawParser', () => {
         expect(await parser.parseMessage(formResponse(1, 'toolu_done'), context)).toEqual([]);
       });
 
+      it('closes a card whose stored result is a backgrounded acknowledgement, keeping the reason', async () => {
+        // #1341: the projector blanks this ack, so the card renders open; the
+        // answer must still close it rather than lose to the ack.
+        const parser = new ClaudeCodeRawParser();
+        const ack = 'MCP tool "nimbalyst - PromptForUserInput (MCP)" is still running after 120s. It was moved to the background as task t1 and keeps running.';
+        const context = makeContext({
+          findByProviderToolCallId: async () =>
+            ({ id: 7, payload: { toolName: 'mcp__nimbalyst__PromptForUserInput', status: 'completed', result: ack } } as any),
+        });
+
+        const [completed] = await parser.parseMessage(formResponse(1, 'toolu_bg', { answers: {}, cancelled: true, reason: 'superseded' }), context);
+
+        expect(completed).toMatchObject({ type: 'tool_call_completed', providerToolCallId: 'toolu_bg', isError: true });
+        expect(JSON.parse((completed as any).result)).toMatchObject({ cancelled: true, reason: 'superseded' });
+      });
+
       it('never completes a tool call that is not the matching question tool', async () => {
         const view = await projectRawMessagesToViewMessages([
           makeRawMessage({
