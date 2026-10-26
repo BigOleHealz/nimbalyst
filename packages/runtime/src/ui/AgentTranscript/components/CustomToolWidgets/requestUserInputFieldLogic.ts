@@ -186,3 +186,77 @@ export function draftToAnswers(
   }
   return out;
 }
+
+export interface ParsedRequestUserInputResult {
+  cancelled: boolean;
+  /** Why the prompt closed, e.g. `superseded` when the user sent a new message instead. */
+  reason?: string;
+  answers: Record<string, RequestUserInputAnswer>;
+}
+
+/**
+ * Any result closes the form, as `partitionUnansweredQuestions` already counts
+ * it: one with no answers in it (a permission denial, an error string) is a
+ * declined form, not an open one. A backgrounded-call acknowledgement never
+ * reaches here; the parser and projector blank it.
+ */
+export function parseRequestUserInputResult(result: unknown): ParsedRequestUserInputResult | null {
+  if (result === undefined || result === null || result === '') return null;
+  return parseFromUnknown(result) ?? { cancelled: true, reason: 'declined', answers: {} };
+}
+
+function parseFromUnknown(value: unknown): ParsedRequestUserInputResult | null {
+  if (value === undefined || value === null) return null;
+
+  if (typeof value === 'string') {
+    try {
+      return parseFromUnknown(JSON.parse(value));
+    } catch {
+      const lower = value.toLowerCase();
+      if (lower.includes('cancelled') || lower.includes('canceled')) {
+        return { cancelled: true, answers: {} };
+      }
+      return null;
+    }
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (item && typeof item === 'object' && (item as any).type === 'text' && typeof (item as any).text === 'string') {
+        const nested = parseFromUnknown((item as any).text);
+        if (nested) return nested;
+      }
+    }
+    return null;
+  }
+
+  if (typeof value !== 'object') return null;
+
+  const record = value as Record<string, unknown>;
+
+  if (record.cancelled === true || record.canceled === true) {
+    return {
+      cancelled: true,
+      reason: typeof record.reason === 'string' ? record.reason : undefined,
+      answers: typeof record.answers === 'object' && record.answers !== null
+        ? (record.answers as Record<string, RequestUserInputAnswer>)
+        : {},
+    };
+  }
+
+  if (record.answers && typeof record.answers === 'object' && !Array.isArray(record.answers)) {
+    return {
+      cancelled: false,
+      answers: record.answers as Record<string, RequestUserInputAnswer>,
+    };
+  }
+
+  for (const key of ['result', 'content', 'text']) {
+    if (record[key] !== undefined) {
+      const nested = parseFromUnknown(record[key]);
+      if (nested) return nested;
+    }
+  }
+
+  return null;
+}
