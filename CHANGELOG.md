@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 <!-- Bug fixes go here -->
+- Answering an older Claude Code question card now closes that card instead of answering the question the agent is waiting on, and no longer interrupts the running turn.
 
 ### Removed
 <!-- Removed features go here -->

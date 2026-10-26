@@ -16,6 +16,7 @@
  */
 
 import { persistInteractivePromptTerminalResult } from './askUserQuestionFallbackResolution';
+import { hasLiveInteractivePrompt } from '../../mcp/tools/interactivePromptLiveness';
 
 export type ResumeSessionWithAnswer = (args: {
   event: Electron.IpcMainInvokeEvent;
@@ -63,6 +64,13 @@ export async function settleOrphanedRequestUserInput(args: {
   // resumes from a stored provider session.
   if (session.provider === 'claude-code-cli') {
     console.warn(`[SessionHandlers] No live waiter for PromptForUserInput on claude-code-cli; not auto-resuming: ${sessionId}`);
+    return;
+  }
+  // Another prompt is blocking the turn right now (the answer was for an older
+  // card). Resuming would abort that turn, since sendMessage replaces the
+  // running request; the terminal result above already closes this card.
+  if (hasLiveInteractivePrompt(sessionId)) {
+    console.warn(`[SessionHandlers] PromptForUserInput ${promptId} has no live waiter but another prompt is live; not auto-resuming: ${sessionId}`);
     return;
   }
   if (!resumeSession) {
