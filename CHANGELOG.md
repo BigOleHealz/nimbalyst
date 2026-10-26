@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 <!-- Bug fixes go here -->
+- Opening the same file again from outside the app (Finder, a terminal link, `open`) now shows it, instead of doing nothing until a different file was opened
 - Typing a short query in the find bar on a long markdown page no longer stalls the editor while match highlights are drawn; highlights are now drawn for up to 1000 matches around the current one.
 
 ### Removed
