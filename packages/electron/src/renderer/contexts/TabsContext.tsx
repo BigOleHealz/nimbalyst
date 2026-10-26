@@ -710,12 +710,23 @@ export function TabsProvider({
           const store = slotState.store;
           const restoredTabs = new Map<string, TabData>();
           const restoredOrder: string[] = [];
-          const livePaths = new Set([...store.tabs.values()].map(tab => tab.filePath));
+          const liveByPath = new Map<string, TabData>();
+          for (const id of store.tabOrder) {
+            const tab = store.tabs.get(id);
+            if (tab) liveByPath.set(tab.filePath, tab);
+          }
+          const placedLive = new Set<string>();
 
           for (const tabData of savedState.tabs) {
             // Explicit opens during hydration own their current content and
-            // selection. Restore the other tabs without replacing live state.
-            if (livePaths.has(tabData.filePath)) continue;
+            // selection, but take the saved tab's slot and pin.
+            const live = liveByPath.get(tabData.filePath);
+            if (live) {
+              restoredTabs.set(live.id, tabData.isPinned && !live.isPinned ? { ...live, isPinned: true } : live);
+              restoredOrder.push(live.id);
+              placedLive.add(live.id);
+              continue;
+            }
             restoredTabs.set(tabData.id, {
               ...tabData,
               content: '',
@@ -726,12 +737,10 @@ export function TabsProvider({
             restoredOrder.push(tabData.id);
           }
 
-          for (const id of store.tabOrder) {
-            const tab = store.tabs.get(id);
-            if (tab) {
-              restoredTabs.set(id, tab);
-              restoredOrder.push(id);
-            }
+          for (const tab of liveByPath.values()) {
+            if (placedLive.has(tab.id)) continue;
+            restoredTabs.set(tab.id, tab);
+            restoredOrder.push(tab.id);
           }
           store.tabs = restoredTabs;
           store.tabOrder = restoredOrder;
@@ -749,7 +758,7 @@ export function TabsProvider({
           // Start watching restored filesystem-backed tabs only.
           if (window.electronAPI) {
             for (const tab of restoredTabs.values()) {
-              if (!livePaths.has(tab.filePath) && !isNonFilesystemTab(tab.filePath)) {
+              if (!liveByPath.has(tab.filePath) && !isNonFilesystemTab(tab.filePath)) {
                 window.electronAPI.invoke('start-watching-file', tab.filePath).catch(() => {});
               }
             }

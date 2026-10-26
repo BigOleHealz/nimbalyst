@@ -134,6 +134,29 @@ describe('file opens during tab initialization', () => {
     expect(pending).toEqual([]);
   });
 
+  it('keeps draining when an acknowledgement fails', async () => {
+    const pending = [
+      { requestId: 10, path: '/ws/first.md', workspacePath: '/ws' },
+      { requestId: 11, path: '/ws/second.md', workspacePath: '/ws' },
+    ];
+    const transport = mockTransport(pending);
+    const invoke = transport.invoke.getMockImplementation()!;
+    transport.invoke.mockImplementation(async (channel, workspacePath, id) => {
+      if (channel === 'file:acknowledge-open' && id === 10) throw new Error('ack failed');
+      return invoke(channel, workspacePath, id);
+    });
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      disposeListener = initFileOpenListeners();
+      const view = render(<Editor />);
+      await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+      expect(view.getByTestId('files').textContent).toBe('/ws/first.md,/ws/second.md|active:/ws/second.md');
+      expect(store.get(pendingFileOpensAtom)).toEqual([]);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   it('ignores a restore response from a disposed provider and retries hydration on remount', async () => {
     const restore = deferred<any>();
     const transport = mockTransport([], restore.promise);
@@ -210,6 +233,25 @@ describe('file opens during tab initialization', () => {
     expect(result.current.activeTab?.filePath).toBe('/ws/new.md');
     expect(result.current.activeTab?.content).toBe('new content');
     expect(vi.mocked(window.electronAPI.invoke).mock.calls.filter(call => call[0] === 'start-watching-file' && call[1] === '/ws/new.md')).toHaveLength(1);
+  });
+
+  it('keeps a saved tab pin and position when the same file is opened during restoration', async () => {
+    const restore = deferred<any>();
+    window.electronAPI = { invoke: vi.fn((channel: string) => channel === 'workspace:get-state' ? restore.promise : Promise.resolve()), send: vi.fn() } as any;
+    const { result } = renderHook(() => useTabs(), {
+      wrapper: ({ children }) => <TabsProvider workspacePath="/ws">{children}</TabsProvider>,
+    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+    act(() => { result.current.addTab('/ws/first.md', 'live content'); });
+    await act(async () => {
+      restore.resolve({ tabs: { tabs: [
+        { id: 'pinned', filePath: '/ws/first.md', fileName: 'first.md', isPinned: true },
+        { id: 'saved', filePath: '/ws/saved.md', fileName: 'saved.md' },
+      ], activeTabId: 'saved' } });
+    });
+    expect(result.current.tabs.map(tab => [tab.filePath, Boolean(tab.isPinned)])).toEqual([['/ws/first.md', true], ['/ws/saved.md', false]]);
+    expect(result.current.activeTab?.filePath).toBe('/ws/first.md');
+    expect(result.current.activeTab?.content).toBe('live content');
   });
 
   it('does not finish an asynchronous open in a replacement workspace/editor', async () => {

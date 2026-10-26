@@ -19,9 +19,10 @@ export function usePendingFileOpen(workspacePath: string, revealFiles: () => voi
     setLoadedWorkspace(null);
     // Pull only after the listener exists; merging IDs covers a live delivery
     // concurrent with the snapshot. Wait for this pull to preserve FIFO order.
-    refreshPendingFileOpens(workspacePath, () => !cancelled).then(() => {
-      if (!cancelled) setLoadedWorkspace(workspacePath);
-    }).catch(error => console.error('[FileOpen] Failed to recover pending opens:', error));
+    refreshPendingFileOpens(workspacePath, () => !cancelled)
+      .catch(error => console.error('[FileOpen] Failed to recover pending opens:', error))
+      // A failed pull still has to unblock live opens for this workspace.
+      .then(() => { if (!cancelled) setLoadedWorkspace(workspacePath); });
     return () => { cancelled = true; };
   }, [workspacePath]);
 
@@ -31,20 +32,25 @@ export function usePendingFileOpen(workspacePath: string, revealFiles: () => voi
     const actions = current.current.tabs;
     const snapshot = actions.getSnapshot();
     void (async () => {
-      const opened = await handleWorkspaceFileSelect({
-        filePath: request.path,
-        currentFilePath: null,
-        tabs: { ...actions, tabs: snapshot.tabOrder.map(id => snapshot.tabs.get(id)) },
-        isInitializedRef: { current: false },
-        // An async disk read must not add to a different workspace's mutable
-        // tabs slot after a rail switch or editor unmount.
-        isCurrent: () => !cancelled && current.current.workspacePath === workspacePath,
-      });
+      let opened = false;
+      try {
+        opened = await handleWorkspaceFileSelect({
+          filePath: request.path,
+          currentFilePath: null,
+          tabs: { ...actions, tabs: snapshot.tabOrder.map(id => snapshot.tabs.get(id)) },
+          isInitializedRef: { current: false },
+          // An async disk read must not add to a different workspace's mutable
+          // tabs slot after a rail switch or editor unmount.
+          isCurrent: () => !cancelled && current.current.workspacePath === workspacePath,
+        });
+      } catch (error) {
+        console.error('[FileOpen] Failed to open pending file:', error);
+      }
       if (cancelled || current.current.workspacePath !== workspacePath) return;
       if (opened) current.current.revealFiles();
       // A reported failure is terminal too; it must not block later requests.
       await acknowledgePendingFileOpen(request, workspacePath);
-    })().catch(error => console.error('[FileOpen] Failed to open pending file:', error));
+    })().catch(error => console.error('[FileOpen] Failed to acknowledge pending file open:', error));
     return () => { cancelled = true; };
   }, [hydrated, loadedWorkspace, workspacePath, request]);
 }

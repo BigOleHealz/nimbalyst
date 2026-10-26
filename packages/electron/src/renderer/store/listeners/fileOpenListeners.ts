@@ -27,10 +27,12 @@ export async function refreshPendingFileOpens(workspacePath: string, isCurrent: 
 }
 
 export async function acknowledgePendingFileOpen(request: PendingFileOpen, workspacePath: string): Promise<void> {
+  // Drop locally first: the editor drains the head of this list, so a failed
+  // ack must not stall every later open behind it. Main replays it on remount.
+  store.set(pendingFileOpensAtom, requests => requests.filter(candidate => candidate.requestId !== request.requestId));
   if (request.requestId > 0) {
     await window.electronAPI.invoke('file:acknowledge-open', workspacePath, request.requestId);
   }
-  store.set(pendingFileOpensAtom, requests => requests.filter(candidate => candidate.requestId !== request.requestId));
 }
 
 /** One subscription; pending state survives App/StrictMode cleanup and remount. */
