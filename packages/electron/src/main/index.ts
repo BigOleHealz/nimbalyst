@@ -1358,11 +1358,7 @@ async function openFileWithWorkspaceDetection(filePath: string): Promise<void> {
             updateTrackerSchemaWorkspace(workspacePath);
             // createWindow reveals the window itself — inactive while this runs
             // during launch, activating for a file opened later.
-            workspaceWindow.once('ready-to-show', async () => {
-                // Window state is already set by createWindow with workspace path
-                // Just load the file
-                await loadFileIntoWindow(workspaceWindow!, filePath);
-            });
+            loadFileIntoWindow(workspaceWindow, filePath);
         }
     } else {
         // File is not in a known workspace - open it in the frontmost workspace window as an external file
@@ -1382,9 +1378,7 @@ async function openFileWithWorkspaceDetection(filePath: string): Promise<void> {
                     startupFrontmost: true,
                 });
                 updateTrackerSchemaWorkspace(suggestedWorkspace);
-                newWindow.once('ready-to-show', async () => {
-                    await loadFileIntoWindow(newWindow, filePath);
-                });
+                loadFileIntoWindow(newWindow, filePath);
             } else {
                 // No project root detected - use the file's directory as workspace
                 const fileDir = path.dirname(filePath);
@@ -1395,9 +1389,7 @@ async function openFileWithWorkspaceDetection(filePath: string): Promise<void> {
                     startupFrontmost: true,
                 });
                 updateTrackerSchemaWorkspace(fileDir);
-                newWindow.once('ready-to-show', async () => {
-                    await loadFileIntoWindow(newWindow, filePath);
-                });
+                loadFileIntoWindow(newWindow, filePath);
             }
         }
     }

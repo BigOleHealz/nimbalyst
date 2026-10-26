@@ -1,8 +1,32 @@
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, type WebContents } from 'electron';
 import { basename } from 'path';
 import { writeFileAtomicSync } from './safeFileWrite';
 import { windowStates, getWindowId, findWindowByFilePath } from '../window/WindowManager';
 import { addToRecentItems } from '../utils/store';
+
+export interface PendingFileOpen {
+    requestId: number;
+    path: string;
+    workspacePath?: string;
+}
+
+// First paint is not editor readiness (#1864). Retain requests across renderer
+// startup/reload until the receiving editor selects the tab or reports failure.
+const pendingFileOpens = new WeakMap<WebContents, PendingFileOpen[]>();
+let nextFileOpenId = 0;
+
+export function getPendingFileOpens(sender: WebContents, workspacePath: string): PendingFileOpen[] {
+    if (!workspacePath) throw new Error('Pending file opens require workspacePath');
+    return (pendingFileOpens.get(sender) ?? []).filter(request => !request.workspacePath || request.workspacePath === workspacePath);
+}
+
+export function acknowledgeFileOpen(sender: WebContents, workspacePath: string, requestId: number): void {
+    if (!workspacePath || !Number.isSafeInteger(requestId)) throw new Error('File open acknowledgement requires workspacePath and requestId');
+    const requests = pendingFileOpens.get(sender);
+    if (!requests) return;
+    const index = requests.findIndex(request => request.requestId === requestId && (!request.workspacePath || request.workspacePath === workspacePath));
+    if (index !== -1) requests.splice(index, 1);
+}
 
 // Function to open a file in a window - sends open-document event to renderer
 // which triggers handleWorkspaceFileSelect to load content and create tab
@@ -22,8 +46,21 @@ export function loadFileIntoWindow(window: BrowserWindow, filePath: string) {
             console.error('[LOAD_FILE] No window state found for window ID:', windowId);
         }
 
-        // Send open-document event - renderer handles content loading via switchWorkspaceFile
-        window.webContents.send('open-document', { path: filePath });
+        let requests = pendingFileOpens.get(window.webContents);
+        if (!requests) {
+            requests = [];
+            pendingFileOpens.set(window.webContents, requests);
+            window.webContents.once('destroyed', () => pendingFileOpens.delete(window.webContents));
+        }
+        const request: PendingFileOpen = {
+            requestId: ++nextFileOpenId,
+            path: filePath,
+            workspacePath: state?.activeWorkspacePath ?? state?.workspacePath ?? undefined,
+        };
+        requests.push(request);
+        // This is a notification, not proof of delivery. A newly mounted
+        // renderer also pulls the queue, closing the subscribe/startup race.
+        window.webContents.send('open-document', request);
 
         // Set represented filename for macOS
         if (process.platform === 'darwin') {

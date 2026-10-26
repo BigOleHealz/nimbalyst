@@ -156,6 +156,7 @@ interface TabsContextValue {
   // Subscribe to store changes (for useSyncExternalStore)
   subscribe: (callback: () => void) => () => void;
   getSnapshot: () => TabsStore;
+  getIsHydrated: () => boolean;
 
   // Actions (don't trigger re-renders in caller)
   addTab: (
@@ -214,6 +215,7 @@ interface TabsStateSlot {
   snapshot: TabsStore;
   listeners: Set<() => void>;
   tabIdCounter: number;
+  restoreSettled: boolean;
   hasRestored: boolean;
   lastSavedState: string;
   reopening: boolean;
@@ -231,6 +233,7 @@ function createEmptySlot(): TabsStateSlot {
     snapshot: empty,
     listeners: new Set(),
     tabIdCounter: 0,
+    restoreSettled: false,
     hasRestored: false,
     lastSavedState: '',
     reopening: false,
@@ -341,6 +344,7 @@ export function TabsProvider({
   // Identity changes with `slot` so useSyncExternalStore detects the
   // workspace switch and re-renders consumers against the new slot.
   const getSnapshot = useCallback(() => slot.snapshot, [slot]);
+  const getIsHydrated = useCallback(() => disablePersistence || !workspacePath || slot.restoreSettled, [slot, disablePersistence, workspacePath]);
 
   // Generate unique tab ID
   const generateTabId = useCallback((): string => {
@@ -695,19 +699,23 @@ export function TabsProvider({
     // a workspace whose TabsProvider was previously unmounted.
     if (slotState.hasRestored) return;
 
+    let cancelled = false;
     const timer = setTimeout(async () => {
       try {
         const workspaceState = await window.electronAPI!.invoke('workspace:get-state', workspacePath);
+        if (cancelled) return;
         const savedState = workspaceState?.tabs;
 
         if (savedState?.tabs?.length > 0) {
-          slotState.hasRestored = true;
-
           const store = slotState.store;
           const restoredTabs = new Map<string, TabData>();
           const restoredOrder: string[] = [];
+          const livePaths = new Set([...store.tabs.values()].map(tab => tab.filePath));
 
           for (const tabData of savedState.tabs) {
+            // Explicit opens during hydration own their current content and
+            // selection. Restore the other tabs without replacing live state.
+            if (livePaths.has(tabData.filePath)) continue;
             restoredTabs.set(tabData.id, {
               ...tabData,
               content: '',
@@ -718,10 +726,17 @@ export function TabsProvider({
             restoredOrder.push(tabData.id);
           }
 
+          for (const id of store.tabOrder) {
+            const tab = store.tabs.get(id);
+            if (tab) {
+              restoredTabs.set(id, tab);
+              restoredOrder.push(id);
+            }
+          }
           store.tabs = restoredTabs;
           store.tabOrder = restoredOrder;
 
-          if (savedState.closedTabs?.length > 0) {
+          if (savedState.closedTabs?.length > 0 && store.closedTabs.length === 0) {
             store.closedTabs = savedState.closedTabs.map((tabData: any) => ({
               ...tabData,
               content: '',
@@ -734,24 +749,33 @@ export function TabsProvider({
           // Start watching restored filesystem-backed tabs only.
           if (window.electronAPI) {
             for (const tab of restoredTabs.values()) {
-              if (!isNonFilesystemTab(tab.filePath)) {
+              if (!livePaths.has(tab.filePath) && !isNonFilesystemTab(tab.filePath)) {
                 window.electronAPI.invoke('start-watching-file', tab.filePath).catch(() => {});
               }
             }
           }
 
-          if (savedState.activeTabId && restoredTabs.has(savedState.activeTabId)) {
+          if (!store.activeTabId && savedState.activeTabId && restoredTabs.has(savedState.activeTabId)) {
             store.activeTabId = savedState.activeTabId;
           }
-
-          notify();
         }
+        // Empty workspaces are hydrated too. Pending OS opens must not rely on
+        // there being saved tabs, nor run before restoration has settled.
+        slotState.hasRestored = true;
+        slotState.restoreSettled = true;
+        notify();
       } catch (error) {
+        if (cancelled) return;
         console.error('[TABS] Failed to restore tab state:', error);
+        // Explicit file opens can proceed after a failed read, but keep
+        // hasRestored false so we cannot overwrite unknown persisted tabs.
+        // A later provider remount retries restoration and merges live tabs.
+        slotState.restoreSettled = true;
+        notify();
       }
     }, 500);
 
-    return () => clearTimeout(timer);
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [disablePersistence, workspacePath, notify]);
 
   // Save tabs to storage when they change
@@ -762,7 +786,7 @@ export function TabsProvider({
       const slotState = slotRef.current;
       const store = slotState.store;
 
-      if (!slotState.hasRestored && store.tabs.size === 0) return;
+      if (!slotState.hasRestored) return;
 
       const tabsArray = store.tabOrder
         .map(id => store.tabs.get(id))
@@ -830,6 +854,7 @@ export function TabsProvider({
   const contextValue: TabsContextValue = {
     subscribe,
     getSnapshot,
+    getIsHydrated,
     addTab,
     removeTab,
     switchTab,
@@ -852,6 +877,12 @@ export function TabsProvider({
       {children}
     </TabsContext.Provider>
   );
+}
+
+export function useTabsHydrated(): boolean {
+  const context = useContext(TabsContext);
+  if (!context) throw new Error('useTabsHydrated must be used within a TabsProvider');
+  return useSyncExternalStore(context.subscribe, context.getIsHydrated);
 }
 
 // Hook to get tabs data (subscribes to changes)
