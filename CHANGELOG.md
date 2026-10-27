@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 <!-- Bug fixes go here -->
+- In a folder with more than 200 entries, the file tree now shows the first 200 in sorted order (folders first), instead of whichever 200 the disk listed first
 - Opening a file from Finder or the terminal that starts a new project window now shows the file, instead of an empty window
 - Opening the same file again from outside the app (Finder, a terminal link, `open`) now shows it, instead of doing nothing until a different file was opened
 - Typing a short query in the find bar on a long markdown page no longer stalls the editor while match highlights are drawn; highlights are now drawn for up to 1000 matches around the current one.
