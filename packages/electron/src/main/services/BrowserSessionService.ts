@@ -462,6 +462,16 @@ export class BrowserSessionService extends EventEmitter {
     }
 
     try {
+      // Release the CDP client cdpInput() attached before the renderer goes away.
+      const dbg = entry.view.webContents.debugger;
+      if (dbg.isAttached()) dbg.detach();
+    } catch (err) {
+      logger.main.debug(
+        `[BrowserSessionService] debugger.detach threw for ${sessionId}: ${(err as Error)?.message}`,
+      );
+    }
+
+    try {
       // close() on the view's webContents tears down the renderer process.
       entry.view.webContents.close();
     } catch (err) {
