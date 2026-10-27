@@ -168,6 +168,21 @@ describe('raceNextChunkWithStallWatchdog across system sleep', () => {
     expect((await race).kind).toBe('stalled');
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it('a backward wall-clock jump does not extend the stall window', async () => {
+    let settled = false;
+    const race = raceNextChunkWithStallWatchdog<string>({
+      nextPromise: forever<IteratorResult<string>>(),
+      interruptPromise: forever<'interrupted'>(),
+      watchdogActive: true,
+      stallMs: DEFAULT_STREAM_STALL_MS,
+    }).finally(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(DEFAULT_STREAM_STALL_MS / 2);
+    vi.setSystemTime(Date.now() - 60 * 60_000);
+    await vi.advanceTimersByTimeAsync(DEFAULT_STREAM_STALL_MS / 2 + 15_000);
+    expect(settled).toBe(true);
+    expect((await race).kind).toBe('stalled');
+  });
 });
 
 describe('shouldArmStreamStallWatchdog', () => {

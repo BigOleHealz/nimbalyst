@@ -124,7 +124,9 @@ export async function raceNextChunkWithStallWatchdog<T>(params: {
           const now = Date.now();
           const gap = now - last;
           last = now;
-          if (gap <= STALL_MAX_TICK_GAP_MS) awakeMs += gap;
+          // A negative gap is the wall clock being set back; skip it rather than
+          // let it subtract from the awake silence already counted.
+          if (gap >= 0 && gap <= STALL_MAX_TICK_GAP_MS) awakeMs += gap;
           if (awakeMs >= stallMs) {
             resolve({ kind: 'stalled' });
             return;
