@@ -14,6 +14,8 @@ import {
 } from "../askUserQuestionFallbackResolution";
 import { deliverCodexQuestionAnswer } from "../codexQuestionDelivery";
 import { hasPersistedTerminalResult } from "../questionTerminalResultLookup";
+import { sessionFallbackMayCarryAnswer } from "../../../mcp/tools/interactivePromptFallback";
+import { hasLiveInteractivePrompt } from "../../../mcp/tools/interactivePromptLiveness";
 import type { AIServiceContext } from "./AIServiceContext";
 
 export function registerAskUserQuestionAnswerHandler(
@@ -122,8 +124,12 @@ export function registerAskUserQuestionAnswerHandler(
         });
       }
 
+      // A Claude Code card with no waiter on its own channel has no live
+      // waiter; a fallback listener would be a different question.
       const sessionFallbackChannel = `ask-user-question:${resolvedSessionId}`;
       const hasSessionFallbackWaiter =
+        !hasMcpWaiter &&
+        sessionFallbackMayCarryAnswer(session.provider, questionId) &&
         ipcMain.listenerCount(sessionFallbackChannel) > 0;
       if (hasSessionFallbackWaiter) {
         logger.main.info(
@@ -215,6 +221,16 @@ export function registerAskUserQuestionAnswerHandler(
         if (session.provider === "claude-code-cli") {
           logger.main.info(
             `[AIService] No live handler for AskUserQuestion on ${session.provider}; leaving the answer for the MCP handler rather than auto-resuming: ${resolvedSessionId}`
+          );
+          return { success: true };
+        }
+
+        // Another prompt is blocking the turn right now; resuming would abort
+        // it (sendMessage replaces the running request). The answer is already
+        // this card's terminal result above.
+        if (hasLiveInteractivePrompt(resolvedSessionId)) {
+          logger.main.info(
+            `[AIService] AskUserQuestion ${questionId} has no live handler but another prompt is live; not auto-resuming: ${resolvedSessionId}`
           );
           return { success: true };
         }
