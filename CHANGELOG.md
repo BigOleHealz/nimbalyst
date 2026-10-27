@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Markdown files inside a Claude plugin's `node_modules` folder are no longer listed as plugin commands, so exporting skills to Codex no longer writes a folder for each dependency README into the project (#1786)
 - Extension backend tools that could not start because the project was not yet trusted now start once you trust it, instead of staying unavailable until the project is reopened (#1767)
 - Agent browser tools can now type and click in headless browser sessions and in browser tabs that are not in the foreground, instead of the input being dropped (#1726)
+- In-app agents can now read and edit the body of a team-shared typed page; the `collab://tracker-content/<id>` address the tools suggested was rejected as invalid, and reads could return an older copy of the body (#1879)
 
 ### Removed
 <!-- Removed features go here -->
