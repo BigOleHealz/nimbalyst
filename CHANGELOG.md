@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A transcript image opened in the image viewer no longer sometimes gets stuck at full size with Fit and zoom doing nothing
 - Sending a message now while a commit proposal waits for approval closes the proposal and sends the message, instead of holding it until the proposal is answered
 - Answering or cancelling an older Claude Code question card now closes that card instead of reaching the question the agent is waiting on, and no longer interrupts the running turn (the answer reaches the agent when that turn ends); a form whose tool call was denied no longer stays open.
+- Codex sessions now work when Codex is configured to use Amazon Bedrock (`model_provider = "amazon-bedrock"` in `~/.codex/config.toml`), instead of failing with "model does not exist" (#1371)
 
 ### Removed
 <!-- Removed features go here -->

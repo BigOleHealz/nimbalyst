@@ -1893,6 +1893,14 @@ describe('OpenAICodexProvider', () => {
     expect(bedrockArgs.model).toBe('openai.gpt-5.6-luna');
   });
 
+  it('only treats a top-level model_provider as selecting Bedrock', () => {
+    const select = OpenAICodexProvider.codexConfigSelectsBedrock;
+    expect(select('model = "gpt-5.6-luna"\nmodel_provider = "amazon-bedrock" # aws\n')).toBe(true);
+    // A Bedrock profile that is defined but not active must not namespace ids.
+    expect(select('model = "gpt-5.6-luna"\n\n[profiles.aws]\nmodel_provider = "amazon-bedrock"\n')).toBe(false);
+    expect(select('model_provider = "openai"\n')).toBe(false);
+  });
+
   it('supports direct handleToolCall execution through the shared tool handler', async () => {
     const provider = new OpenAICodexProvider({ apiKey: 'test-key' });
     provider.registerToolHandler({

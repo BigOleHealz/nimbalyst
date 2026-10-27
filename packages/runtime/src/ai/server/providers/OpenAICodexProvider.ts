@@ -1,5 +1,7 @@
 import { codexSessionConfigurationKey } from '../protocols/codexAppServer/windowsSandbox';
 import path from 'path';
+import fs from 'fs';
+import os from 'os';
 import crypto from 'crypto';
 import OpenAI from 'openai';
 import { BaseAgentProvider } from './BaseAgentProvider';
@@ -1900,7 +1902,7 @@ export class OpenAICodexProvider extends BaseAgentProvider {
     const resolved = parsed ? parsed.model : configured.replace(/^openai-codex:/, '');
     const normalized = resolved.toLowerCase();
     if (normalized === 'openai-codex-cli' || normalized === 'default' || normalized === 'cli') {
-      return 'gpt-6.1-sol';
+      return OpenAICodexProvider.toBedrockModelId('gpt-6.1-sol');
     }
 
     // Pass the model directly to the Codex SDK without pre-validation.
@@ -1970,21 +1972,26 @@ export class OpenAICodexProvider extends BaseAgentProvider {
     }
     let detected = false;
     try {
-      // Lazy require keeps this off the hot path and avoids adding top-level
-      // node builtins to a module that also runs in non-node contexts.
-      const fs = require('fs') as typeof import('fs');
-      const os = require('os') as typeof import('os');
       const codexHome = process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
-      const configPath = path.join(codexHome, 'config.toml');
-      const raw = fs.readFileSync(configPath, 'utf8');
-      // Match a top-level `model_provider = "amazon-bedrock"` assignment,
-      // tolerant of single/double quotes and surrounding whitespace.
-      detected = /^\s*model_provider\s*=\s*["']amazon-bedrock["']\s*$/m.test(raw);
+      const raw = fs.readFileSync(path.join(codexHome, 'config.toml'), 'utf8');
+      detected = OpenAICodexProvider.codexConfigSelectsBedrock(raw);
     } catch {
       detected = false;
     }
     OpenAICodexProvider.bedrockProviderCache = detected;
     return detected;
+  }
+
+  /**
+   * True when the top-level table of a Codex config.toml sets
+   * `model_provider = "amazon-bedrock"`. Only keys before the first `[table]`
+   * header count: the same key inside an inactive `[profiles.*]` table does not
+   * select Bedrock, and namespacing ids there would break a working OpenAI setup.
+   */
+  static codexConfigSelectsBedrock(raw: string): boolean {
+    const firstTable = raw.search(/^\s*\[/m);
+    const topLevel = firstTable === -1 ? raw : raw.slice(0, firstTable);
+    return /^\s*model_provider\s*=\s*["']amazon-bedrock["']\s*(#.*)?$/m.test(topLevel);
   }
 
   private buildCodexPrompt(options: {
