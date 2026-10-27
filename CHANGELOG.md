@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sending a message now while a commit proposal waits for approval closes the proposal and sends the message, instead of holding it until the proposal is answered
 - Answering or cancelling an older Claude Code question card now closes that card instead of reaching the question the agent is waiting on, and no longer interrupts the running turn (the answer reaches the agent when that turn ends); a form whose tool call was denied no longer stays open.
 - Codex sessions now work when Codex is configured to use Amazon Bedrock (`model_provider = "amazon-bedrock"` in `~/.codex/config.toml`), instead of failing with "model does not exist" (#1371)
+- Markdown files inside a Claude plugin's `node_modules` folder are no longer listed as plugin commands, so exporting skills to Codex no longer writes a folder for each dependency README into the project (#1786)
 
 ### Removed
 <!-- Removed features go here -->
