@@ -20,6 +20,7 @@ const h = vi.hoisted(() => {
     handlers: new Map<string, (...args: any[]) => any>(),
     provider: 'claude-code',
     providerInstance: undefined as undefined | { rejectAskUserQuestion: (...a: unknown[]) => void; abort: () => void },
+    queued: new Map<string, { id: string; sessionId: string; prompt: string; documentContext?: unknown }>(),
   };
 });
 
@@ -54,6 +55,12 @@ vi.mock('../../../mcp/tools/codexToolCallResolver', () => ({
 vi.mock('../gitCommitProposalPromptUtils', () => ({ getGitCommitProposalResponseChannel: vi.fn(), resolveGitCommitProposalPromptId: vi.fn() }));
 vi.mock('../codexQuestionDelivery', () => ({ deliverCodexQuestionAnswer: vi.fn(), configureCodexQuestionDelivery: vi.fn() }));
 vi.mock('../../SyncManager', () => ({ getSyncProvider: () => null }));
+vi.mock('../../RepositoryManager', () => ({
+  getQueuedPromptsStore: () => ({
+    get: async (id: string) => h.queued.get(id) ?? null,
+    create: async (row: { id: string; sessionId: string; prompt: string }) => { h.queued.set(row.id, row); return row; },
+  }),
+}));
 
 import { registerSessionPromptResponseHandler } from '../../../ipc/sessionPromptResponseHandler';
 import { registerAskUserQuestionAnswerHandler } from '../ipc/registerAskUserQuestionAnswerHandler';
@@ -69,6 +76,7 @@ let sid = '';
 beforeEach(() => {
   sid = `routing-${++n}`;
   h.rows.length = 0;
+  h.queued.clear();
   h.provider = 'claude-code';
   h.providerInstance = undefined;
   h.ipcMain.removeAllListeners();
@@ -106,6 +114,14 @@ describe('an answer for a card with no live waiter', () => {
       expect(h.rows).toEqual([expect.objectContaining({ toolUseId: 'toolu_stale', result: expect.objectContaining({ cancelled: false }) })]);
       await new Promise((resolve) => setImmediate(resolve));
       expect(resume).not.toHaveBeenCalled();
+      // NIM-7649: the answer still reaches the agent, once the running turn ends.
+      expect([...h.queued.values()]).toEqual([expect.objectContaining({
+        sessionId: sid,
+        prompt: expect.stringContaining('"ok"'),
+        documentContext: { promptOrigin: 'interactive-question' },
+      })]);
+      expect(await respondToForm('toolu_stale')).toMatchObject({ success: false });
+      expect(h.queued.size).toBe(1);
     } finally {
       clearLiveInteractivePrompt(sid);
     }
@@ -124,6 +140,12 @@ describe('an answer for a card with no live waiter', () => {
       expect(h.rows).toEqual([expect.objectContaining({ toolUseId: 'toolu_stale' })]);
       await new Promise((resolve) => setImmediate(resolve));
       expect(sendMessageHandler).not.toHaveBeenCalled();
+      // NIM-7649: queued instead of dropped.
+      expect([...h.queued.values()]).toEqual([expect.objectContaining({
+        sessionId: sid,
+        prompt: '[Resuming after answering a question]\n\nQ: stale',
+        documentContext: { promptOrigin: 'interactive-question' },
+      })]);
     } finally {
       clearLiveInteractivePrompt(sid);
     }
