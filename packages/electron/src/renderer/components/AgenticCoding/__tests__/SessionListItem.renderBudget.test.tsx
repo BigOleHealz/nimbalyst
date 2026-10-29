@@ -19,7 +19,7 @@ import { measureRenders } from '../../../devtools/renderBudget';
 
 import React from 'react';
 import { Provider, createStore } from 'jotai';
-import { act, cleanup, render } from '@testing-library/react';
+import { act, cleanup, render, screen, fireEvent } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SessionListItem } from '../SessionListItem';
@@ -28,7 +28,10 @@ import {
   sessionLastActivityAtom,
   sessionUnreadAtom,
   sessionProcessingAtom,
+  sessionHasPendingInteractivePromptAtom,
 } from '../../../store/atoms/sessions';
+
+import { sessionApprovalSnapshotAtom } from '../../../store/atoms/sessionApproval';
 
 vi.mock('../SessionContextMenu', () => ({ SessionContextMenu: () => null }));
 vi.mock('../FullTitleTooltip', () => ({ FullTitleTooltip: () => null }));
@@ -159,4 +162,22 @@ describe('session list render budget', () => {
     // The cost of one session's activity must not scale with list length.
     expect(budget.rendersOf('SessionListItem'), budget.report()).toBe(1);
   });
+});
+
+
+it('preserves the unread action and row selection while approval waiting overrides running and workflow phase', () => {
+  const store = createStore();
+  const onClick = vi.fn();
+  store.set(sessionProcessingAtom('approval-row'), true);
+  store.set(sessionHasPendingInteractivePromptAtom('approval-row'), true);
+  store.set(sessionUnreadAtom('approval-row'), true);
+  store.set(sessionApprovalSnapshotAtom, { revision: 1, approvals: [{ sessionId: 'approval-row', requestId: 'p1', type: 'permission' }] });
+  render(<Provider store={store}><SessionListItem id="approval-row" title="Review work" createdAt={1_700_000_000_000} phase="complete" isActive onClick={onClick} /></Provider>);
+  expect(screen.queryByText('Complete')).toBeNull();
+  screen.getByText('Awaiting approval');
+  fireEvent.click(screen.getByTitle('Unread response'));
+  expect(onClick).toHaveBeenCalledTimes(1);
+  act(() => { store.set(sessionApprovalSnapshotAtom, { revision: 2, approvals: [] }); });
+  screen.getByText('Complete');
+  expect(screen.queryByText('Awaiting approval')).toBeNull();
 });

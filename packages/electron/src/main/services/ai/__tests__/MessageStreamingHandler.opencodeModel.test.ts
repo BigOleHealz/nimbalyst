@@ -85,12 +85,12 @@ vi.mock("../../../extensions/AgentProviderRegistry", () => ({
 
 vi.mock("../../SoundNotificationService", () => ({
   SoundNotificationService: {
-    getInstance: vi.fn(() => ({ playCompletionSound: vi.fn() })),
+    getInstance: vi.fn(() => ({ playCompletionSound: vi.fn(), playPermissionSound: vi.fn() })),
   },
 }));
 
 vi.mock("../../NotificationService", () => ({
-  notificationService: { showNotification: vi.fn() },
+  notificationService: { showNotification: vi.fn(), showBlockedNotification: vi.fn() },
 }));
 
 vi.mock("../../../../shared/notificationTitle", () => ({
@@ -205,6 +205,8 @@ vi.mock("../../tutorial/tutorialAnalytics", () => ({
   captureTutorialMilestone: vi.fn(),
 }));
 
+import { getPendingApprovals, __resetOpenPromptRegistry } from "../openPromptRegistry";
+import { notificationService } from "../../NotificationService";
 import { MessageStreamingHandler } from "../MessageStreamingHandler";
 import { logger } from '../../../utils/logger';
 import { resolveClaudeCodeParentContextWindow } from '@nimbalyst/runtime/ai/modelConstants';
@@ -501,5 +503,38 @@ describe('stream publication warnings', () => {
     expect(mocks.pushChange).toHaveBeenCalledTimes(3);
     release();
     await running;
+  });
+});
+
+
+describe("MessageStreamingHandler shared provider approval events", () => {
+  it("tracks native permission and plan requests separately from questions and notifies using request identities", async () => {
+    __resetOpenPromptRegistry();
+    mocks.stateManager.updateActivity.mockResolvedValue(undefined);
+    mocks.providerFactory.getProvider.mockReturnValue(null);
+    const observed: string[][] = [];
+    class ApprovalProvider extends RecordingProvider {
+      async *sendMessage() {
+        const sessionId = 'provider-approval-session';
+        const record = () => observed.push(getPendingApprovals().filter(a => a.sessionId === sessionId).map(a => a.type));
+        this.emit('askUserQuestion:pending', { sessionId, questionId: 'q1', questions: [] });
+        record();
+        this.emit('toolPermission:pending', { sessionId, requestId: 'p1', workspacePath: '/workspace', request: {} });
+        this.emit('exitPlanMode:confirm', { sessionId, requestId: 'plan1', timestamp: 1 });
+        record();
+        this.emit('toolPermission:resolved', { sessionId, requestId: 'p1', response: { decision: 'deny' }, timestamp: 2 });
+        record();
+        this.emit('exitPlanMode:resolved', { sessionId, requestId: 'plan1', approved: false, timestamp: 3 });
+        record();
+        this.emit('askUserQuestion:answered', { sessionId, questionId: 'q1', answers: {} });
+        await new Promise(resolve => setTimeout(resolve, 0));
+        yield { type: 'text', content: 'Done' };
+      }
+    }
+    await runTurn({ session: openCodeSession({ id: 'provider-approval-session' }), provider: new ApprovalProvider() });
+    expect(observed).toEqual([[], ['permission', 'plan_approval'], ['plan_approval'], []]);
+    expect(notificationService.showBlockedNotification).toHaveBeenCalledWith('provider-approval-session', 'AI Session', 'permission', '/workspace', 'p1');
+    expect(notificationService.showBlockedNotification).toHaveBeenCalledWith('provider-approval-session', 'AI Session', 'plan_approval', '/workspace', 'plan1');
+    __resetOpenPromptRegistry();
   });
 });

@@ -61,6 +61,7 @@ export type ProjectSettingsCategory =
   | 'project-ai-providers'
   | 'project-mcp-servers'
   | 'project-github'
+  | 'project-jira'
   | 'project-extensions';
 
 export type RegisteredSettingsCategory =
@@ -176,6 +177,7 @@ const builtinSettingsRouteDefinitions: readonly Omit<BuiltinSettingsRoute, 'sour
   { id: 'project-ai-providers', scope: 'project', group: 'Project', label: 'AI Providers', icon: 'smart_toy' },
   { id: 'project-mcp-servers', scope: 'project', group: 'Project', label: 'MCP Servers', icon: 'dns' },
   { id: 'project-github', scope: 'project', group: 'Project', label: 'GitHub', icon: 'merge', isAvailable: developerOnly },
+  { id: 'project-jira', scope: 'project', group: 'Project', label: 'Jira', icon: 'sync' },
   { id: 'project-extensions', scope: 'project', group: 'Project', label: 'Extensions', icon: 'extension' },
 ] as const;
 

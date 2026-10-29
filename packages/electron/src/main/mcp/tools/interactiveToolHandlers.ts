@@ -7,6 +7,7 @@ import { STRUCTURED_INPUT_FIELD_TYPES } from "@nimbalyst/collab-protocol";
 import { getSessionStateManager } from "@nimbalyst/runtime/ai/server/SessionStateManager";
 import { notificationService } from "../../services/NotificationService";
 import { findWindowIdForWorkspacePath } from "../mcpWorkspaceResolver";
+import { openPrompt, resolvePrompt } from "../../services/ai/openPromptRegistry";
 import { setSessionPendingPrompt } from "../../services/ai/pendingPromptPersistence";
 import { getGitSubprocessEnv } from "../../services/gitEnv";
 import {
@@ -380,25 +381,26 @@ export async function handleToolPermission(
             console.error("[MCP Server] Failed to set waiting_for_input for tool permission:", err);
           });
       },
-      applySettle: (sid) => {
+      applySettle: (sid, requestId) => {
         void applyInteractivePromptSettleTurnState({
           sessionId: sid,
           isCliSession,
           stateManager: getSessionStateManager(),
         }).catch(() => {});
         // Symmetric with notifyBlocked below.
-        void setSessionPendingPrompt(sid, false);
+        resolvePrompt(sid, requestId);
       },
       savePattern: async (wp, pattern) => {
         await ClaudeSettingsManager.getInstance().addAllowedTool(wp, pattern);
       },
-      notifyBlocked: ({ sessionId: sid, workspacePath: wp }) => {
-        notificationService.showBlockedNotification(sid, sessionTitle, "permission", wp ?? "");
+      notifyBlocked: ({ sessionId: sid, workspacePath: wp, requestId }) => {
+        openPrompt(sid, requestId, "approval");
+        notificationService.showBlockedNotification(sid, sessionTitle, "permission", wp ?? "", requestId);
         // A permission prompt blocks the session exactly like a question does.
         // This previously only told the tray, so the sidebar and mobile showed a
         // CLI session waiting on a permission as merely running -- the mirror of
         // the AskUserQuestion gap. Persisting also notifies the tray.
-        void setSessionPendingPrompt(sid, true);
+
       },
       log: (m) => console.log(`[MCP Server] ${m}`),
     },
@@ -688,11 +690,16 @@ async function runGitCommitProposal(
       console.warn("[MCP Server] No commitWindow found to send IPC event");
     }
 
-    // An automatic commit is running work, not a request for user input.
-    if (!isAutoCommit) void setSessionPendingPrompt(targetSessionId, true);
   } catch (error) {
     console.error("[MCP Server] Failed to persist git commit proposal:", error);
     // Continue anyway - worst case is no durability
+  }
+
+  // Approval state follows the live waiter even if transcript persistence
+  // failed. The outer call cleanup also covers transport cancellation/errors.
+  if (!isAutoCommit) {
+    openPrompt(targetSessionId, proposalId, "approval", "git_commit");
+    cleanups.push(() => resolvePrompt(targetSessionId, proposalId));
   }
 
   if (isAutoCommit) {
@@ -873,7 +880,8 @@ async function runGitCommitProposal(
     targetSessionId,
     sessionTitle,
     "git_commit",
-    workspacePath
+    workspacePath,
+    proposalId
   );
 
   // Wait for user confirmation with DB polling fallback.
@@ -936,6 +944,7 @@ async function runGitCommitProposal(
     const settle = (result: CommitResult, source: string) => {
       if (settled) return;
       settled = true;
+      resolvePrompt(targetSessionId, proposalId);
       unregisterWaiting();
       detachCall?.();
       if (targetSessionId) clearLiveInteractivePrompt(targetSessionId);

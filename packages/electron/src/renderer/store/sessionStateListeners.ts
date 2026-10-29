@@ -47,6 +47,8 @@ import {
   sessionDraftLocalModifiedAtAtom,
   type PendingPrompt,
 } from './atoms/sessions';
+import { applySessionApprovalSnapshotAtom, clearSessionApprovalsAtom } from './atoms/sessionApproval';
+import type { SessionApprovalSnapshot } from '../../shared/sessionApproval';
 import { windowFocusedAtom } from './atoms/windowFocus';
 import { workstreamActiveChildAtom, workstreamStateAtom } from './atoms/workstreamState';
 import { triggerWorktreeRefreshAtom } from './atoms/gitOperations';
@@ -170,6 +172,7 @@ function reconcileSessionStateSubscription(): void {
 
   window.electronAPI.sessionState.subscribe(arg)
     .then((result: any) => {
+      if (result?.success) store.set(applySessionApprovalSnapshotAtom, result.approvalSnapshot);
       if (!result?.success) {
         console.error('[sessionStateListeners] Failed to subscribe to session state manager:', result?.error);
       }
@@ -328,6 +331,7 @@ export function initSessionStateListeners(): () => void {
       type === 'session:error' ||
       type === 'session:interrupted';
     if (isTerminalEvent) {
+      store.set(clearSessionApprovalsAtom, sessionId);
       // A session that has stopped is not editing anything, whether it stopped
       // by finishing, by erroring, or by being interrupted. This is the local
       // half of working-set expiry: a session that dies mid-edit without
@@ -337,6 +341,7 @@ export function initSessionStateListeners(): () => void {
       canvasWorkingSetRegistry.apply({ type: 'disconnect', sessionId });
       store.set(sessionProcessingAtom(sessionId), false);
       store.set(sessionHasPendingInteractivePromptAtom(sessionId), false);
+      store.set(sessionPendingPromptsAtom(sessionId), []);
       // Also clear the workspace-scoped streaming flag. The atom looks up
       // workspacePath from `sessionActivityIndexAtom` when not provided, so
       // cross-workspace rail activity for this session gets cleared even
@@ -771,7 +776,7 @@ export function initSessionStateListeners(): () => void {
       createdAt: Date.now(),
     };
     const current = store.get(sessionPendingPromptsAtom(sessionId));
-    store.set(sessionPendingPromptsAtom(sessionId), [...current, prompt]);
+    store.set(sessionPendingPromptsAtom(sessionId), [...current.filter(p => p.promptId !== prompt.promptId || p.promptType !== prompt.promptType), prompt]);
   };
 
   /**
@@ -816,7 +821,7 @@ export function initSessionStateListeners(): () => void {
       createdAt: Date.now(),
     };
     const current = store.get(sessionPendingPromptsAtom(sessionId));
-    store.set(sessionPendingPromptsAtom(sessionId), [...current, prompt]);
+    store.set(sessionPendingPromptsAtom(sessionId), [...current.filter(p => p.promptId !== prompt.promptId || p.promptType !== prompt.promptType), prompt]);
   };
 
   /**
@@ -826,13 +831,13 @@ export function initSessionStateListeners(): () => void {
   const handleExitPlanModeResolved = (data: { sessionId: string; approved?: boolean; requestId?: string }) => {
     const { sessionId, approved } = data;
     if (!sessionId) return;
-    store.set(sessionHasPendingInteractivePromptAtom(sessionId), false);
     if (data.requestId) {
       const current = store.get(sessionPendingPromptsAtom(sessionId));
-      store.set(sessionPendingPromptsAtom(sessionId), current.filter(p => p.promptId !== data.requestId));
+      store.set(sessionPendingPromptsAtom(sessionId), current.filter(p => p.promptType !== 'exit_plan_mode_request' || p.promptId !== data.requestId));
     } else {
-      store.set(sessionPendingPromptsAtom(sessionId), []);
+      store.set(sessionPendingPromptsAtom(sessionId), store.get(sessionPendingPromptsAtom(sessionId)).filter(p => p.promptType !== 'exit_plan_mode_request'));
     }
+    store.set(sessionHasPendingInteractivePromptAtom(sessionId), store.get(sessionPendingPromptsAtom(sessionId)).length > 0);
 
     // If approved, update the session mode atom to 'agent' to sync with database
     if (approved) {
@@ -860,7 +865,7 @@ export function initSessionStateListeners(): () => void {
       createdAt: Date.now(),
     };
     const current = store.get(sessionPendingPromptsAtom(sessionId));
-    store.set(sessionPendingPromptsAtom(sessionId), [...current, prompt]);
+    store.set(sessionPendingPromptsAtom(sessionId), [...current.filter(p => p.promptId !== prompt.promptId || p.promptType !== prompt.promptType), prompt]);
   };
 
   /**
@@ -870,9 +875,9 @@ export function initSessionStateListeners(): () => void {
   const handleToolPermissionResolved = (data: { sessionId: string; requestId: string }) => {
     const { sessionId, requestId } = data;
     if (!sessionId) return;
-    store.set(sessionHasPendingInteractivePromptAtom(sessionId), false);
-    const current = store.get(sessionPendingPromptsAtom(sessionId));
-    store.set(sessionPendingPromptsAtom(sessionId), current.filter(p => p.promptId !== requestId));
+    const remaining = store.get(sessionPendingPromptsAtom(sessionId)).filter(p => p.promptId !== requestId);
+    store.set(sessionPendingPromptsAtom(sessionId), remaining);
+    store.set(sessionHasPendingInteractivePromptAtom(sessionId), remaining.length > 0);
   };
 
   /**
@@ -905,7 +910,7 @@ export function initSessionStateListeners(): () => void {
       createdAt: Date.now(),
     };
     const current = store.get(sessionPendingPromptsAtom(sessionId));
-    store.set(sessionPendingPromptsAtom(sessionId), [...current, prompt]);
+    store.set(sessionPendingPromptsAtom(sessionId), [...current.filter(p => p.promptId !== prompt.promptId || p.promptType !== prompt.promptType), prompt]);
   };
 
   /**
@@ -915,9 +920,9 @@ export function initSessionStateListeners(): () => void {
   const handleGitCommitProposalResolved = (data: { sessionId: string; proposalId: string }) => {
     const { sessionId, proposalId } = data;
     if (!sessionId) return;
-    store.set(sessionHasPendingInteractivePromptAtom(sessionId), false);
-    const current = store.get(sessionPendingPromptsAtom(sessionId));
-    store.set(sessionPendingPromptsAtom(sessionId), current.filter(p => p.promptId !== proposalId));
+    const remaining = store.get(sessionPendingPromptsAtom(sessionId)).filter(p => p.promptId !== proposalId);
+    store.set(sessionPendingPromptsAtom(sessionId), remaining);
+    store.set(sessionHasPendingInteractivePromptAtom(sessionId), remaining.length > 0);
   };
 
   /**
@@ -939,7 +944,7 @@ export function initSessionStateListeners(): () => void {
       createdAt: Date.now(),
     };
     const current = store.get(sessionPendingPromptsAtom(sessionId));
-    store.set(sessionPendingPromptsAtom(sessionId), [...current, prompt]);
+    store.set(sessionPendingPromptsAtom(sessionId), [...current.filter(p => p.promptId !== prompt.promptId || p.promptType !== prompt.promptType), prompt]);
   };
 
   /**
@@ -949,9 +954,9 @@ export function initSessionStateListeners(): () => void {
   const handleRequestUserInputResolved = (data: { sessionId: string; promptId: string }) => {
     const { sessionId, promptId } = data;
     if (!sessionId) return;
-    store.set(sessionHasPendingInteractivePromptAtom(sessionId), false);
-    const current = store.get(sessionPendingPromptsAtom(sessionId));
-    store.set(sessionPendingPromptsAtom(sessionId), current.filter(p => p.promptId !== promptId));
+    const remaining = store.get(sessionPendingPromptsAtom(sessionId)).filter(p => p.promptId !== promptId);
+    store.set(sessionPendingPromptsAtom(sessionId), remaining);
+    store.set(sessionHasPendingInteractivePromptAtom(sessionId), remaining.length > 0);
   };
 
   /**
@@ -1060,6 +1065,7 @@ export function initSessionStateListeners(): () => void {
     try {
       const result = await api.getRunningSessionIds();
       if (!result?.success) return;
+      store.set(applySessionApprovalSnapshotAtom, result.approvalSnapshot);
       const running = new Set(result.sessionIds);
       for (const sessionId of running) {
         store.set(sessionProcessingAtom(sessionId), true);
@@ -1124,6 +1130,7 @@ export function initSessionStateListeners(): () => void {
     transcriptAccumulator.apply(transcriptEvent);
   };
 
+  let cleanupApprovals: (() => void) | undefined;
   let cleanupAskUserQuestion: (() => void) | undefined;
   let cleanupAskUserQuestionAnswered: (() => void) | undefined;
   let cleanupAskUserQuestionCancelled: (() => void) | undefined;
@@ -1144,6 +1151,7 @@ export function initSessionStateListeners(): () => void {
   let cleanupTranscriptSessionReparsed: (() => void) | undefined;
   let cleanupMessagesLoggedBatch: (() => void) | undefined;
   if (window.electronAPI?.on) {
+    cleanupApprovals = window.electronAPI.on('ai:pendingApprovals', (snapshot: SessionApprovalSnapshot) => store.set(applySessionApprovalSnapshotAtom, snapshot));
     cleanupTranscriptEvent = window.electronAPI.on('transcript:event', handleTranscriptEvent);
     cleanupTranscriptSessionReparsed = window.electronAPI.on('transcript:session-reparsed', handleTranscriptSessionReparsed);
     cleanupMessageLogged = window.electronAPI.on('ai:message-logged', handleMessageLogged);
@@ -1155,7 +1163,10 @@ export function initSessionStateListeners(): () => void {
     // answer does -- without it the session keeps advertising a widget that is
     // already terminalized in the transcript. See #1549.
     cleanupAskUserQuestionCancelled = window.electronAPI.on('ai:askUserQuestionCancelled', handleAskUserQuestionResolved);
-    cleanupSessionCancelled = window.electronAPI.on('ai:sessionCancelled', handleAskUserQuestionResolved);
+    cleanupSessionCancelled = window.electronAPI.on('ai:sessionCancelled', (data: { sessionId: string }) => {
+      store.set(clearSessionApprovalsAtom, data.sessionId);
+      handleAskUserQuestionResolved(data);
+    });
     cleanupExitPlanModeConfirm = window.electronAPI.on('ai:exitPlanModeConfirm', handleExitPlanModeConfirm);
     cleanupExitPlanModeResolved = window.electronAPI.on('ai:exitPlanModeResolved', handleExitPlanModeResolved);
     cleanupToolPermission = window.electronAPI.on('ai:toolPermission', handleToolPermission);
@@ -1217,6 +1228,7 @@ export function initSessionStateListeners(): () => void {
     cleanupSessionCancelled?.();
     cleanupExitPlanModeConfirm?.();
     cleanupExitPlanModeResolved?.();
+    cleanupApprovals?.();
     cleanupToolPermission?.();
     cleanupToolPermissionResolved?.();
     cleanupGitCommitProposal?.();

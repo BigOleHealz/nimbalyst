@@ -40,7 +40,9 @@ import {
   childRunStatesAtom,
   getCardType,
   SESSION_PHASE_COLUMNS,
+  SESSION_BOARD_COLUMNS,
   type SessionPhase,
+  type SessionBoardColumn,
   type SessionPhaseKey,
   type KanbanCardType,
 } from '../../store/atoms/sessionKanban';
@@ -54,6 +56,7 @@ import {
   sessionRegistryAtom,
   sessionListWorkspaceAtom,
 } from '../../store/atoms/sessions';
+import { sessionAwaitingApprovalAtom } from '../../store/atoms/sessionApproval';
 import { SessionContextMenu } from '../AgenticCoding/SessionContextMenu';
 import { sessionArchiveSubtreeIds } from '../AgenticCoding/sessionArchiveSelection';
 import { WorktreeIcon } from '../common/WorktreeIcon';
@@ -76,7 +79,7 @@ interface BoardPosition {
 /** All column keys in display order (unphased first, then phase columns) */
 const ALL_COLUMN_KEYS: SessionPhaseKey[] = [
   'unphased',
-  ...SESSION_PHASE_COLUMNS.map(c => c.value),
+  ...SESSION_BOARD_COLUMNS.map(c => c.value),
 ];
 
 // ============================================================
@@ -169,6 +172,7 @@ interface CardStateInfo {
 }
 
 function useCardState(sessionId: string, cardType: KanbanCardType): CardStateInfo {
+  const awaitingApproval = useAtomValue(sessionAwaitingApprovalAtom(sessionId));
   const isProcessing = useAtomValue(sessionProcessingAtom(sessionId));
   const hasPendingPrompt = useAtomValue(sessionHasPendingInteractivePromptAtom(sessionId));
   const hasUnread = useAtomValue(sessionUnreadAtom(sessionId));
@@ -179,6 +183,12 @@ function useCardState(sessionId: string, cardType: KanbanCardType): CardStateInf
   const hasChildRunning = isParent && childStates.running > 0;
   const hasChildWaiting = isParent && childStates.waiting > 0;
 
+  if (awaitingApproval) {
+    return { state: 'waiting', badgeLabel: 'Awaiting approval', badgeIcon: 'approval', badgeColor: 'color-mix(in srgb, var(--nim-warning) 60%, var(--nim-text))', spinIcon: false };
+  }
+  if (hasPendingPrompt || hasChildWaiting) {
+    return { state: 'waiting', badgeLabel: hasChildWaiting ? `${childStates.waiting} waiting` : 'needs input', badgeIcon: 'help_outline', badgeColor: 'var(--nim-warning)', spinIcon: false };
+  }
   if (isProcessing || hasChildRunning) {
     return {
       state: 'running',
@@ -186,15 +196,6 @@ function useCardState(sessionId: string, cardType: KanbanCardType): CardStateInf
       badgeIcon: 'progress_activity',
       badgeColor: '#60a5fa',
       spinIcon: true,
-    };
-  }
-  if (hasPendingPrompt || hasChildWaiting) {
-    return {
-      state: 'waiting',
-      badgeLabel: hasChildWaiting ? `${childStates.waiting} waiting` : 'needs input',
-      badgeIcon: 'help_outline',
-      badgeColor: '#f97316',
-      spinIcon: false,
     };
   }
   if (hasUnread || (isParent && hasChildUnread)) {
@@ -231,7 +232,7 @@ function CardStatusBadge({ info }: { info: CardStateInfo }) {
   if (info.state === 'waiting') {
     return (
       <span className="flex items-center gap-0.5 text-[10px] px-1 py-px rounded bg-orange-500/10" style={{ color: info.badgeColor }}>
-        <MaterialSymbol icon="help_outline" size={12} />
+        <MaterialSymbol icon={info.badgeIcon || 'help_outline'} size={12} />
         {info.badgeLabel}
       </span>
     );
@@ -515,7 +516,7 @@ function SessionKanbanCard({ session, onSelect, onArchive, onRename, phaseColor,
 // ============================================================
 
 interface SessionKanbanColumnProps {
-  phase: SessionPhase;
+  phase: SessionBoardColumn;
   label: string;
   color: string;
   sessions: SessionMeta[];
@@ -540,9 +541,10 @@ function SessionKanbanColumn({ phase, label, color, sessions, onSelect, onArchiv
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
+    if (phase === 'awaiting-approval') return;
     e.dataTransfer.dropEffect = 'move';
     setIsDragOver(true);
-  }, []);
+  }, [phase]);
 
   const handleDragLeave = useCallback(() => {
     setIsDragOver(false);
@@ -555,7 +557,7 @@ function SessionKanbanColumn({ phase, label, color, sessions, onSelect, onArchiv
     if (raw) {
       try {
         const ids: string[] = JSON.parse(raw);
-        if (ids.length > 0) onDrop(ids, phase);
+        if (ids.length > 0 && phase !== 'awaiting-approval') onDrop(ids, phase);
       } catch { /* ignore malformed */ }
     }
   }, [onDrop, phase]);
@@ -1334,7 +1336,7 @@ export const SessionKanbanBoard: React.FC<SessionKanbanBoardProps> = ({ onSessio
     const ids: string[] = [];
     const unphasedSessions = grouped.get('unphased') || [];
     for (const s of unphasedSessions) ids.push(s.id);
-    for (const col of SESSION_PHASE_COLUMNS) {
+    for (const col of SESSION_BOARD_COLUMNS) {
       const sessions = grouped.get(col.value) || [];
       for (const s of sessions) ids.push(s.id);
     }
@@ -1350,7 +1352,7 @@ export const SessionKanbanBoard: React.FC<SessionKanbanBoardProps> = ({ onSessio
       grid.push({ columnKey: 'unphased', sessions: unphasedSessions });
     }
 
-    for (const col of SESSION_PHASE_COLUMNS) {
+    for (const col of SESSION_BOARD_COLUMNS) {
       const sessions = grouped.get(col.value) || [];
       if (!collapsedColumns.has(col.value)) {
         grid.push({ columnKey: col.value, sessions });
@@ -1806,7 +1808,7 @@ export const SessionKanbanBoard: React.FC<SessionKanbanBoardProps> = ({ onSessio
   return (
     <div
       ref={boardRef}
-      className="flex-1 flex flex-col overflow-hidden min-h-0 outline-none"
+      className="session-kanban-board flex-1 flex flex-col overflow-hidden min-h-0 outline-none"
       data-testid="session-kanban-board"
       tabIndex={0}
       onKeyDown={handleKeyDown}
@@ -1841,7 +1843,7 @@ export const SessionKanbanBoard: React.FC<SessionKanbanBoardProps> = ({ onSessio
             onSelectAll={handleSelectAllInColumn}
             onHeaderContextMenu={handleHeaderContextMenu}
           />
-          {SESSION_PHASE_COLUMNS.map(col => (
+          {SESSION_BOARD_COLUMNS.map(col => (
             <SessionKanbanColumn
               key={col.value}
               phase={col.value}

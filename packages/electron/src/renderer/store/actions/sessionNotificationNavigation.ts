@@ -18,6 +18,7 @@ import {
 } from '../atoms/workstreamState';
 import { setWindowModeAtom } from '../atoms/windowMode';
 import { selectSessionActionAtom } from './sessionHistoryActions';
+import { scrollToMessageAtom } from '../atoms/agentMode';
 
 interface SessionLookup {
   id: string;
@@ -228,5 +229,8 @@ export async function navigateToNotificationSession(
 
   store.set(setWindowModeAtom, 'agent');
   await store.set(selectSessionActionAtom, target.sessionId);
+  if (target.approvalRequestId) {
+    store.set(scrollToMessageAtom, { sessionId: target.sessionId, timestamp: 0, approvalRequestId: target.approvalRequestId });
+  }
   return true;
 }

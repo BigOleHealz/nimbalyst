@@ -305,7 +305,7 @@ export const scrollToTeammateAtom = atom<{ sessionId: string; agentId: string } 
 
 /** Write-only atom to request scrolling to a specific message in the transcript.
  *  Set by PromptQuickOpen on select, consumed by SessionTranscript.  */
-export const scrollToMessageAtom = atom<{ sessionId: string; timestamp: number } | null>(null);
+export const scrollToMessageAtom = atom<{ sessionId: string; timestamp: number; approvalRequestId?: string } | null>(null);
 
 /** Write-only atom to request navigating to a session by ID.
  *  Set by MarkdownRenderer link clicks (@@session references), consumed by AgentMode.  */

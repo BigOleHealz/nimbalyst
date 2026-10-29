@@ -220,6 +220,7 @@ import { codexAuthService } from './services/CodexAuthService';
 import { registerExtensionHandlers, getClaudePluginPaths, initializeExtensionFileTypes } from './ipc/ExtensionHandlers';
 import { registerExtensionPermissionHandlers } from './ipc/ExtensionPermissionHandlers';
 import { registerTrackerImporterHandlers } from './ipc/TrackerImporterHandlers';
+import { registerJiraHandlers } from './ipc/JiraHandlers';
 import { installExtensionAgentBridge } from './extensions/extensionAgentBridge';
 import { getAgentWorkflowService } from './services/AgentWorkflowService';
 import { queueMarketplaceInstallRequest, registerExtensionMarketplaceHandlers, runExtensionAutoUpdate } from './ipc/ExtensionMarketplaceHandlers';
@@ -2581,6 +2582,7 @@ app.whenReady().then(async () => {
     registerExtensionHandlers();
     registerExtensionPermissionHandlers();
     registerTrackerImporterHandlers();
+    registerJiraHandlers();
     registerExtensionMarketplaceHandlers();
     registerOffscreenEditorHandlers();
 

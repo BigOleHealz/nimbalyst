@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   createWindow: vi.fn(),
   getMostRecentlyFocusedWorkspaceWindow: vi.fn(),
   getSession: vi.fn(),
+  updateSessionMetadata: vi.fn(),
 }));
 
 vi.mock('electron', () => {
@@ -96,7 +97,7 @@ vi.mock('../../utils/store', () => ({
 }));
 
 vi.mock('@nimbalyst/runtime/storage/repositories/AISessionsRepository', () => ({
-  AISessionsRepository: { get: mocks.getSession },
+  AISessionsRepository: { get: mocks.getSession, updateMetadata: mocks.updateSessionMetadata },
 }));
 
 vi.mock('../../window/WindowManager', () => ({
@@ -115,7 +116,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { notificationService, type BlockingType } from '../NotificationService';
+import { notificationService, NotificationService, type BlockingType } from '../NotificationService';
 import {
   clearNotificationIconCache,
   getNotificationIconsDir,
@@ -176,6 +177,43 @@ async function clickNotification(options: {
 }
 
 describe('NotificationService agent notifications', () => {
+  it('deduplicates concurrent requests and replay after reopening while notifying each new approval', async () => {
+    let metadata: Record<string, unknown> = {};
+    mocks.getSession.mockImplementation(async () => ({ workspacePath: '/workspace', metadata }));
+    mocks.updateSessionMetadata.mockImplementation(async (_id, update) => { metadata = { ...metadata, ...update.metadata }; });
+    const service = new NotificationService();
+    await Promise.all([
+      service.showBlockedNotification('approval-session', 'Build settings', 'permission', '/workspace', 'request-1'),
+      service.showBlockedNotification('approval-session', 'Build settings', 'permission', '/workspace', 'request-1'),
+      service.showBlockedNotification('approval-session', 'Build settings', 'plan_approval', '/workspace', 'request-2'),
+    ]);
+    expect(mocks.notificationShow).toHaveBeenCalledTimes(2);
+    const reopened = new NotificationService();
+    // SQLite may expose JSON columns as text; rehydration still deduplicates.
+    mocks.getSession.mockImplementation(async () => ({ workspacePath: '/workspace', metadata: JSON.stringify(metadata) }));
+    await reopened.showBlockedNotification('approval-session', 'Build settings', 'permission', '/workspace', 'request-1');
+    expect(mocks.notificationShow).toHaveBeenCalledTimes(2);
+    await reopened.showBlockedNotification('approval-session', 'Build settings', 'git_commit', '/workspace', 'request-3');
+    expect(mocks.notificationShow).toHaveBeenCalledTimes(3);
+    const target = makeFakeWindow();
+    mocks.findWindowByWorkspace.mockReturnValue(target);
+    mocks.notificationListeners.get('click')?.();
+    expect(target.webContents.send).toHaveBeenCalledWith('notification-clicked', {
+      sessionId: 'approval-session', workspacePath: '/workspace', sourceLabel: 'Build settings', approvalRequestId: 'request-3',
+    });
+  });
+
+  it('remembers a request suppressed by preferences so enabling notifications does not replay it', async () => {
+    let metadata: Record<string, unknown> = {};
+    mocks.getSession.mockImplementation(async () => ({ metadata }));
+    mocks.updateSessionMetadata.mockImplementation(async (_id, update) => { metadata = { ...metadata, ...update.metadata }; });
+    mocks.sessionBlockedNotificationsEnabled.mockReturnValue(false);
+    await notificationService.showBlockedNotification('suppressed', 'Task', 'permission', '/workspace', 'p1');
+    mocks.sessionBlockedNotificationsEnabled.mockReturnValue(true);
+    await notificationService.showBlockedNotification('suppressed', 'Task', 'permission', '/workspace', 'p1');
+    expect(mocks.notificationShow).not.toHaveBeenCalled();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.browserWindows = [];

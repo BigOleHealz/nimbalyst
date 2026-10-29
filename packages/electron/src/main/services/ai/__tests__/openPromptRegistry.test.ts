@@ -19,9 +19,28 @@ import {
   hasOpenPrompts,
   clearOpenPrompts,
   __resetOpenPromptRegistry,
+  getPendingApprovals,
+  subscribePendingApprovals,
 } from '../openPromptRegistry';
 
 describe('open prompt registry', () => {
+  it('separates approvals from questions and retains siblings until terminal cleanup', () => {
+    __resetOpenPromptRegistry();
+    const changed = vi.fn();
+    const unsubscribe = subscribePendingApprovals(changed);
+    openPrompt('approval-session', 'question', 'decision');
+    expect(getPendingApprovals()).toEqual([]);
+    openPrompt('approval-session', 'permission', 'approval');
+    openPrompt('approval-session', 'plan', 'decision', 'plan_approval');
+    openPrompt('approval-session', 'plan', 'decision', 'plan_approval');
+    expect(getPendingApprovals()).toHaveLength(2);
+    resolvePrompt('approval-session', 'permission');
+    expect(getPendingApprovals()).toEqual([{ sessionId: 'approval-session', requestId: 'plan', type: 'plan_approval' }]);
+    clearOpenPrompts('approval-session');
+    expect(getPendingApprovals()).toEqual([]);
+    expect(changed).toHaveBeenCalled();
+    unsubscribe();
+  });
   beforeEach(() => {
     __resetOpenPromptRegistry();
     setSessionPendingPrompt.mockClear();

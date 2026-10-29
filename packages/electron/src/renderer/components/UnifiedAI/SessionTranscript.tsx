@@ -120,6 +120,7 @@ import {
   MAX_CLI_TERMINAL_HEIGHT,
 } from '../../store/atoms/terminals';
 import { scrollToTeammateAtom, scrollToMessageAtom, requestOpenSessionAtom } from '../../store/atoms/agentMode';
+import { findApprovalMessageIndex } from '../../../shared/approvalMessageTarget';
 import { usePostHog } from 'posthog-js/react';
 import { trackSendWallEvent } from '../../utils/sendWallAnalytics';
 import {
@@ -2341,7 +2342,7 @@ const LocalSessionTranscript = forwardRef<SessionTranscriptRef, SessionTranscrip
     const { timestamp } = scrollToMessage;
 
     // Find the user message whose timestamp matches the prompt's createdAt.
-    const targetIdx = messages.findIndex(msg =>
+    const targetIdx = scrollToMessage.approvalRequestId ? findApprovalMessageIndex(messages, scrollToMessage.approvalRequestId) : messages.findIndex(msg =>
       msg.type === 'user_message' && Math.abs((msg.createdAt?.getTime() || 0) - timestamp) < 1000
     );
 
