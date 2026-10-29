@@ -5,6 +5,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { MaterialSymbol } from '@nimbalyst/runtime/ui/icons/MaterialSymbol';
 import { ImportFromSourceDialog } from './ImportFromSourceDialog';
+import type { JiraSyncResult } from '@nimbalyst/runtime/integrations/jira';
 
 export interface TrackerExternalImporter {
   id: string;
@@ -27,6 +28,7 @@ export function TrackerNewMenu({ workspacePath, canCreate, onNewItem }: TrackerN
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [externalImporters, setExternalImporters] = useState<TrackerExternalImporter[]>([]);
   const [sourceDialog, setSourceDialog] = useState<TrackerExternalImporter | null>(null);
+  const [jiraSyncing, setJiraSyncing] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -80,10 +82,20 @@ export function TrackerNewMenu({ workspacePath, canCreate, onNewItem }: TrackerN
 
   const itemClass = 'w-full flex items-center gap-2 px-3 py-1.5 text-xs text-nim-muted hover:bg-nim-tertiary hover:text-nim text-left';
 
+  const syncJira = async () => {
+    if (!workspacePath) return;
+    setMenuOpen(false); setJiraSyncing(true); setImportStatus('Syncing Jira…');
+    try {
+      const result = await window.electronAPI.invoke('jira:sync', workspacePath) as JiraSyncResult;
+      setImportStatus(`${result.created} imported, ${result.refreshed} refreshed, ${result.skipped} skipped${result.errors.length ? ` — ${result.errors.join(' ')}` : ''}`);
+    } catch (error) { setImportStatus(error instanceof Error ? error.message : 'Jira sync failed'); }
+    finally { setJiraSyncing(false); }
+  };
+
   return (
     <>
       {importStatus && (
-        <span className="text-[11px] text-nim-muted bg-nim-secondary px-2 py-0.5 rounded">{importStatus}</span>
+        <span role="status" className="text-[11px] text-nim-muted bg-nim-secondary px-2 py-0.5 rounded select-text">{importStatus}</span>
       )}
       <div className="tracker-new-menu relative flex shrink-0" ref={menuRef}>
         {canCreate ? (
@@ -119,6 +131,7 @@ export function TrackerNewMenu({ workspacePath, canCreate, onNewItem }: TrackerN
         )}
         {menuOpen && (
           <div className="absolute right-0 top-full mt-1 w-[220px] bg-nim border border-nim rounded-md shadow-lg z-50 py-1" data-testid="tracker-toolbar-new-menu">
+            <button className={itemClass} disabled={!workspacePath || jiraSyncing} onClick={() => void syncJira()} data-testid="tracker-sync-jira"><MaterialSymbol icon="sync" size={14} />Sync Jira</button>
             {BULK_IMPORT_DIRECTORIES.map((directory) => (
               <button key={directory} className={itemClass} onClick={() => handleBulkImport(directory)}>
                 <MaterialSymbol icon="folder_open" size={14} />

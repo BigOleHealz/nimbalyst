@@ -16,6 +16,7 @@ import type { ExternalSourceRef, TrackerOrigin } from '@nimbalyst/runtime';
 import { handleTrackerCreate, handleTrackerUpdate } from '../../mcp/tools/trackerToolHandlers';
 import { getTrackerImporterRegistry } from './TrackerImporterRegistry';
 import { importedItemId } from './importedItemId';
+import type { TrackerSnapshot } from '@nimbalyst/extension-sdk';
 
 /** Stable hash of an upstream body so re-snapshot can detect changes cheaply. */
 function hashBody(body: string | undefined): string {
@@ -86,6 +87,17 @@ class TrackerImportService {
     const registry = getTrackerImporterRegistry();
 
     const snapshot = await registry.fetchSnapshot(workspacePath, providerId, externalId);
+    return this.importSnapshot(args, snapshot);
+  }
+
+  /** Import a fetched snapshot through the native tracker path. Optional refresh is for scheduled connectors. */
+  async importSnapshot(
+    args: RunImportArgs,
+    snapshot: TrackerSnapshot,
+    refresh?: { shouldSkip: (id: string) => Promise<boolean> },
+  ): Promise<RunImportResult & { skipped?: boolean }> {
+    const { workspacePath, providerId } = args;
+    const registry = getTrackerImporterRegistry();
     const urn = snapshot.external.urn;
     if (!urn) {
       throw new Error('Importer returned a snapshot with no URN; cannot import.');
@@ -99,6 +111,22 @@ class TrackerImportService {
     return this.withUrnLock(urn, async () => {
       const existingId = await registry.findLocalIdByUrn(workspacePath, urn);
       if (existingId) {
+        if (refresh) {
+          const local = await this.loadByUrn(workspacePath, urn);
+          if (!local?.data.origin?.external) throw new Error('Imported task could not be loaded.');
+          if (await refresh.shouldSkip(existingId)) return { id: existingId, urn, created: false, skipped: true };
+          const result = await handleTrackerUpdate({
+            id: existingId,
+            title: snapshot.title,
+            description: snapshot.body ?? '',
+            origin: { kind: 'external', external: {
+              ...local.data.origin.external, ...snapshot.external,
+              lastSyncedAt: new Date().toISOString(), bodyHash: hashBody(snapshot.body), upstreamBodyChanged: false,
+            } },
+          }, workspacePath);
+          if (result.isError) throw new Error('Jira task refresh failed.');
+          return { id: existingId, urn, created: false };
+        }
         // Phase 4 will run the re-snapshot merge here. For now, leave the
         // existing item untouched so a duplicate import never clobbers local edits.
         logger.main.info(
@@ -107,7 +135,7 @@ class TrackerImportService {
         return { id: existingId, urn, created: false };
       }
 
-      const contribution = await registry.getContribution(providerId);
+      const contribution = snapshot.primaryType ? null : await registry.getContribution(providerId);
       const type =
         args.primaryType ||
         snapshot.primaryType ||
@@ -126,7 +154,9 @@ class TrackerImportService {
 
       // Deterministic, URN-derived id so concurrent imports of the same upstream
       // item on different machines converge on one row when sync reconciles them.
-      const id = importedItemId(urn);
+      // Jira sync is per project: the same assigned issue may be imported into
+      // multiple projects without colliding on tracker_items' global primary key.
+      const id = importedItemId(providerId === 'jira' ? `${workspacePath}\n${urn}` : urn);
 
       const result = await handleTrackerCreate(
         {

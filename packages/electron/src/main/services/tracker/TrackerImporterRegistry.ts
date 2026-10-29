@@ -21,6 +21,7 @@ import {
   type ImporterListPage,
   type TrackerImporterContribution,
   type TrackerSnapshot,
+  type ImporterMethods,
 } from '@nimbalyst/extension-sdk';
 import {
   discoverImporters,
@@ -39,6 +40,12 @@ export interface ImporterSummary {
 }
 
 class TrackerImporterRegistry {
+  private builtins = new Map<string, { contribution: TrackerImporterContribution; methods: (workspacePath: string) => ImporterMethods }>();
+
+  /** Host connectors share the same importer contract and native task pipeline as extensions. */
+  registerBuiltin(contribution: TrackerImporterContribution, methods: (workspacePath: string) => ImporterMethods): void {
+    this.builtins.set(contribution.id, { contribution, methods });
+  }
   /**
    * Ensure the importer's backend module is running, raising the consent
    * prompt on first use. Throws a user-meaningful error if the module did not
@@ -97,27 +104,33 @@ class TrackerImporterRegistry {
    */
   async listImporters(_workspacePath: string): Promise<ImporterSummary[]> {
     const importers = await discoverImporters();
-    return importers.map((imp) => ({
-      id: imp.contribution.id,
-      displayName: imp.contribution.displayName,
-      icon: imp.contribution.icon,
-      urnScheme: imp.contribution.urnScheme,
-      importsAs: imp.contribution.importsAs,
-      settingsPanelId: imp.contribution.settingsPanelId,
+    return [...this.builtins.values()].map(({ contribution }) => contribution).concat(importers.map(imp => imp.contribution)).map((contribution) => ({
+      id: contribution.id,
+      displayName: contribution.displayName,
+      icon: contribution.icon,
+      urnScheme: contribution.urnScheme,
+      importsAs: contribution.importsAs,
+      settingsPanelId: contribution.settingsPanelId,
     }));
   }
 
 
   async getContribution(providerId: string): Promise<TrackerImporterContribution | null> {
+    const builtin = this.builtins.get(providerId);
+    if (builtin) return builtin.contribution;
     return (await findImporter(providerId))?.contribution ?? null;
   }
 
   async isAuthenticated(workspacePath: string, providerId: string): Promise<boolean> {
+    const builtin = this.builtins.get(providerId);
+    if (builtin) return builtin.methods(workspacePath).isAuthenticated();
     const imp = await this.requireImporter(providerId);
     return this.call<boolean>(imp, workspacePath, TRACKER_IMPORTER_RPC_METHODS.isAuthenticated);
   }
 
   async listBindings(workspacePath: string, providerId: string): Promise<ImporterBinding[]> {
+    const builtin = this.builtins.get(providerId);
+    if (builtin) return builtin.methods(workspacePath).listBindings();
     const imp = await this.requireImporter(providerId);
     return this.call<ImporterBinding[]>(
       imp,
@@ -132,6 +145,8 @@ class TrackerImporterRegistry {
     binding: ImporterBinding,
     filters: ImporterListFilter
   ): Promise<ImporterListPage> {
+    const builtin = this.builtins.get(providerId);
+    if (builtin) return builtin.methods(workspacePath).list({ binding, filters });
     const imp = await this.requireImporter(providerId);
     return this.call<ImporterListPage>(imp, workspacePath, TRACKER_IMPORTER_RPC_METHODS.list, {
       binding,
@@ -144,6 +159,8 @@ class TrackerImporterRegistry {
     providerId: string,
     externalId: string
   ): Promise<TrackerSnapshot> {
+    const builtin = this.builtins.get(providerId);
+    if (builtin) return builtin.methods(workspacePath).fetch({ externalId });
     const imp = await this.requireImporter(providerId);
     return this.call<TrackerSnapshot>(imp, workspacePath, TRACKER_IMPORTER_RPC_METHODS.fetch, {
       externalId,

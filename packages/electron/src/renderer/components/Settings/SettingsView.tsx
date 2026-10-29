@@ -1,6 +1,7 @@
 import { ProjectAppearancePanel } from './panels/ProjectAppearancePanel';
 import { SAVED_CREDENTIAL } from '../../../shared/providerCredentials';
 import { ProviderCredentialsPanel } from '../GlobalSettings/panels/ProviderCredentialsPanel';
+import { JiraPanel } from '../GlobalSettings/panels/JiraPanel';
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { usePostHog } from 'posthog-js/react';
@@ -1056,6 +1057,8 @@ export function SettingsView({
           : <p className="text-sm text-[var(--nim-text-muted)]">Open a local project to configure provider overrides.</p>;
       case 'project-extensions':
         return <InstalledExtensionsPanel scope="project" workspacePath={workspacePath ?? undefined} />;
+      case 'project-jira':
+        return workspacePath ? <JiraPanel key={workspacePath} workspacePath={workspacePath} /> : null;
       case 'project-github':
       case 'github':
         if (!developerMode) {

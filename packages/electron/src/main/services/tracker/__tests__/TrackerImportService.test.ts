@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
@@ -45,6 +46,33 @@ const external = {
 };
 
 describe('TrackerImportService', () => {
+  it('keeps Jira imports in separate projects distinct while deduplicating within each project', async () => {
+    mockRegistry.findLocalIdByUrn.mockResolvedValue(null);
+    const snapshot = { primaryType: 'task', title: 'APP-1 First', body: 'Details', external: { ...external, providerId: 'jira', externalId: 'APP-1', urn: 'jira://team.atlassian.net/APP-1' } };
+    const service = getTrackerImportService();
+    const args = { workspacePath: '/first', providerId: 'jira', externalId: 'APP-1' };
+    const first = await service.importSnapshot(args, snapshot);
+    const second = await service.importSnapshot({ ...args, workspacePath: '/second' }, snapshot);
+    expect(first.id).not.toBe(second.id);
+    mockRegistry.findLocalIdByUrn.mockResolvedValue(first.id);
+    const again = await service.importSnapshot(args, snapshot);
+    expect(again).toMatchObject({ id: first.id, created: false });
+    expect(mockHandleTrackerCreate).toHaveBeenCalledTimes(2);
+  });
+  it('refreshes snapshots without creating duplicates and leaves protected tasks untouched', async () => {
+    mockRegistry.findLocalIdByUrn.mockResolvedValue('existing');
+    mockQuery.mockResolvedValue({ rows: [{ id: 'existing', data: JSON.stringify({ origin: { external: { ...external, importedAt: 'original' } } }) }] });
+    mockHandleTrackerUpdate.mockResolvedValue({ isError: false });
+    const snapshot = { primaryType: 'task', title: 'APP-1 Updated', body: 'Description and all comments', external: { ...external } };
+    const args = { workspacePath, providerId: 'jira', externalId: 'APP-1' };
+    await getTrackerImportService().importSnapshot(args, snapshot, { shouldSkip: async () => false });
+    expect(mockHandleTrackerCreate).not.toHaveBeenCalled();
+    expect(mockHandleTrackerUpdate).toHaveBeenCalledWith(expect.objectContaining({ id: 'existing', description: snapshot.body, origin: expect.objectContaining({ external: expect.objectContaining({ importedAt: 'original' }) }) }), workspacePath);
+    mockHandleTrackerUpdate.mockClear();
+    const result = await getTrackerImportService().importSnapshot(args, snapshot, { shouldSkip: async () => true });
+    expect(result.skipped).toBe(true);
+    expect(mockHandleTrackerUpdate).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     mockRegistry.getContribution.mockResolvedValue({ importsAs: ['bug'] });
