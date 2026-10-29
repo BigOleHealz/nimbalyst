@@ -18,12 +18,45 @@
 
 import { setSessionPendingPrompt } from './pendingPromptPersistence';
 import type { PromptKind } from '../../tray/fleetSnapshot';
+import type { PendingSessionApproval, SessionApprovalType } from '../../../shared/sessionApproval';
+
+const approvals = new Map<string, Map<string, SessionApprovalType>>();
+const approvalListeners = new Set<() => void>();
+let approvalRevision = 0;
+
+export function getApprovalSnapshot() {
+  return { revision: approvalRevision, approvals: getPendingApprovals() };
+}
+
+export function getPendingApprovals(): PendingSessionApproval[] {
+  return [...approvals].flatMap(([sessionId, requests]) =>
+    [...requests].map(([requestId, type]) => ({ sessionId, requestId, type })));
+}
+
+export function subscribePendingApprovals(listener: () => void): () => void {
+  approvalListeners.add(listener);
+  return () => { approvalListeners.delete(listener); };
+}
+
+function approvalsChanged(): void {
+  approvalRevision++;
+  for (const listener of approvalListeners) listener();
+}
 
 const openPromptIdsBySession = new Map<string, Set<string>>();
 
 /** Register a newly opened prompt and block the session if it is the first. */
-export function openPrompt(sessionId: string, promptId: string, kind: PromptKind = 'approval'): void {
+export function openPrompt(sessionId: string, promptId: string, kind: PromptKind = 'approval', approvalType?: SessionApprovalType): void {
   if (!sessionId || !promptId) return;
+  const type = approvalType ?? (kind === 'approval' ? 'permission' : undefined);
+  if (type) {
+    const requests = approvals.get(sessionId) ?? new Map<string, SessionApprovalType>();
+    if (!requests.has(promptId)) {
+      requests.set(promptId, type);
+      approvals.set(sessionId, requests);
+      approvalsChanged();
+    }
+  }
   let ids = openPromptIdsBySession.get(sessionId);
   if (!ids) {
     ids = new Set<string>();
@@ -46,6 +79,10 @@ export function resolvePrompt(sessionId: string, promptId: string): void {
   // way the bit is not ours to touch — clearing here is what would resurrect
   // state on a stopped session.
   if (!ids || !ids.delete(promptId)) return;
+  if (approvals.get(sessionId)?.delete(promptId)) {
+    if (approvals.get(sessionId)?.size === 0) approvals.delete(sessionId);
+    approvalsChanged();
+  }
   if (ids.size === 0) {
     openPromptIdsBySession.delete(sessionId);
     void setSessionPendingPrompt(sessionId, false);
@@ -69,10 +106,12 @@ export function hasOpenPrompts(sessionId: string): boolean {
 export function clearOpenPrompts(sessionId: string): void {
   if (!sessionId) return;
   const had = openPromptIdsBySession.delete(sessionId);
+  if (approvals.delete(sessionId)) approvalsChanged();
   if (had) void setSessionPendingPrompt(sessionId, false);
 }
 
 /** Test seam: drop all tracked state. */
 export function __resetOpenPromptRegistry(): void {
   openPromptIdsBySession.clear();
+  approvals.clear();
 }

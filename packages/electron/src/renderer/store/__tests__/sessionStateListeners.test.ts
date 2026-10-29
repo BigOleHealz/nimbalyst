@@ -34,6 +34,8 @@ import {
   globalSessionTurnActivityAtom,
   markSessionUnreadAtom,
 } from '../atoms/sessionActivity';
+import { scrollToMessageAtom } from '../atoms/agentMode';
+import { sessionApprovalSnapshotAtom, sessionAwaitingApprovalAtom } from '../atoms/sessionApproval';
 import { windowFocusedAtom } from '../atoms/windowFocus';
 import { activeWorkspacePathAtom, multiProjectModeAtom, openProjectsAtom } from '../atoms/openProjects';
 import { activeExtensionPanelAtom, activeExtensionBottomPanelAtom } from '../atoms/extensionPanels';
@@ -170,8 +172,10 @@ describe('notification click navigation', () => {
       sessionId: sid,
       workspacePath: targetWorkspace,
       sourceLabel: 'Notification target',
+      approvalRequestId: 'permission-1',
     });
 
+    expect(store.get(scrollToMessageAtom)).toEqual({ sessionId: sid, timestamp: 0, approvalRequestId: 'permission-1' });
     expect(store.get(activeWorkspacePathAtom)).toBe(targetWorkspace);
     expect(store.get(selectedWorkstreamAtom(targetWorkspace))).toEqual({
       type: 'session',
@@ -1356,5 +1360,33 @@ describe('unread: selected session in a hidden rail project', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+
+describe('approval snapshots and multiple prompts', () => {
+  it.each(['session:completed', 'session:error', 'session:interrupted', 'ai:sessionCancelled'])('clears approval badges and all pending payloads on %s', type => {
+    const sid = uniqueSessionId('approval-terminal');
+    seedRegistry([{ id: sid }]);
+    store.set(sessionApprovalSnapshotAtom, { revision: 100, approvals: [{ sessionId: sid, requestId: 'p1', type: 'permission' }] });
+    handlers.get('ai:toolPermission')!({ sessionId: sid, requestId: 'p1' });
+    handlers.get(type === 'ai:sessionCancelled' ? type : 'ai-session-state:event')!({ type, sessionId: sid });
+    expect(store.get(sessionAwaitingApprovalAtom(sid))).toBe(false);
+    expect(store.get(sessionPendingPromptsAtom(sid))).toEqual([]);
+  });
+
+  it('retains other approvals and questions when a permission or plan settles and deduplicates repeated prompt delivery', () => {
+    const sid = uniqueSessionId('multi-approval');
+    handlers.get('ai:toolPermission')!({ sessionId: sid, requestId: 'p1' });
+    handlers.get('ai:toolPermission')!({ sessionId: sid, requestId: 'p1' });
+    handlers.get('ai:exitPlanModeConfirm')!({ sessionId: sid, requestId: 'plan1' });
+    handlers.get('ai:askUserQuestion')!({ sessionId: sid, questionId: 'q1' });
+    expect(store.get(sessionPendingPromptsAtom(sid))).toHaveLength(3);
+    handlers.get('ai:toolPermissionResolved')!({ sessionId: sid, requestId: 'p1' });
+    expect(store.get(sessionHasPendingInteractivePromptAtom(sid))).toBe(true);
+    handlers.get('ai:exitPlanModeResolved')!({ sessionId: sid, requestId: 'plan1', approved: false });
+    expect(store.get(sessionHasPendingInteractivePromptAtom(sid))).toBe(true);
+    handlers.get('ai:askUserQuestionAnswered')!({ sessionId: sid, questionId: 'q1' });
+    expect(store.get(sessionHasPendingInteractivePromptAtom(sid))).toBe(false);
   });
 });

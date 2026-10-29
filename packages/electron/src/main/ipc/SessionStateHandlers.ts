@@ -20,7 +20,7 @@ import {
   resetPendingPromptTracking,
   setSessionPendingPrompt,
 } from '../services/ai/pendingPromptPersistence';
-import { clearOpenPrompts } from '../services/ai/openPromptRegistry';
+import { clearOpenPrompts, getApprovalSnapshot, subscribePendingApprovals } from '../services/ai/openPromptRegistry';
 import {
   clearStalePendingPromptOnTerminal,
   findSessionsWithPendingPrompt,
@@ -198,6 +198,11 @@ export async function registerSessionStateHandlers() {
   // Single subscription (not per-window) so it fires once per transition; the
   // read-guard inside avoids a metadata write on every prompt-free turn end.
   stateManager.subscribe((event: SessionStateEvent) => {
+    if (event.type === 'session:completed' || event.type === 'session:error' || event.type === 'session:interrupted') {
+      // Clear live approval identities immediately, even if persisting the
+      // prompt bit is still in flight or reading that bit fails.
+      clearOpenPrompts(event.sessionId);
+    }
     void clearStalePendingPromptOnTerminal(event, {
       readHasPendingPrompt: readPersistedHasPendingPrompt,
       clearPendingPrompt: (sessionId) => {
@@ -247,7 +252,7 @@ export async function registerSessionStateHandlers() {
   safeHandle('ai-session-state:get-running', async (_event) => {
     try {
       const sessionIds = stateManager.getRunningSessionIds();
-      return { success: true, sessionIds };
+      return { success: true, sessionIds, approvalSnapshot: getApprovalSnapshot() };
     } catch (error) {
       console.error('[SessionStateHandlers] Error getting running sessions:', error);
       return { success: false, error: String(error), sessionIds: [] };
@@ -364,7 +369,12 @@ export async function registerSessionStateHandlers() {
       });
 
       // Store unsubscribe function
-      windowSubscriptions.set(windowId, unsubscribe);
+      const unsubscribeApprovals = subscribePendingApprovals(() => {
+        if (!window.isDestroyed()) {
+          window.webContents.send('ai:pendingApprovals', getApprovalSnapshot());
+        }
+      });
+      windowSubscriptions.set(windowId, () => { unsubscribe(); unsubscribeApprovals(); });
 
       // Clean up when window closes
       window.once('closed', () => {
@@ -375,7 +385,7 @@ export async function registerSessionStateHandlers() {
         }
       });
 
-      return { success: true };
+      return { success: true, approvalSnapshot: getApprovalSnapshot() };
     } catch (error) {
       console.error('[SessionStateHandlers] Error subscribing to state changes:', error);
       return { success: false, error: String(error) };

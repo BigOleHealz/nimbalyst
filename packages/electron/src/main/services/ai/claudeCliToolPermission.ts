@@ -355,11 +355,11 @@ export interface ToolPermissionDeps {
   /** Flip the session indicator to waiting_for_input while the prompt is pending. */
   setWaitingStatus: (sessionId: string) => void;
   /** Restore turn state on settle (CLI-aware; PID watcher owns running/idle). */
-  applySettle: (sessionId: string) => void;
+  applySettle: (sessionId: string, requestId: string) => void;
   /** Persist an "always" pattern to Claude settings (best-effort). */
   savePattern: (workspacePath: string, pattern: string) => Promise<void>;
   /** Fire the OS "blocked / needs response" notification (best-effort). */
-  notifyBlocked: (args: { sessionId: string; workspacePath: string | undefined; request: ToolPermissionRequest }) => void;
+  notifyBlocked: (args: { requestId: string; sessionId: string; workspacePath: string | undefined; request: ToolPermissionRequest }) => void;
   /** Mint a unique requestId (also the widget's answer-channel key). */
   makeRequestId: () => string;
   log?: (message: string) => void;
@@ -433,7 +433,7 @@ export async function resolveClaudeCliToolPermission(
   });
 
   deps.setWaitingStatus(sessionId);
-  deps.notifyBlocked({ sessionId, workspacePath, request });
+  deps.notifyBlocked({ sessionId, requestId, workspacePath, request });
 
   let answer: ToolPermissionAnswer;
   try {
@@ -465,7 +465,7 @@ export async function resolveClaudeCliToolPermission(
     }
   }
 
-  deps.applySettle(sessionId);
+  deps.applySettle(sessionId, requestId);
 
   return toToolPermissionMcpResult(buildToolPermissionBehaviorResult(answer, input));
 }

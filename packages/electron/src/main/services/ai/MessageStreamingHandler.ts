@@ -928,7 +928,7 @@ export class MessageStreamingHandler {
     const onExitPlanModeConfirm = async (data: { requestId: string; sessionId: string; planSummary: string; timestamp: number }) => {
       logger.main.info('[AIService] ExitPlanMode confirmation requested:', data.requestId);
       safeSend(event, 'ai:exitPlanModeConfirm', { ...data, workspacePath: effectiveWorkspacePath });
-      openPrompt(data.sessionId, data.requestId, 'decision');
+      openPrompt(data.sessionId, data.requestId, 'decision', 'plan_approval');
 
       // Update session status so all windows show the pending indicator
       getSessionStateManager().updateActivity({
@@ -944,7 +944,8 @@ export class MessageStreamingHandler {
         data.sessionId,
         sessionTitle,
         'plan_approval',
-        effectiveWorkspacePath
+        effectiveWorkspacePath,
+        data.requestId
       );
     };
     this.installListener(provider, 'exitPlanMode:confirm', onExitPlanModeConfirm);
@@ -964,6 +965,7 @@ export class MessageStreamingHandler {
       timestamp: number;
     }) => {
       logger.main.info('[AIService] ExitPlanMode resolved:', data.requestId, 'approved=', data.approved);
+      safeSend(event, 'ai:exitPlanModeResolved', { ...data, workspacePath: effectiveWorkspacePath });
       resolvePrompt(data.sessionId, data.requestId);
       if (hasOpenPrompts(data.sessionId)) return;
 
@@ -1026,7 +1028,8 @@ export class MessageStreamingHandler {
         data.sessionId,
         sessionTitle,
         'permission',
-        data.workspacePath
+        data.workspacePath,
+        data.requestId
       );
     };
     this.installListener(provider, 'toolPermission:pending', onToolPermissionPending);

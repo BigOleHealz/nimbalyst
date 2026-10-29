@@ -17,6 +17,7 @@ import type { SessionNotificationNavigationTarget } from '../../shared/sessionNo
 import { composeNotificationTitle } from '../../shared/notificationTitle';
 import { resolveNotificationIcon, type NotificationKind } from './notificationIcons';
 import { AISessionsRepository } from '@nimbalyst/runtime/storage/repositories/AISessionsRepository';
+import { parseJsonObjectColumn } from '../utils/jsonColumn';
 
 const NOTIFICATION_OUTCOME_TIMEOUT_MS = 2_000;
 
@@ -42,6 +43,7 @@ export interface NotificationOptions {
   /** What this notification is about; selects the per-kind artwork. */
   kind?: NotificationKind;
   sessionId?: string;
+  approvalRequestId?: string;
   workspacePath: string;  // REQUIRED: stable identifier for routing
   sourceLabel?: string;
   provider?: string;
@@ -80,7 +82,7 @@ export interface NotificationResult {
  */
 export type BlockingType = 'permission' | 'question' | 'plan_approval' | 'git_commit';
 
-class NotificationService {
+export class NotificationService {
   private activeNotifications: Map<string, Notification> = new Map();
   private pendingNavigations = new Map<string, PendingNavigation>();
 
@@ -413,6 +415,7 @@ class NotificationService {
       sessionId: options.sessionId,
       workspacePath: options.workspacePath,
       sourceLabel: this.getSourceLabel(options),
+      ...(options.approvalRequestId ? { approvalRequestId: options.approvalRequestId } : {}),
     };
 
     if (this.takeLivePendingNavigation(options.workspacePath)) {
@@ -645,8 +648,12 @@ class NotificationService {
     sessionId: string,
     sessionName: string,
     blockingType: BlockingType,
-    workspacePath: string
+    workspacePath: string,
+    requestId?: string,
   ): Promise<void> {
+    // Claim before checking preferences: reconnecting must not replay a request
+    // that arrived while notifications were disabled or the session was visible.
+    if (requestId && !await this.claimApprovalNotification(sessionId, blockingType, requestId)) return;
     // Check if session blocked notifications are enabled
     if (!isSessionBlockedNotificationsEnabled()) {
       return;
@@ -660,7 +667,31 @@ class NotificationService {
       sessionId,
       workspacePath,
       sourceLabel: sessionName,
+      ...(requestId ? { approvalRequestId: requestId } : {}),
     });
+  }
+
+  private approvalNotificationClaims = new Map<string, Promise<void>>();
+
+  private async claimApprovalNotification(sessionId: string, type: BlockingType, requestId: string): Promise<boolean> {
+    const previous = this.approvalNotificationClaims.get(sessionId) ?? Promise.resolve();
+    let claimed = false;
+    const next = previous.then(async () => {
+      const session = await AISessionsRepository.get(sessionId);
+      if (!session) return;
+      const receipts = parseJsonObjectColumn(session.metadata).approvalNotificationReceipts;
+      const seen = Array.isArray(receipts) ? receipts.filter((id): id is string => typeof id === 'string') : [];
+      const key = JSON.stringify([type, requestId]);
+      if (seen.includes(key)) return;
+      await AISessionsRepository.updateMetadata(sessionId, { metadata: { approvalNotificationReceipts: [...seen, key] } });
+      claimed = true;
+    }).catch(error => {
+      logger.main.error('[NotificationService] Failed to claim approval notification:', error);
+    });
+    this.approvalNotificationClaims.set(sessionId, next);
+    await next;
+    if (this.approvalNotificationClaims.get(sessionId) === next) this.approvalNotificationClaims.delete(sessionId);
+    return claimed;
   }
 }
 

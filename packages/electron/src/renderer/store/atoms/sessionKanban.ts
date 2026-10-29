@@ -5,13 +5,14 @@
  * Sessions/workstreams/worktrees are organized into phase columns
  * (backlog, planning, implementing, validating, complete).
  *
- * Phase is stored in metadata.phase on each session.
- * Only sessions with a phase appear on the board.
+ * Workflow phase is stored in metadata.phase on each session. Approval waiting
+ * is a live overlay: it never overwrites the session's workflow phase.
  */
 
 import { atom } from 'jotai';
 import { atomFamily } from '../debug/atomFamilyRegistry';
 import type { SessionMeta } from '@nimbalyst/runtime';
+import { sessionApprovalSnapshotAtom, sessionAwaitingApprovalAtom } from './sessionApproval';
 import {
   sessionRegistryAtom,
   sessionProcessingAtom,
@@ -24,6 +25,7 @@ import {
 
 /** Phase columns on the kanban board */
 export type SessionPhase = 'backlog' | 'planning' | 'implementing' | 'validating' | 'complete';
+export type SessionBoardColumn = SessionPhase | 'awaiting-approval';
 
 /** Card type determines visual treatment and whether child run states are shown */
 export type KanbanCardType = 'session' | 'workstream' | 'worktree';
@@ -48,6 +50,12 @@ export const SESSION_PHASE_COLUMNS: { value: SessionPhase; label: string; color:
   { value: 'implementing', label: 'Implementing', color: '#eab308' },
   { value: 'validating', label: 'Validating', color: '#a78bfa' },
   { value: 'complete', label: 'Complete', color: '#4ade80' },
+];
+
+export const SESSION_BOARD_COLUMNS: { value: SessionBoardColumn; label: string; color: string }[] = [
+  ...SESSION_PHASE_COLUMNS.slice(0, 3),
+  { value: 'awaiting-approval', label: 'Awaiting approval', color: 'var(--nim-warning)' },
+  ...SESSION_PHASE_COLUMNS.slice(3),
 ];
 
 const VALID_PHASES = new Set<string>(SESSION_PHASE_COLUMNS.map(c => c.value));
@@ -118,16 +126,24 @@ export const sessionKanbanFilterAtom = atom<SessionKanbanFilter>({
 // ============================================================
 
 /** Key type for the grouped map - includes 'unphased' for sessions without a phase */
-export type SessionPhaseKey = SessionPhase | 'unphased';
+export type SessionPhaseKey = SessionBoardColumn | 'unphased';
 
 /** Derived: sessions grouped by phase for the kanban board */
 export const sessionsByPhaseAtom = atom((get) => {
   const registry = get(sessionRegistryAtom);
   const filter = get(sessionKanbanFilterAtom);
+  const awaitingSessions = new Set<string>();
+  for (const approval of get(sessionApprovalSnapshotAtom).approvals) {
+    let id: string | null | undefined = approval.sessionId;
+    while (id && !awaitingSessions.has(id)) {
+      awaitingSessions.add(id);
+      id = registry.get(id)?.parentSessionId;
+    }
+  }
 
   const grouped = new Map<SessionPhaseKey, SessionMeta[]>();
   grouped.set('unphased', []);
-  for (const col of SESSION_PHASE_COLUMNS) {
+  for (const col of SESSION_BOARD_COLUMNS) {
     grouped.set(col.value, []);
   }
 
@@ -136,7 +152,7 @@ export const sessionsByPhaseAtom = atom((get) => {
     if (meta.parentSessionId) continue;
 
     // For workstream parents without an explicit phase, derive from children
-    const phase = meta.phase
+    const phase = awaitingSessions.has(meta.id) ? 'awaiting-approval' : meta.phase
       ?? (meta.childCount > 0 ? derivePhaseFromChildren(meta.id, registry) : undefined);
 
     // Skip complete if filter says hide
@@ -157,8 +173,8 @@ export const sessionsByPhaseAtom = atom((get) => {
       if (!filter.tags.some(t => sessionTags.includes(t))) continue;
     }
 
-    if (phase && VALID_PHASES.has(phase)) {
-      grouped.get(phase as SessionPhase)!.push(meta);
+    if (phase === 'awaiting-approval' || (phase && VALID_PHASES.has(phase))) {
+      grouped.get(phase as SessionBoardColumn)!.push(meta);
     } else {
       grouped.get('unphased')!.push(meta);
     }
@@ -220,10 +236,10 @@ export const childRunStatesAtom = atomFamily((sessionId: string) =>
       const isProcessing = get(sessionProcessingAtom(meta.id));
       const hasPendingPrompt = get(sessionHasPendingInteractivePromptAtom(meta.id));
 
-      if (isProcessing) {
-        summary.running++;
-      } else if (hasPendingPrompt) {
+      if (get(sessionAwaitingApprovalAtom(meta.id)) || hasPendingPrompt) {
         summary.waiting++;
+      } else if (isProcessing) {
+        summary.running++;
       } else if (meta.isArchived) {
         summary.done++;
       } else if (meta.uncommittedCount > 0) {

@@ -265,7 +265,7 @@ describe('resolveClaudeCliToolPermission (round-trip)', () => {
     );
     expect(spies.persistToolResult).toHaveBeenCalledTimes(1);
     expect(spies.persistToolResult.mock.calls[0][0].result).toMatchObject({ decision: 'allow', scope: 'once' });
-    expect(spies.applySettle).toHaveBeenCalledWith(sessionId);
+    expect(spies.applySettle).toHaveBeenCalledWith(sessionId, expect.any(String));
 
     // once → not cached, not saved.
     expect(spies.markPatternApproved).not.toHaveBeenCalled();

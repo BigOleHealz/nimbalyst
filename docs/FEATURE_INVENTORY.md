@@ -79,6 +79,8 @@ Twelve built-in provider lanes, plus any agent an extension contributes. Every l
 
 ## AI Sessions
 
+- **Awaiting approval** -- desktop agent sessions waiting on tool permissions, commit proposals, or plan approval move automatically into a dedicated Kanban column and show an amber sidebar badge. Multiple requests remain waiting until the last settles; ordinary questions stay separate. Notifications identify the session and approval type, respect notification preferences, deduplicate request replays across restarts, and open the session at its approval widget when transcript correlation is available.
+
 - Session creation, naming, archiving, deletion
 - Launch a new session from any workspace mode with the reusable composer popup (Cmd+Shift+N), including model/mode controls, mentions, slash commands, and attachments
 - Session search with full-text index (Cmd+L)

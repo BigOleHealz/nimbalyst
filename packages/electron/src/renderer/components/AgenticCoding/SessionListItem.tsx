@@ -11,6 +11,7 @@ import { ProviderIcon } from '@nimbalyst/runtime/ui/icons/ProviderIcons';
 import { getRelativeTimeString } from '../../utils/dateFormatting';
 import { sessionOrChildProcessingAtom, sessionUnreadAtom, sessionPendingPromptAtom, sessionHasPendingInteractivePromptAtom, sessionShareAtom, sessionWakeupAtom, sessionLastActivityAtom } from '../../store';
 import { sessionRegistryAtom } from '../../store/atoms/sessions';
+import { sessionAwaitingApprovalAtom } from '../../store/atoms/sessionApproval';
 import { SessionContextMenu } from './SessionContextMenu';
 import { FullTitleTooltip } from './FullTitleTooltip';
 import { settingAtom } from '../../store/atoms/settingAtomFamily';
@@ -29,9 +30,20 @@ export const SessionStatusIndicator = memo<{ sessionId: string; messageCount?: n
   const hasPendingPrompt = useAtomValue(sessionPendingPromptAtom(sessionId));
   const hasAgentWakePending = useAtomValue(sessionAgentWakePendingAtom(sessionId));
   const hasUnread = useAtomValue(sessionUnreadAtom(sessionId));
+  const awaitingApproval = useAtomValue(sessionAwaitingApprovalAtom(sessionId));
   const wakeup = useAtomValue(sessionWakeupAtom(sessionId));
   // Lead turn is over; the session is only draining background shells/sub-agents.
   const backgroundTasks = useAtomValue(sessionBackgroundTasksAtom(sessionId));
+
+  // The badge supplies the approval label; keep the unread dot visible and
+  // avoid advertising a blocked session as still running.
+  if (awaitingApproval) {
+    return (
+      <div className={`session-list-item-status flex items-center justify-center w-5 h-5 ${hasUnread ? 'unread text-[var(--nim-primary)]' : 'awaiting-approval text-[var(--nim-warning)]'}`} title={hasUnread ? 'Unread response' : 'Awaiting approval'}>
+        <MaterialSymbol icon={hasUnread ? 'circle' : 'approval'} size={hasUnread ? 8 : 14} fill={hasUnread} />
+      </div>
+    );
+  }
 
   // Priority: waiting for input > processing > pending prompt > scheduled wakeup > unread > message count
   // All interactive prompts (AskUserQuestion, ExitPlanMode, ToolPermission, etc.) show same indicator
@@ -129,6 +141,7 @@ const SessionExternalMarker = memo(function SessionExternalMarker({ sessionId }:
 });
 
 const PHASE_STYLES: Record<string, { label: string; color: string; bg: string }> = {
+  'awaiting-approval': { label: 'Awaiting approval', color: 'color-mix(in srgb, var(--nim-warning) 60%, var(--nim-text))', bg: 'color-mix(in srgb, var(--nim-warning) 14%, transparent)' },
   backlog: { label: 'Backlog', color: 'var(--nim-text-faint)', bg: 'rgba(128,128,128,0.12)' },
   planning: { label: 'Planning', color: 'var(--nim-primary)', bg: 'rgba(96,165,250,0.12)' },
   implementing: { label: 'Implementing', color: 'var(--nim-warning)', bg: 'rgba(251,191,36,0.12)' },
@@ -246,6 +259,7 @@ export const SessionListItem = memo<SessionListItemProps>(function SessionListIt
 
   // Awaiting input state (interactive prompt or pending prompt)
   const hasInteractivePrompt = useAtomValue(sessionHasPendingInteractivePromptAtom(id));
+  const awaitingApproval = useAtomValue(sessionAwaitingApprovalAtom(id));
   const hasPendingPromptAtom = useAtomValue(sessionPendingPromptAtom(id));
   const isAwaitingInput = hasInteractivePrompt || hasPendingPromptAtom;
 
@@ -444,7 +458,7 @@ export const SessionListItem = memo<SessionListItemProps>(function SessionListIt
             <div className="session-list-item-meta flex gap-1.5 text-[0.6875rem] text-[var(--nim-text-faint)] items-center mt-0.5">
               <span className="session-list-item-datetime text-[0.6875rem] text-[var(--nim-text-faint)] whitespace-nowrap transition-colors duration-150" title={fullDateTime}>{relativeTime}</span>
               {displayModel && <span className="session-list-item-model overflow-hidden text-ellipsis whitespace-nowrap">{displayModel}</span>}
-              {phase && <SessionPhaseBadge phase={phase} />}
+              {(awaitingApproval || phase) && <SessionPhaseBadge phase={awaitingApproval ? 'awaiting-approval' : phase!} />}
               <SessionExternalMarker sessionId={id} />
               {treeDetails}
             </div>
