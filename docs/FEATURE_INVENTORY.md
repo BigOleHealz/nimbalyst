@@ -371,6 +371,7 @@ Companion app; pairs with a desktop over encrypted sync. Voice mode is not inclu
 ## Tracker System
 
 - Tracker mode (Cmd+T) with list, table, grid, kanban, tag-board, timeline, and inbox views
+- Tasks have a single parentTask and inverse subtasks relationships, independent child status and optional session links; agents reuse or create subtasks for meaningful decomposition, and Task and All list/kanban views support persisted parent-task filters
 - Board lanes and timeline grouping by milestone, goal, or another field, with drag-and-drop and bulk assignment
 - Full-document tracker view with collaborative body editing, inline comments, editable field chips, AI chat, and shareable reopen links
 - Tag-board view with one column per tag (items appear in every matching column, plus an Untagged column)

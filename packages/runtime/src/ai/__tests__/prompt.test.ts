@@ -31,6 +31,9 @@ describe('buildClaudeCodeSystemPrompt', () => {
 
     expect(prompt).toContain('## Tracker References');
     expect(prompt).toContain('nimbalyst://NIM-123');
+    expect(prompt).toContain('automatically create subtasks linked to that parent task');
+    expect(prompt).toContain('fields: { parentTask: { itemId:');
+    expect(prompt).toContain('Subtasks do not require sub-agents');
   });
 
   it('omits tracker-references guidance when trackers are disabled', () => {
@@ -38,6 +41,7 @@ describe('buildClaudeCodeSystemPrompt', () => {
 
     expect(prompt).not.toContain('## Tracker References');
     expect(prompt).not.toContain('nimbalyst://');
+    expect(prompt).not.toContain('parentTask');
     // Unrelated sections stay intact
     expect(prompt).toContain('## File References');
     expect(prompt).toContain('## Git Commits');

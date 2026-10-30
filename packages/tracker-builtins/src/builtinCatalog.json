@@ -800,6 +800,32 @@
         "displayInline": true
       },
       {
+        "name": "parentTask",
+        "type": "relationship",
+        "required": false,
+        "displayInline": true,
+        "relationshipTypeKey": "child-of",
+        "targetTrackerTypes": [
+          "task"
+        ],
+        "multiValue": false,
+        "inverseFieldId": "subtasks",
+        "inverseRelationshipTypeKey": "parent-of"
+      },
+      {
+        "name": "subtasks",
+        "type": "relationship",
+        "required": false,
+        "displayInline": true,
+        "relationshipTypeKey": "parent-of",
+        "targetTrackerTypes": [
+          "task"
+        ],
+        "multiValue": true,
+        "inverseFieldId": "parentTask",
+        "inverseRelationshipTypeKey": "child-of"
+      },
+      {
         "name": "dependsOn",
         "type": "relationship",
         "required": false,

@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * Contract tests for tracker_create against the REAL builtin tracker schemas
@@ -112,7 +112,54 @@ beforeEach(() => {
   mockDocumentServices.clear();
 });
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe('tracker_create honors the builtin schema contract (real schemas)', () => {
+  it.each([{ label: 'null', parentTask: null }, { label: 'empty list', parentTask: [] }])('creates a top-level task with an empty parent ($label) without inverse warnings', async ({ parentTask }) => {
+    setupCreateQueue('task');
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const result = await handleTrackerCreate({ type: 'task', title: 'Top-level', fields: { parentTask } }, '/tmp/ws');
+    expect(result.isError).toBe(false);
+    expect(JSON.parse(String(result.content[0].text)).structured.relationshipWrite).toBeUndefined();
+    expect(insertedData().customFields.parentTask).toBeNull();
+    expect(log).not.toHaveBeenCalled();
+  });
+
+  it.each(['unavailable', 'rejected'])('preserves the created item result when inverse writes are %s', async failure => {
+    setupCreateQueue('task');
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    if (failure === 'rejected') {
+      mockDocumentServices.set('/tmp/ws', { propagateInverseForUpdate: vi.fn().mockRejectedValue(new Error('Parent update failed')) });
+    }
+    const parentTask = { itemId: 'parent-task', trackerType: 'task' };
+    const result = await handleTrackerCreate({ type: 'task', title: 'Child', fields: { parentTask } }, '/tmp/ws');
+    expect(result.isError).toBe(false);
+    const payload = JSON.parse(String(result.content[0].text));
+    expect(payload.structured.action).toBe('created');
+    expect(payload.structured.item.id).toEqual(expect.any(String));
+    expect(payload.structured.relationshipWrite).toMatchObject({ status: 'failed', itemFieldsStored: true, inverseLinksComplete: false });
+    expect(payload.summary).toContain(payload.structured.relationshipWrite.message);
+    expect(insertedData().customFields.parentTask).toEqual(parentTask);
+    expect(mockQuery.mock.calls.filter(([sql]) => String(sql).includes('INSERT INTO tracker_items'))).toHaveLength(1);
+    expect(log).toHaveBeenCalledWith('[MCP Server] tracker_create inverse propagation failed:', expect.any(Error));
+  });
+
+  it('creates a subtask and materializes the parent’s inverse subtask link', async () => {
+    setupCreateQueue('task');
+    const propagateInverseForUpdate = vi.fn().mockResolvedValue(undefined);
+    mockDocumentServices.set('/tmp/ws', { propagateInverseForUpdate });
+    const parentTask = { itemId: 'parent-task', title: 'Parent', trackerType: 'task' };
+    const result = await handleTrackerCreate({ type: 'task', title: 'Child', fields: { parentTask } }, '/tmp/ws');
+    expect(result.isError).toBe(false);
+    expect(insertedData().customFields.parentTask).toEqual(parentTask);
+    expect(propagateInverseForUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'task', title: 'Child' }),
+      { parentTask }, {}, 'team', false,
+    );
+  });
+
   it('creates a decision with exactly the docs/TRACKER_WORKFLOWS.md arguments', async () => {
     setupCreateQueue('decision', true);
     // Verbatim shape from docs/TRACKER_WORKFLOWS.md "Decision Tracking".
