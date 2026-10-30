@@ -2,6 +2,7 @@ import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
 import { fileURLToPath, URL } from 'node:url';
 import { resolve } from 'node:path';
+import { normalizeBundleReportModuleId } from './scripts/bundleReportModuleId';
 
 const repoRoot = resolve(import.meta.dirname, '../..').replaceAll('\\', '/');
 const runtimeSource = fileURLToPath(new URL('../runtime/src', import.meta.url));
@@ -62,15 +63,7 @@ function browserHostWorkarounds(): Plugin[] {
 }
 
 function bundleGraphReport(): Plugin {
-  const normalizeModuleId = (id: string | null) => {
-    if (id === null) return null;
-    const normalized = id.replaceAll('\\', '/');
-    const virtualPrefix = normalized.startsWith('\0') ? '\0' : '';
-    const pathPart = virtualPrefix ? normalized.slice(1) : normalized;
-    return pathPart.startsWith(`${repoRoot}/`)
-      ? `${virtualPrefix}${pathPart.slice(repoRoot.length)}`
-      : normalized;
-  };
+  const normalizeModuleId = (id: string | null) => normalizeBundleReportModuleId(id, repoRoot);
 
   return {
     name: 'collab-bundle-graph-report',

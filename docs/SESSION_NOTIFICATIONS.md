@@ -36,12 +36,15 @@ To start it yourself, run `pnpm --dir /Users/bigolehealz/workspace/nimbalyst/wor
 - Runtime production build and the full Electron production build passed, including renderer, worker, and sandbox artifact. Main/preload were rebuilt after the final runtime changes.
 - The single full unit run passed 18,348 tests and failed 61, with three additional suites unable to load. Every affected file subsequently passed targeted retries: 172 tests across 20 files, after allowing local test HTTP listeners, disabling Node 26 experimental web storage, generating missing collab exports, and allowing the shared dependency path for the WASM fixture. Two existing provider test mocks were extended for the new preference export. The full suite was not repeated.
 - Repository lint reports **693 errors and 16 warnings**, with **zero diagnostics on added or changed lines**. Focused notification/settings lint passes. Broad lint cleanup is outside this focused feature.
-- An auxiliary collab-bundle build generated the test artifacts, but its production-output audit rejects an absolute local dependency path in the generated report under this shared-dependency worktree setup. Its two previously unloadable test suites pass against those generated artifacts.
+- The collab-bundle production-output audit exposed shared dependency paths leaking into the generated report from linked worktrees. A focused normalizer fix now passes the real production-output, browser-graph, singleton, state-lane, and size audits. Seven regression tests pass (four reproduced the failure before the fix), along with 12 existing bundle-check script tests. Its two previously unloadable test suites pass against the generated artifacts.
 - Native OS delivery, click behavior in a running app, and iOS push delivery remain **unverified end-to-end** until the worktree build is launched and the acceptance check above is exercised. No app was restarted by this session.
 - Feature inventory updated in System Integration. Generated license-file changes from building were restored and are excluded from the patch.
 
 ## Changed files
 
+- [packages/collab-bundle/vite.config.ts](../packages/collab-bundle/vite.config.ts)
+- [packages/collab-bundle/scripts/bundleReportModuleId.ts](../packages/collab-bundle/scripts/bundleReportModuleId.ts)
+- [packages/collab-bundle/src/__tests__/bundleReportModuleId.test.ts](../packages/collab-bundle/src/__tests__/bundleReportModuleId.test.ts)
 - [CHANGELOG.md](../CHANGELOG.md)
 - [packages/electron/src/main/ipc/NotificationHandlers.ts](../packages/electron/src/main/ipc/NotificationHandlers.ts)
 - [packages/electron/src/main/ipc/__tests__/NotificationHandlers.test.ts](../packages/electron/src/main/ipc/__tests__/NotificationHandlers.test.ts)
