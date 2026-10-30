@@ -12,6 +12,8 @@ import {
   setNotifyWhenFocusedEnabled,
   isSessionBlockedNotificationsEnabled,
   setSessionBlockedNotificationsEnabled,
+  isSessionReviewNotificationsEnabled,
+  setSessionReviewNotificationsEnabled,
 } from '../utils/store';
 import { safeHandle } from '../utils/ipcRegistry';
 
@@ -147,5 +149,11 @@ export function registerNotificationHandlers(): void {
     }
   });
 
+  safeHandle('notifications:get-review-enabled', async () => isSessionReviewNotificationsEnabled());
+  safeHandle('notifications:set-review-enabled', async (_event, enabled: boolean) => {
+    if (typeof enabled !== 'boolean') throw new Error('enabled must be a boolean');
+    setSessionReviewNotificationsEnabled(enabled);
+    return { success: true };
+  });
   logger.main.info('[NotificationHandlers] Notification IPC handlers registered');
 }

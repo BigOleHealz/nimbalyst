@@ -5,6 +5,8 @@ const updateMetadata = vi.fn();
 const getSession = vi.fn();
 const requestMobilePush = vi.fn();
 const pushChange = vi.fn().mockResolvedValue({ published: true });
+const blockedEnabled = vi.hoisted(() => vi.fn(() => true));
+vi.mock('../../../utils/store', () => ({ isSessionBlockedNotificationsEnabled: blockedEnabled }));
 const trayManager = { onPromptCreated: vi.fn(), onPromptResolved: vi.fn() };
 
 vi.mock('@nimbalyst/runtime/storage/repositories/AISessionsRepository', () => ({
@@ -133,6 +135,7 @@ describe('tray notification is part of persisting the bit', () => {
  */
 describe('blocked session pages the phone', () => {
   beforeEach(() => {
+    blockedEnabled.mockReturnValue(true);
     resetPendingPromptTracking();
     updateMetadata.mockReset().mockResolvedValue(undefined);
     getSession.mockReset().mockResolvedValue({ title: 'Fix the parser' });
@@ -182,5 +185,21 @@ describe('blocked session pages the phone', () => {
     await setSessionPendingPrompt('s1', false);
 
     expect(requestMobilePush).not.toHaveBeenCalled();
+  });
+
+  it('respects Awaiting Input preferences without dropping pending state or replaying on enable', async () => {
+    blockedEnabled.mockReturnValue(false);
+    await setSessionPendingPrompt('s1', true);
+    expect(getSessionsWithPendingPrompt()).toContain('s1');
+    expect(pushChange).toHaveBeenCalledWith('s1', expect.objectContaining({
+      metadata: expect.objectContaining({ hasPendingPrompt: true }),
+    }));
+    expect(requestMobilePush).not.toHaveBeenCalled();
+    blockedEnabled.mockReturnValue(true);
+    await setSessionPendingPrompt('s1', true);
+    expect(requestMobilePush).not.toHaveBeenCalled();
+    await setSessionPendingPrompt('s1', false);
+    await setSessionPendingPrompt('s1', true);
+    await vi.waitFor(() => expect(requestMobilePush).toHaveBeenCalledTimes(1));
   });
 });

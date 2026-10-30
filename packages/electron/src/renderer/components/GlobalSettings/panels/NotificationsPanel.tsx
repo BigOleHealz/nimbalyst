@@ -222,7 +222,7 @@ export function NotificationsPanel() {
       <div className="provider-panel-section py-4 mb-4 border-b border-[var(--nim-border)] last:border-b-0 last:mb-0 last:pb-0">
         <h4 className="provider-panel-section-title text-base font-semibold mb-3 text-[var(--nim-text)]">OS Notifications</h4>
         <p className="text-sm leading-relaxed text-[var(--nim-text-muted)] mb-4">
-          Show system notifications when AI responses complete while the app is in the background.
+          Show system notifications for session events while the app is in the background.
         </p>
 
         <SettingsToggle
@@ -236,7 +236,7 @@ export function NotificationsPanel() {
             }
           }}
           name="Enable OS Notifications"
-          description="Native system notifications when AI completes a response. Respects Do Not Disturb."
+          description="Native system notifications when sessions need input or are ready for review. Respects Do Not Disturb."
         />
 
         {osNotificationsEnabled && (
@@ -272,16 +272,22 @@ export function NotificationsPanel() {
       </div>
 
       <div className="provider-panel-section py-4 mb-4 border-b border-[var(--nim-border)] last:border-b-0 last:mb-0 last:pb-0">
-        <h4 className="provider-panel-section-title text-base font-semibold mb-3 text-[var(--nim-text)]">Session Blocked Notifications</h4>
+        <h4 className="provider-panel-section-title text-base font-semibold mb-3 text-[var(--nim-text)]">Session Notifications</h4>
         <p className="text-sm leading-relaxed text-[var(--nim-text-muted)] mb-4">
-          Show system notifications when an AI session needs your input.
+          Choose which session events notify you on desktop and your connected companion app.
         </p>
 
         <SettingsToggle
           checked={settings.sessionBlockedNotificationsEnabled}
           onChange={(checked) => updateSettings({ sessionBlockedNotificationsEnabled: checked })}
-          name="Notify When Session Needs Attention"
+          name="Awaiting Input"
           description="Notify when a session is waiting for input (permissions, questions, plan reviews, commits)."
+        />
+        <SettingsToggle
+          checked={settings.sessionReviewNotificationsEnabled}
+          onChange={(checked) => updateSettings({ sessionReviewNotificationsEnabled: checked })}
+          name="Review"
+          description="Notify when a session is ready for review. Companion alerts arrive when your desktop is locked or idle."
         />
       </div>
     </div>

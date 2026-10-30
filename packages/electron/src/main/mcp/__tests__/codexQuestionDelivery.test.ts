@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   }),
   active: false,
   updateActivity: vi.fn(async () => {}),
+  blockedNotification: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("electron", async () => ({
   app: (await import('../../../../test-stubs/privateUserData')).testApp,
@@ -65,7 +66,7 @@ vi.mock("../../tray/TrayManager", () => ({
   TrayManager: { getInstance: () => ({ onPromptResolved() {} }) },
 }));
 vi.mock("../../services/NotificationService", () => ({
-  notificationService: {},
+  notificationService: { showBlockedNotification: mocks.blockedNotification },
 }));
 vi.mock("../../services/ClaudeSettingsManager", () => ({
   ClaudeSettingsManager: {},
@@ -156,6 +157,16 @@ afterEach(async () => {
 });
 
 describe("Codex first answer delivery", () => {
+  it("notifies the desktop when an MCP question starts waiting", async () => {
+    const turn = setup();
+    const { pending } = await openQuestion();
+    await codexQuestionTurns.end(turn);
+    await pending;
+    expect(mocks.blockedNotification).toHaveBeenCalledExactlyOnceWith(
+      "session", "AI Session", "question", "/workspace",
+    );
+  });
+
   it("recovers the first answer after the turn ended without an MCP abort", async () => {
     const turn = setup();
     const { pending } = await openQuestion();

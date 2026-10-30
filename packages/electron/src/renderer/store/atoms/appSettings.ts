@@ -274,6 +274,8 @@ export interface NotificationSettings {
   notifyWhenFocused: boolean;
   /** Show OS notifications when a session needs user input (permission, question, etc.) */
   sessionBlockedNotificationsEnabled: boolean;
+  /** Desktop and companion alerts when a session is ready for review. */
+  sessionReviewNotificationsEnabled: boolean;
 }
 
 /**
@@ -287,6 +289,7 @@ const defaultNotificationSettings: NotificationSettings = {
   osNotificationsEnabled: false,
   notifyWhenFocused: false,
   sessionBlockedNotificationsEnabled: true,
+  sessionReviewNotificationsEnabled: true,
 };
 
 /**
@@ -318,6 +321,7 @@ function scheduleNotificationPersist(settings: NotificationSettings): void {
       await window.electronAPI.invoke('notifications:set-enabled', settings.osNotificationsEnabled);
       await window.electronAPI.invoke('notifications:set-notify-when-focused', settings.notifyWhenFocused);
       await window.electronAPI.invoke('notifications:set-blocked-enabled', settings.sessionBlockedNotificationsEnabled);
+      await window.electronAPI.invoke('notifications:set-review-enabled', settings.sessionReviewNotificationsEnabled);
     }
   }, NOTIFICATION_PERSIST_DEBOUNCE_MS);
 }
@@ -392,7 +396,7 @@ export async function initNotificationSettings(): Promise<NotificationSettings> 
   }
 
   try {
-    const [soundEnabled, soundType, customSound, soundVolume, osNotifEnabled, notifyFocused, blockedEnabled] = await Promise.all([
+    const [soundEnabled, soundType, customSound, soundVolume, osNotifEnabled, notifyFocused, blockedEnabled, reviewEnabled] = await Promise.all([
       window.electronAPI.invoke('completion-sound:is-enabled'),
       window.electronAPI.invoke('completion-sound:get-type'),
       window.electronAPI.invoke('completion-sound:get-custom'),
@@ -400,6 +404,7 @@ export async function initNotificationSettings(): Promise<NotificationSettings> 
       window.electronAPI.invoke('notifications:get-enabled'),
       window.electronAPI.invoke('notifications:get-notify-when-focused'),
       window.electronAPI.invoke('notifications:get-blocked-enabled'),
+      window.electronAPI.invoke('notifications:get-review-enabled'),
     ]);
 
     const customName: string | null = customSound?.fileName ?? null;
@@ -420,6 +425,7 @@ export async function initNotificationSettings(): Promise<NotificationSettings> 
       osNotificationsEnabled: osNotifEnabled ?? false,
       notifyWhenFocused: notifyFocused ?? false,
       sessionBlockedNotificationsEnabled: blockedEnabled ?? true,
+      sessionReviewNotificationsEnabled: reviewEnabled ?? true,
     };
   } catch (error) {
     console.error('[appSettings] Failed to load notification settings:', error);

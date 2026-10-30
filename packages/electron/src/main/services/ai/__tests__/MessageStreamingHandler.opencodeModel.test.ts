@@ -184,6 +184,7 @@ vi.mock("../../MetaAgentService", () => ({
 vi.mock("../wikiSkillAvailability", () => ({ isWikiSkillAvailable: () => false }));
 
 vi.mock("../../../utils/store", () => ({
+  isSessionReviewNotificationsEnabled: () => true,
   getDefaultEffortLevel: vi.fn(() => undefined),
   getDefaultThinkingMode: vi.fn(() => undefined),
   getAppSetting: vi.fn(() => undefined),

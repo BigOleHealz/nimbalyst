@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 <!-- New features go here -->
 - Sync assigned Jira Cloud issues into project tasks with full descriptions and comments, secure credentials, duplicate protection, and optional automatic refresh.
+- Get desktop and companion alerts when sessions need input or are ready for review, with separate controls for each event and click-to-open session navigation.
 
 ### Changed
 <!-- Changes to existing functionality go here -->
