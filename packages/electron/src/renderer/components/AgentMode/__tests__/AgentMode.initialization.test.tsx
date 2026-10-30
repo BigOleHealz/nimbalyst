@@ -30,7 +30,8 @@ vi.mock('../../../store', async () => {
 });
 vi.mock('../../../store/atoms/agentFileViewer', async () => { const { atom } = await import('jotai'); return { moveWorkstreamEditorAtom: atom(null, () => {}) }; });
 vi.mock('../../../store/atoms/blitz', async () => { const { atom } = await import('jotai'); return { blitzAnalysisCreatedAtom: atom(null, () => {}) }; });
-vi.mock('../../../store/atoms/agentMode', async () => { const { atom } = await import('jotai'); return { requestOpenSessionAtom: atom(null, () => {}), toggleSessionHistoryCollapsedAtom: atom(null, () => {}) }; });
+vi.mock('../../../store/atoms/agentMode', async () => { const { atom } = await import('jotai'); const focused = atom(false); const layout = atom({ secondarySessionId: null }); return { secondarySessionFocusedAtom: () => focused, agentModeLayoutAtomFamily: () => layout, requestOpenSessionAtom: atom(null, () => {}), toggleSessionHistoryCollapsedAtom: atom(null, () => {}) }; });
+vi.mock('../SessionWorkspace', () => ({ SessionWorkspace: ({ children }: { children: React.ReactNode }) => children }));
 vi.mock('../../../tips/atoms', async () => { const { atom } = await import('jotai'); return { tipCreateWorktreeSessionRequestAtom: atom(null, () => {}) }; });
 vi.mock('../../../store/atoms/appSettings', async () => { const { atom } = await import('jotai'); return { defaultAgentModelAtom: atom(null, () => {}) }; });
 vi.mock('../../../store/actions/sessionHistoryActions', async () => { const { atom } = await import('jotai'); return { blitzDialogOpenAtom: atom(null, () => {}), sessionQuickOpenRequestedAtom: atom(null, () => {}), selectSessionActionAtom: atom(null, () => {}), openSessionInTabActionAtom: atom(null, () => {}), createNewSessionActionAtom: atom(null, () => {}), createNewWorktreeSessionActionAtom: atom(null, () => {}), createWorktreeSessionCoreActionAtom: atom(null, () => {}), addSessionToWorktreeActionAtom: atom(null, () => {}) }; });

@@ -50,6 +50,9 @@ export interface SessionHistoryLayout {
  * This shape is used both at runtime and for persistence.
  */
 export interface AgentModeLayout {
+  /** Navigation only; session data and agent lifetime remain session-owned. */
+  openSessionIds: string[];
+  secondarySessionId: string | null;
   sessionHistoryLayout: SessionHistoryLayout;
   /** Shared width for the Agent right panel (Edited Files, Review, or Chat). */
   filesEditedWidth: number;
@@ -93,6 +96,8 @@ const DEFAULT_SESSION_HISTORY_LAYOUT: SessionHistoryLayout = {
 };
 
 const DEFAULT_LAYOUT: AgentModeLayout = {
+  openSessionIds: [],
+  secondarySessionId: null,
   sessionHistoryLayout: DEFAULT_SESSION_HISTORY_LAYOUT,
   filesEditedWidth: 256,
   todoPanelCollapsed: false,
@@ -108,6 +113,10 @@ const DEFAULT_LAYOUT: AgentModeLayout = {
  * Handles missing fields from old persisted data.
  */
 export function mergeWithDefaults(persisted: Partial<AgentModeLayout> | undefined): AgentModeLayout {
+  const openSessionIds = Array.isArray(persisted?.openSessionIds)
+    ? [...new Set(persisted.openSessionIds.filter(id => typeof id === 'string' && id.length > 0))]
+    : [];
+  const secondarySessionId = persisted?.secondarySessionId;
   const sessionHistoryLayout: SessionHistoryLayout = {
     ...DEFAULT_SESSION_HISTORY_LAYOUT,
     ...persisted?.sessionHistoryLayout,
@@ -125,6 +134,9 @@ export function mergeWithDefaults(persisted: Partial<AgentModeLayout> | undefine
   // Blindly spreading ...persisted would pull selectedWorkstream into the layout object,
   // and schedulePersist would write it back, overwriting newer selections.
   return {
+    openSessionIds,
+    secondarySessionId: typeof secondarySessionId === 'string' && openSessionIds.includes(secondarySessionId)
+      ? secondarySessionId : null,
     sessionHistoryLayout,
     filesEditedWidth: persisted?.filesEditedWidth ?? DEFAULT_LAYOUT.filesEditedWidth,
     todoPanelCollapsed: persisted?.todoPanelCollapsed ?? DEFAULT_LAYOUT.todoPanelCollapsed,
@@ -341,6 +353,19 @@ function schedulePersist(workspacePath: string, layout: AgentModeLayout): void {
 // ============================================================
 // Setter Atoms
 // ============================================================
+
+/** Workspace-scoped navigation writes never start, stop, or modify an agent. */
+export const updateOpenSessionsAtom = atom(null, (get, set, update: {
+  workspacePath: string;
+  openSessionIds?: string[];
+  secondarySessionId?: string | null;
+}) => {
+  const { workspacePath, ...changes } = update;
+  const current = get(agentModeLayoutAtomFamily(workspacePath));
+  const next = mergeWithDefaults({ ...current, ...changes });
+  set(agentModeLayoutAtomFamily(workspacePath), next);
+  schedulePersist(workspacePath, next);
+});
 
 /**
  * Update session history layout with partial values.
@@ -641,6 +666,8 @@ export const ensureSessionHistoryVisibleAtom = atom(
 
 // Count overlapping rail and AgentMode restores independently for each project.
 export const pendingAgentModeRestoresAtom = atomFamily((_workspacePath: string) => atom(0));
+/** Keyboard routing follows the conversation the user last focused. */
+export const secondarySessionFocusedAtom = atomFamily((_workspacePath: string) => atom(false));
 
 /**
  * Initialize agent mode layout from workspace state.
@@ -668,6 +695,7 @@ export async function initAgentModeLayout(
   // `workspace:get-state` was in flight, the persisted value is older than it
   // and must not overwrite it.
   const selectionBeforeLoad = store.get(selectedWorkstreamAtom(workspacePath));
+  const navigationBeforeLoad = store.get(agentModeLayoutAtomFamily(workspacePath));
 
   try {
     const workspaceState = await window.electronAPI.invoke(
@@ -678,6 +706,12 @@ export async function initAgentModeLayout(
     const persisted = agenticState as Partial<AgentModeLayout> | undefined;
 
     const restoredLayout = mergeWithDefaults(persisted);
+    const currentLayout = store.get(agentModeLayoutAtomFamily(workspacePath));
+    if (currentLayout.openSessionIds !== navigationBeforeLoad.openSessionIds ||
+        currentLayout.secondarySessionId !== navigationBeforeLoad.secondarySessionId) {
+      restoredLayout.openSessionIds = currentLayout.openSessionIds;
+      restoredLayout.secondarySessionId = currentLayout.secondarySessionId;
+    }
     store.set(agentModeLayoutAtomFamily(workspacePath), restoredLayout);
 
     if (
