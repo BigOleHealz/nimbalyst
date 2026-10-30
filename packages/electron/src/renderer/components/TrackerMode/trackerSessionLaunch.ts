@@ -84,24 +84,23 @@ export async function prepareTrackerLaunchContext(
   return { ...context, draftInput: prepared.draftInput };
 }
 
-function slugifyWorktreeName(value: string): string {
+function slugifyWorktreeName(value: string, preserveUnderscores = false): string {
   return value
     .normalize('NFKD')
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
+    .replace(preserveUnderscores ? /[^a-z0-9_]+/g : /[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 }
 
 export function deriveTrackerWorktreeName(itemId: string, title: string): string {
-  const itemSlug = slugifyWorktreeName(itemId) || 'tracker-item';
+  const itemSlug = (slugifyWorktreeName(itemId, true) || 'tracker-item').slice(0, MAX_WORKTREE_NAME_LENGTH).replace(/-+$/g, '');
   const titleSlug = slugifyWorktreeName(title);
-  const combined = titleSlug && titleSlug !== itemSlug
-    ? `${itemSlug}-${titleSlug}`
+  // Shorten the title first so the tracker id remains intact at the end.
+  const titleLength = Math.max(0, MAX_WORKTREE_NAME_LENGTH - itemSlug.length - 1);
+  const shortTitle = titleSlug.slice(0, titleLength).replace(/-+$/g, '');
+  return shortTitle && titleSlug !== slugifyWorktreeName(itemId)
+    ? `${shortTitle}-${itemSlug}`
     : itemSlug;
-
-  return combined
-    .slice(0, MAX_WORKTREE_NAME_LENGTH)
-    .replace(/-+$/g, '');
 }
 
 /**
@@ -154,6 +153,6 @@ export function buildTrackerLaunchContext(
       ? `file:${trackerItem.system.documentPath}`
       : trackerItemId,
     draftInput: lines.join('\n'),
-    worktreeName: deriveTrackerWorktreeName(itemId, title),
+    worktreeName: deriveTrackerWorktreeName(trackerItemId, title),
   };
 }

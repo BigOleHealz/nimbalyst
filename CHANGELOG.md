@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 <!-- Changes to existing functionality go here -->
+- Worktrees launched from tracker items default to the ticket title followed by its tracker ID, with the name editable before creation.
 - Refresh the light and dark themes with softer surfaces, clearer text, quieter borders, and rounder controls while preserving the layout.
 - Session cards now follow agent activity through Backlog, Running, Awaiting Input, Review, and Done, with manual placement retained until status changes and linked Jira, branch, and activity details on each card.
 
