@@ -11,9 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 <!-- New features go here -->
 - Sync assigned Jira Cloud issues into project tasks with full descriptions and comments, secure credentials, duplicate protection, and optional automatic refresh.
+- Open sessions in tabs or side by side, switch to the board while agents keep running, and restore open tabs and splits after restarting.
 
 ### Changed
 <!-- Changes to existing functionality go here -->
+- Session cards now follow agent activity through Backlog, Running, Awaiting Input, Review, and Done, with manual placement retained until status changes and linked Jira, branch, and activity details on each card.
 
 ### Fixed
 <!-- Bug fixes go here -->

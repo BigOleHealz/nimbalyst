@@ -104,6 +104,7 @@ describe('worktree record cache', () => {
       displayName: 'Test cleanup',
       path: '/tmp/wt-1',
       isPinned: false,
+      branch: 'codex/board',
     });
 
     store.set(patchWorktreeRecordAtom, { worktreeId: 'wt-1', updates: { isPinned: true } });
@@ -114,6 +115,10 @@ describe('worktree record cache', () => {
       displayName: 'Test cleanup',
       path: '/tmp/wt-1',
       isPinned: true,
+      branch: 'codex/board',
     });
+
+    store.set(setWorktreeRecordAtom, { id: 'wt-1', name: 'endless-spruce', path: '/tmp/wt-1', isPinned: true });
+    expect(store.get(worktreeRecordAtom('wt-1'))?.branch).toBe('codex/board');
   });
 });

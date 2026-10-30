@@ -48,6 +48,7 @@ import {
   type PendingPrompt,
 } from './atoms/sessions';
 import { applySessionApprovalSnapshotAtom, clearSessionApprovalsAtom } from './atoms/sessionApproval';
+import { observeSessionKanbanStatus } from './atoms/sessionKanban';
 import type { SessionApprovalSnapshot } from '../../shared/sessionApproval';
 import { windowFocusedAtom } from './atoms/windowFocus';
 import { workstreamActiveChildAtom, workstreamStateAtom } from './atoms/workstreamState';
@@ -240,6 +241,8 @@ export function initSessionStateListeners(): () => void {
   }
 
   const releaseTranscript = (sessionId: string) => transcriptAccumulator.unload(sessionId);
+  let stopObservingBoardStatus: (() => void) | undefined;
+  let boardObserverDisposed = false;
   store.set(sessionDataReleaseListenersAtom, listeners => new Set([...listeners, releaseTranscript]));
 
   // Debounced trigger for the processing-state reconcile (assigned once the
@@ -1101,7 +1104,11 @@ export function initSessionStateListeners(): () => void {
       console.error('[sessionStateListeners] reconcileProcessingState failed:', error);
     }
   };
-  void reconcileProcessingState();
+  // Restore live status before comparing durable drag overrides. The default
+  // false processing atom during startup is not a real running -> idle change.
+  void reconcileProcessingState().then(() => {
+    if (!boardObserverDisposed) stopObservingBoardStatus = observeSessionKanbanStatus(store);
+  });
   processingReconcileInterval = setInterval(() => void reconcileProcessingState(), 15000);
 
   // Debounced trigger wired now that reconcileProcessingState exists; fired from
@@ -1187,6 +1194,8 @@ export function initSessionStateListeners(): () => void {
 
   // Return cleanup function
   return () => {
+    boardObserverDisposed = true;
+    stopObservingBoardStatus?.();
     // Clear all pending throttle timers
     for (const timer of reloadThrottleTimers.values()) {
       clearTimeout(timer);

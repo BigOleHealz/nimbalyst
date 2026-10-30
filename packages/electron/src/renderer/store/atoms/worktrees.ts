@@ -47,6 +47,7 @@ export interface WorktreeRecord {
   displayName?: string | null;
   path: string;
   isPinned: boolean;
+  branch?: string;
 }
 
 /**
@@ -64,7 +65,7 @@ export const worktreeRecordAtom = atomFamily((worktreeId: string) =>
 /** Insert or replace a worktree record. */
 export const setWorktreeRecordAtom = atom(null, (get, set, record: WorktreeRecord) => {
   const next = new Map(get(worktreeRecordsAtom));
-  next.set(record.id, record);
+  next.set(record.id, { ...next.get(record.id), ...record });
   set(worktreeRecordsAtom, next);
 });
 

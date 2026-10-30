@@ -17,6 +17,7 @@ import {
   sessionParentIdAtom,
 } from '../atoms/sessions';
 import { workstreamStateAtom } from '../atoms/workstreamState';
+import type { SessionMeta } from '@nimbalyst/runtime/ai/adapters/sessionStore';
 import { sessionRefMapAtom, type SessionRefMeta } from '@nimbalyst/runtime/ui/AgentTranscript/session/sessionRefAtoms';
 
 // Track pending refresh to debounce rapid-fire events
@@ -73,6 +74,7 @@ export function initSessionListListeners(): () => void {
       registry.set(sessionId, {
         ...meta,
         ...(updates.phase !== undefined && { phase: updates.phase as string }),
+        ...(updates.kanbanOverride !== undefined && { kanbanOverride: (updates.kanbanOverride ?? undefined) as SessionMeta['kanbanOverride'] }),
         ...(updates.tags !== undefined && { tags: updates.tags as string[] }),
         ...(updates.title !== undefined && { title: updates.title as string }),
         ...(updates.provider !== undefined && { provider: updates.provider as string }),
