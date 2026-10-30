@@ -4,13 +4,18 @@
  * whether a covered file changed in a commit newer than the page. Runs in a
  * temp git repository with fixed commit dates.
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { initLocalWiki, openLocalWiki, type OpenedWiki } from '../open.js';
 import { matchesGlob, pagesForFiles, pathsCover } from '../coverage.js';
+
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return { ...actual, execFileSync: vi.fn(actual.execFileSync) };
+});
 
 const dirs: string[] = [];
 const wikis: OpenedWiki[] = [];
@@ -100,6 +105,29 @@ async function repo(wikiLocation: string): Promise<{ root: string; opened: Opene
 }
 
 describe('pagesForFiles', () => {
+  it('shares history walks across overlapping pages and changed files', async () => {
+    const { root, opened } = await repo('docs/wiki');
+    const files = Array.from({ length: 30 }, (_, i) => `src/sync/file ${i}.ts`);
+    for (const file of files) write(root, file, 'new content\n');
+    git(root, ['add', 'src']);
+    git(root, ['commit', '-q', '-m', 'covered code changes'], '2026-02-01T00:00:00Z');
+    write(opened.dir, 'Overview.md', '---\nid: overview\npaths: [src/**]\n---\n\nOverview.\n');
+    await opened.wiki.rescan();
+    vi.mocked(execFileSync).mockClear();
+
+    const result = await pagesForFiles(opened, { startDir: root, files });
+
+    expect(result.pages).toEqual([
+      expect.objectContaining({ id: 'overview', files: [...files].sort(), stale: false }),
+      expect.objectContaining({ id: 'page-sync', files: [...files].sort(), stale: true }),
+    ]);
+    const historyWalks = vi.mocked(execFileSync).mock.calls.filter(([, args]) =>
+      Array.isArray(args) && args[0] === '--literal-pathspecs' && args[1] === 'log');
+    // One walk for page timestamps and one for all covered files, independent
+    // of how many pages overlap or how many files each page covers.
+    expect(historyWalks).toHaveLength(2);
+  });
+
   it('finds the pages covering the working tree changes, and marks a page stale only after a newer commit', async () => {
     const { root, opened } = await repo('docs/wiki');
     write(root, 'src/sync/a.ts', 'a2\n');

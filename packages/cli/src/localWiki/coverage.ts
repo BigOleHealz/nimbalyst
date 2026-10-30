@@ -220,14 +220,6 @@ interface Commit {
   at: number;
 }
 
-/** The newest commit reachable from `ref` (default HEAD) that touched `file` (repository-relative). */
-function lastCommitOf(root: string, file: string, ref?: string, deadline?: number): Commit | undefined {
-  const out = git(root, ['log', '-1', '--format=%H %ct', ...(ref ? [ref] : []), '--', file], deadline)?.trim();
-  if (!out) return undefined;
-  const [hash, seconds] = out.split(' ');
-  return { hash, at: Number(seconds) * 1000 };
-}
-
 /** Pathspecs per history walk, well under any command-line limit. */
 const PATHS_PER_WALK = 1000;
 
@@ -381,15 +373,13 @@ export async function pagesForFiles(opened: { dir: string; wiki: LocalWiki }, op
   const { pages } = await opened.wiki.snapshot();
   const matches = matchPages(pages, files);
   const clocks = pageClocks(opened.dir, matches.map(({ page }) => page), deadline);
-  // One lookup per file, shared by every page that covers it.
-  const fileChanges = new Map<string, number | undefined>();
-  const changedAt = (file: string) => {
-    if (!fileChanges.has(file)) fileChanges.set(file, gitRoot ? lastCommitOf(gitRoot, file, undefined, deadline)?.at : undefined);
-    return fileChanges.get(file);
-  };
+  // Share a batched history walk across every matched file and page. A Git
+  // process per file makes session-start context miss its deadline under load.
+  const matchedFiles = uniqueSorted(matches.flatMap(({ files }) => files));
+  const fileChanges = gitRoot ? newestCommits(gitRoot, matchedFiles, { deadline }) : new Map<string, Commit>();
   const covered: CoveredPage[] = matches.map(({ page, files: matched }) => {
     const clock = clocks.get(page.id)!;
-    const newest = Math.max(...matched.map((file) => changedAt(file) ?? 0));
+    const newest = Math.max(...matched.map((file) => fileChanges.get(file)?.at ?? 0));
     return { id: page.id, title: page.title, files: matched, stale: staleness(clock, newest || undefined), clock: clock.clock, lastChange: new Date(clock.at).toISOString() };
   });
   return { source, files, pages: covered };
