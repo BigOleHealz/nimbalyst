@@ -201,7 +201,7 @@ export const HelpContent: Record<string, HelpEntry> = {
 
   'session-kanban-button': {
     title: 'Kanban Board',
-    body: 'Switch to a kanban board view of your sessions organized by phase: Backlog, Planning, Implementing, Validating, and Complete. Drag sessions between columns to update their status.',
+    body: 'Follow sessions in Backlog, Running, Awaiting Input, Review, and Done. Questions and approvals move cards to Awaiting Input. Drag a card to keep it in a column until its live status changes; click it to open the session.',
     shortcut: KeyboardShortcuts.window.kanbanView,
   },
 

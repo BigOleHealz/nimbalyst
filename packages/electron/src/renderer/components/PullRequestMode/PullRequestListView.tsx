@@ -73,8 +73,7 @@ export function PullRequestListView({
     setError(null);
     try {
       const rows = await getPullRequestService().list(workspaceId, remote, {
-        state: stateParam,
-        awaitingMyReview,
+        state: 'all',
       });
       setPrList(rows);
     } catch (err: unknown) {
@@ -95,7 +94,8 @@ export function PullRequestListView({
   // Client-side narrowing + sort over the cached rows.
   const visibleRows = useMemo(() => {
     const user = ghStatus?.user;
-    let rows = [...prList];
+    let rows = prList.filter(r => r.workspaceId === workspaceId && r.remote === remote && (stateParam === 'open' ? r.state === 'open' : r.state !== 'open'));
+    if (awaitingMyReview && user) rows = rows.filter(r => r.reviewers.some(reviewer => reviewer.login === user && reviewer.state === 'requested'));
     if (activeFilters.includes('created-by-me') && user) {
       rows = rows.filter((r) => r.authorLogin === user);
     }
@@ -120,7 +120,7 @@ export function PullRequestListView({
       return b.updatedAt - a.updatedAt;
     });
     return rows;
-  }, [prList, activeFilters, trackerStatusFilters, trackerReferences, ghStatus?.user, search, sortKey]);
+  }, [prList, activeFilters, trackerStatusFilters, trackerReferences, ghStatus?.user, search, sortKey, workspaceId, remote, stateParam, awaitingMyReview]);
 
   const handleSelect = useCallback(
     (id: string) => setLayout({ selectedItemId: id }),

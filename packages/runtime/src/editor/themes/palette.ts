@@ -16,66 +16,66 @@ import type { ExtendedThemeColors } from './types';
 export const lightThemeColors: ExtendedThemeColors = {
   // Backgrounds
   'bg': '#ffffff',
-  'bg-secondary': '#f9fafb',
-  'bg-tertiary': '#f3f4f6',
-  'bg-hover': 'rgba(0, 0, 0, 0.05)',
-  'bg-selected': 'rgba(59, 130, 246, 0.1)',
-  'bg-active': 'rgba(59, 130, 246, 0.2)',
+  'bg-secondary': '#f7f8fa',
+  'bg-tertiary': '#eef0f4',
+  'bg-hover': 'rgba(24, 32, 52, 0.05)',
+  'bg-selected': 'rgba(53, 99, 233, 0.09)',
+  'bg-active': 'rgba(53, 99, 233, 0.15)',
 
   // Text
-  'text': '#111827',
-  'text-muted': '#6b7280',
-  'text-faint': '#9ca3af',
-  'text-disabled': '#d1d5db',
+  'text': '#202532',
+  'text-muted': '#626b7c',
+  'text-faint': '#6c7586',
+  'text-disabled': '#a5adba',
 
   // Borders
-  'border': '#e5e7eb',
-  'border-focus': '#3b82f6',
+  'border': '#e1e4ea',
+  'border-focus': '#3563e9',
 
   // Primary
-  'primary': '#3b82f6',
-  'primary-hover': '#2563eb',
+  'primary': '#3563e9',
+  'primary-hover': '#284fc7',
   'on-primary': '#ffffff',
 
   // Links
-  'link': 'rgb(33, 111, 219)',
-  'link-hover': 'rgb(33, 111, 219)',
+  'link': '#315bd6',
+  'link-hover': '#2447b3',
 
   // Status
   'success': '#10b981',
   'warning': '#f59e0b',
   'error': '#ef4444',
-  'info': '#3b82f6',
+  'info': '#3563e9',
   'purple': '#7c3aed',
 
   // Code
-  'code-bg': 'rgb(240, 242, 245)',
-  'code-text': '#111827',
-  'code-border': '#ccc',
-  'code-gutter': '#eee',
+  'code-bg': '#f3f5f8',
+  'code-text': '#202532',
+  'code-border': '#e1e4ea',
+  'code-gutter': '#eef0f4',
 
   // Table
-  'table-border': '#bbb',
-  'table-header': '#f2f3f5',
+  'table-border': '#e1e4ea',
+  'table-header': '#f3f5f8',
   'table-cell': '#ffffff',
-  'table-stripe': '#f2f5fb',
+  'table-stripe': '#f7f8fa',
 
   // Toolbar
   'toolbar-bg': '#ffffff',
-  'toolbar-border': '#e5e7eb',
-  'toolbar-hover': '#f3f4f6',
-  'toolbar-active': 'rgba(59, 130, 246, 0.2)',
+  'toolbar-border': '#e1e4ea',
+  'toolbar-hover': '#eef0f4',
+  'toolbar-active': 'rgba(53, 99, 233, 0.15)',
 
   // Special
   'highlight-bg': 'rgba(255, 212, 0, 0.14)',
   'highlight-border': 'rgba(255, 212, 0, 0.3)',
   'comment-mark': '#ffd400',
-  'quote-text': 'rgb(101, 103, 107)',
-  'quote-border': 'rgb(206, 208, 212)',
+  'quote-text': '#626b7c',
+  'quote-border': '#d2d8e2',
 
   // Scrollbar
-  'scrollbar-thumb': '#d1d5db',
-  'scrollbar-thumb-hover': '#9ca3af',
+  'scrollbar-thumb': '#cbd1dc',
+  'scrollbar-thumb-hover': '#a5adba',
   'scrollbar-track': 'transparent',
 
   // Diff
@@ -96,10 +96,10 @@ export const lightThemeColors: ExtendedThemeColors = {
 
   // Terminal
   'terminal-bg': '#ffffff',
-  'terminal-fg': '#1f2937',
-  'terminal-cursor': '#2563eb',
+  'terminal-fg': '#202532',
+  'terminal-cursor': '#3563e9',
   'terminal-cursor-accent': '#ffffff',
-  'terminal-selection': 'rgba(0, 0, 0, 0.15)',
+  'terminal-selection': 'rgba(53, 99, 233, 0.15)',
 
   // Terminal ANSI standard colors (optimized for light background)
   'terminal-ansi-black': '#1f2937',
@@ -127,56 +127,56 @@ export const lightThemeColors: ExtendedThemeColors = {
  */
 export const darkThemeColors: ExtendedThemeColors = {
   // Backgrounds
-  'bg': '#2d2d2d',
-  'bg-secondary': '#1a1a1a',
-  'bg-tertiary': '#3a3a3a',
-  'bg-hover': 'rgba(255, 255, 255, 0.05)',
-  'bg-selected': 'rgba(96, 165, 250, 0.15)',
-  'bg-active': '#4a4a4a',
+  'bg': '#232428',
+  'bg-secondary': '#191a1d',
+  'bg-tertiary': '#2c2e34',
+  'bg-hover': 'rgba(237, 239, 245, 0.06)',
+  'bg-selected': 'rgba(138, 164, 255, 0.14)',
+  'bg-active': 'rgba(138, 164, 255, 0.22)',
 
   // Text
-  'text': '#ffffff',
-  'text-muted': '#b3b3b3',
-  'text-faint': '#808080',
-  'text-disabled': '#666666',
+  'text': '#edeef2',
+  'text-muted': '#adb0bc',
+  'text-faint': '#858a9a',
+  'text-disabled': '#606574',
 
   // Borders
-  'border': '#4a4a4a',
-  'border-focus': '#60a5fa',
+  'border': '#373a43',
+  'border-focus': '#8aa4ff',
 
   // Primary
-  'primary': '#60a5fa',
-  'primary-hover': '#3b82f6',
-  'on-primary': '#0b1220',
+  'primary': '#8aa4ff',
+  'primary-hover': '#a4b8ff',
+  'on-primary': '#151a2b',
 
   // Links
-  'link': '#60a5fa',
-  'link-hover': '#93c5fd',
+  'link': '#9ab1ff',
+  'link-hover': '#bdcbff',
 
   // Status
   'success': '#4ade80',
   'warning': '#fbbf24',
   'error': '#ef4444',
-  'info': '#60a5fa',
+  'info': '#8aa4ff',
   'purple': '#a78bfa',
 
   // Code
-  'code-bg': '#1e1e1e',
-  'code-text': '#d4d4d4',
-  'code-border': '#4a4a4a',
-  'code-gutter': '#2a2a2a',
+  'code-bg': '#1c1d21',
+  'code-text': '#edeef2',
+  'code-border': '#373a43',
+  'code-gutter': '#282a30',
 
   // Table
-  'table-border': '#4a4a4a',
-  'table-header': '#3a3a3a',
-  'table-cell': '#2d2d2d',
-  'table-stripe': '#363636',
+  'table-border': '#373a43',
+  'table-header': '#2c2e34',
+  'table-cell': '#232428',
+  'table-stripe': '#27292e',
 
   // Toolbar
-  'toolbar-bg': '#2d2d2d',
-  'toolbar-border': '#4a4a4a',
-  'toolbar-hover': '#3a3a3a',
-  'toolbar-active': 'rgba(96, 165, 250, 0.2)',
+  'toolbar-bg': '#232428',
+  'toolbar-border': '#373a43',
+  'toolbar-hover': '#2c2e34',
+  'toolbar-active': 'rgba(138, 164, 255, 0.22)',
 
   // Special
   'highlight-bg': 'rgba(255, 212, 0, 0.2)',
@@ -184,12 +184,12 @@ export const darkThemeColors: ExtendedThemeColors = {
   // Warmer, lighter gold reads as an intentional highlight on dark backgrounds
   // instead of the muddy olive that saturated yellow blends into.
   'comment-mark': '#ffd27a',
-  'quote-text': '#b3b3b3',
-  'quote-border': '#4a4a4a',
+  'quote-text': '#adb0bc',
+  'quote-border': '#373a43',
 
   // Scrollbar
-  'scrollbar-thumb': '#4a4a4a',
-  'scrollbar-thumb-hover': '#5a5a5a',
+  'scrollbar-thumb': '#424650',
+  'scrollbar-thumb-hover': '#5b6170',
   'scrollbar-track': 'transparent',
 
   // Diff
@@ -209,11 +209,11 @@ export const darkThemeColors: ExtendedThemeColors = {
   'code-function': '#dcdcaa',
 
   // Terminal
-  'terminal-bg': '#1a1a1a',
-  'terminal-fg': '#e5e5e5',
-  'terminal-cursor': '#60a5fa',
-  'terminal-cursor-accent': '#1a1a1a',
-  'terminal-selection': 'rgba(255, 255, 255, 0.2)',
+  'terminal-bg': '#191a1d',
+  'terminal-fg': '#edeef2',
+  'terminal-cursor': '#8aa4ff',
+  'terminal-cursor-accent': '#191a1d',
+  'terminal-selection': 'rgba(138, 164, 255, 0.22)',
 
   // Terminal ANSI standard colors (Tailwind palette)
   'terminal-ansi-black': '#000000',

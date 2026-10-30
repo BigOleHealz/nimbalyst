@@ -72,6 +72,19 @@ it('merges overlapping metadata updates without losing either key', async () => 
   expect(metadata.activity).toHaveLength(1);
 });
 
+it('projects board placement and distinguishes a started session without counting its transcript', async () => {
+  const store = createPGLiteSessionStore(sqlite);
+  await store.create({ id: 'unstarted', provider: 'openai-codex', workspaceId: '/board' });
+  await store.create({ id: 'started', provider: 'claude-code', workspaceId: '/board', providerSessionId: 'thread-1' });
+  const kanbanOverride = { column: 'validating' as const, status: '[["started","validating"]]' };
+  await store.updateMetadata('started', { metadata: { kanbanOverride } });
+  const sessions = projectSessionList(await store.list('/board'), new Map());
+  expect(sessions.find(s => s.id === 'unstarted')).toMatchObject({ hasStarted: false });
+  const projected = sessions.find(s => s.id === 'started')!;
+  expect(projected).toMatchObject({ hasStarted: true, kanbanOverride });
+  expect(sessionListMetadata(projected, '/board')).toMatchObject({ hasStarted: true, kanbanOverride });
+});
+
 it('archives every descendant and lifts children transactionally when deleting an interior session', async () => {
   const store = createPGLiteSessionStore(sqlite);
   await store.create({ id: 'root', provider: 'claude-code', workspaceId: '/p' });

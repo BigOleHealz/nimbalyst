@@ -86,7 +86,6 @@ import type { TrackerLinkedSessionOption } from '@nimbalyst/runtime/plugins/Trac
 import { workstreamStateAtom } from '../../store/atoms/workstreamState';
 import { setWindowModeAtom } from '../../store/atoms/windowMode';
 import { defaultAgentModelAtom, worktreesFeatureAvailableAtom } from '../../store/atoms/appSettings';
-import { ModelIdentifier } from '@nimbalyst/runtime/ai/server/types';
 import { store } from '../../store';
 import { createTrackerItem, isLocalWikiRecord } from '../../services/localWikiTrackerRecords';
 import { deleteLocalWikiItem, refuseLocalWikiArchive } from '../../services/localWikiTrackerWrites';
@@ -111,6 +110,8 @@ import { WorktreeBaseBranchPicker } from '../AgenticCoding/WorktreeBaseBranchPic
 import {
   assertTrackerItemInWorkspace,
   buildTrackerLaunchContext,
+  prepareTrackerLaunchContext,
+  createTrackerSession,
   createTrackerWorktreeSession,
   isTrackerLaunchForWorkspace,
   type TrackerLaunchContext,
@@ -456,46 +457,20 @@ export const TrackerMainView: React.FC<TrackerMainViewProps> = ({
       return;
     }
     try {
-      const trackerContext = buildTrackerLaunchContext(trackerItemId, trackerItem);
+      const trackerContext = await prepareTrackerLaunchContext(trackerItemId, trackerItem, (channel, args) => window.electronAPI.invoke(channel, args));
+      const sessionId = await createTrackerSession(trackerContext, defaultModel,
+        () => store.get(activeWorkspacePathAtom), (channel, ...args) => window.electronAPI.invoke(channel, ...args));
 
-      // Derive provider from the user's default model rather than hardcoding
-      // 'claude-code'. Mirrors AgentMode.createNewSession so a Codex-only
-      // workspace launches a Codex session, not a failed claude-code one.
-      // See nimbalyst#176.
-      const sessionId = crypto.randomUUID();
-      const parsedModel = defaultModel ? ModelIdentifier.tryParse(defaultModel) : null;
-      const provider = parsedModel?.provider || 'claude-code';
-      const result = await window.electronAPI.invoke('sessions:create', {
-        session: {
-          id: sessionId,
-          provider,
-          model: defaultModel,
-          title: 'New Session',
-        },
-        workspaceId: workspacePath,
+      // Refresh session list to pick up the new session, then navigate
+      await refreshSessionList();
+      setSelectedWorkstream({
+        workspacePath: workspacePath || '',
+        selection: { type: 'session', id: sessionId },
       });
-      if (result?.success && result?.id) {
-        await window.electronAPI.invoke('tracker:link-session', {
-          trackerId: trackerContext.trackerLinkId,
-          sessionId: result.id,
-        });
-        await window.electronAPI.invoke(
-          'ai:saveDraftInput',
-          result.id,
-          trackerContext.draftInput,
-          workspacePath,
-        );
-
-        // Refresh session list to pick up the new session, then navigate
-        await refreshSessionList();
-        setSelectedWorkstream({
-          workspacePath: workspacePath || '',
-          selection: { type: 'session', id: result.id },
-        });
-        setWindowMode('agent');
-      }
+      setWindowMode('agent');
     } catch (err) {
       console.error('[TrackerMainView] Failed to launch session:', err);
+      errorNotificationService.showError('Session not started', (err as Error).message);
     }
   }, [workspacePath, refreshSessionList, setSelectedWorkstream, setWindowMode, defaultModel]);
 
@@ -522,6 +497,17 @@ export const TrackerMainView: React.FC<TrackerMainViewProps> = ({
         store.get(activeWorkspacePathAtom),
         options,
         createNewWorktreeSession,
+        async () => {
+          const item = store.get(trackerItemsMapAtom).get(pendingWorktreeLaunch.trackerLinkId);
+          // File-backed items retain the existing launch flow.
+          if (!item) {
+            if (pendingWorktreeLaunch.trackerLinkId.startsWith('file:')) return pendingWorktreeLaunch;
+            throw new Error('The tracker item is no longer loaded. Start the launch again.');
+          }
+          assertTrackerItemInWorkspace(item, pendingWorktreeLaunch.workspacePath);
+          return prepareTrackerLaunchContext(item.id, item, (channel, args) => window.electronAPI.invoke(channel, args));
+        },
+        () => store.get(activeWorkspacePathAtom),
       );
       if (!sessionId) throw new Error('Worktree session was not created');
 

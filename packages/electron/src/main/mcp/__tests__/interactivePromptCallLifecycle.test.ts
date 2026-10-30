@@ -229,6 +229,50 @@ describe('connected AskUserQuestion lifecycle', () => {
 // lowers it. A turn kept alive by background tasks can run for an hour after
 // the answer, so the settle has to tell the renderer itself.
 describe('AskUserQuestion in an SDK session', () => {
+  it('blocks dependent work through a long unanswered wait and resumes only with explicit answers', async () => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    const ipc = ipcMain as unknown as EventEmitter;
+    const sessionId = 'jira-essential-clarification';
+    seams.cli = false;
+    const implement = vi.fn();
+    const answers = { Target: 'staging, account 123, eu-west-1' };
+    const pending = handleAskUserQuestion(
+      { questions: [{ header: 'Target', question: 'Which deployment target?', options: [{ label: 'Staging', description: 'Use staging' }, { label: 'Production', description: 'Use production' }] }] },
+      sessionId, { params: { _meta: { toolUseId: 'jira-target' } } },
+    ).then(result => { if (!result.isError) implement(JSON.parse(result.content[0].text).answers); return result; });
+    try {
+      await vi.advanceTimersByTimeAsync(11 * 60_000);
+      expect(seams.activity).toHaveBeenCalledWith({ sessionId, status: 'waiting_for_input' });
+      expect(implement).not.toHaveBeenCalled();
+      expect(seams.persistResult).not.toHaveBeenCalled();
+      expect(countLiveInteractivePrompts(sessionId)).toBe(1);
+      ipc.emit(`ask-user-question-response:${sessionId}:jira-target`, null, { answers, respondedBy: 'desktop' });
+      await pending;
+      expect(implement).toHaveBeenCalledExactlyOnceWith(answers);
+      expect(JSON.parse((await pending).content[0].text).answers).toEqual(answers);
+    } finally { seams.cli = true; ipc.removeAllListeners(); }
+  });
+
+  it('never resumes dependent work on a cancelled clarification', async () => {
+    vi.clearAllMocks();
+    const ipc = ipcMain as unknown as EventEmitter;
+    const sessionId = 'jira-cancelled-clarification';
+    seams.cli = false;
+    const implement = vi.fn();
+    const pending = handleAskUserQuestion(
+      { questions: [{ header: 'Target', question: 'Which target?', options: [{ label: 'Staging', description: 'Use staging' }] }] },
+      sessionId, { params: { _meta: { toolUseId: 'jira-cancel' } } },
+    ).then(result => { if (!result.isError) implement(); return result; });
+    try {
+      await new Promise<void>(resolve => setImmediate(resolve));
+      ipc.emit(`ask-user-question-response:${sessionId}:jira-cancel`, null, { cancelled: true, answers: { Target: 'default' } });
+      const result = await pending;
+      expect(result.isError).toBe(true);
+      expect(JSON.parse(result.content[0].text)).toMatchObject({ cancelled: true });
+      expect(implement).not.toHaveBeenCalled();
+    } finally { seams.cli = true; ipc.removeAllListeners(); }
+  });
   it('tells every window once no question is left waiting', async () => {
     vi.clearAllMocks();
     const ipc = ipcMain as unknown as EventEmitter;

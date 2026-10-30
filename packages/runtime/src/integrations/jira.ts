@@ -2,10 +2,51 @@ import type { TrackerSnapshot } from '@nimbalyst/extension-sdk';
 
 export const DEFAULT_JIRA_JQL = 'assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC';
 export interface JiraCredentials { siteUrl: string; email: string; apiToken: string }
-export interface JiraProjectSettings { jql: string; autoSyncMinutes: number }
+export interface JiraProjectSettings { jql: string; autoSyncMinutes: number; acceptanceCriteriaFieldIds?: string[] }
 export interface JiraSyncResult { created: number; refreshed: number; skipped: number; errors: string[] }
 /** Only these deliberately sanitized errors may be surfaced by the sync coordinator. */
-export class JiraError extends Error {}
+export class JiraError extends Error {
+  constructor(message: string, readonly status?: number) { super(message); }
+}
+export interface JiraContextField {
+  status: 'present' | 'absent' | 'unavailable' | 'failed';
+  markdown: string;
+}
+export interface JiraLaunchContext {
+  key: string;
+  url: string;
+  title?: string;
+  attemptedAt: string;
+  refreshedAt?: string;
+  issueError?: string;
+  description: JiraContextField;
+  acceptanceCriteria: Array<JiraContextField & { id: string; name: string }>;
+  fieldDiscovery: 'configured' | 'discovered' | 'failed';
+  discoveryError?: string;
+  comments: {
+    status: 'complete' | 'partial' | 'unavailable' | 'failed';
+    total?: number;
+    items: Array<JiraContextField & { id?: string; author: string; created: string; updated?: string }>;
+    error?: string;
+  };
+}
+
+function contextField(fields: Record<string, unknown>, id: string): JiraContextField {
+  if (!Object.prototype.hasOwnProperty.call(fields, id)) return { status: 'unavailable', markdown: '' };
+  const value = fields[id];
+  const markdown = adfToMarkdown(value);
+  if (value != null && typeof value !== 'string' && !(typeof value === 'object' && 'type' in value)) {
+    return { status: 'present', markdown: JSON.stringify(value, null, 2) };
+  }
+  return { status: markdown.trim() ? 'present' : 'absent', markdown };
+}
+
+function contextError(error: unknown): string {
+  return error instanceof JiraError ? error.message : 'Jira context could not be read. Retry with an authorized Jira connection.';
+}
+function failureStatus(error: unknown): 'unavailable' | 'failed' {
+  return error instanceof JiraError && (error.status === 401 || error.status === 403 || error.status === 404) ? 'unavailable' : 'failed';
+}
 interface AdfNode {
   type?: string;
   text?: string;
@@ -98,13 +139,71 @@ export class JiraClient {
       });
     } catch { throw new JiraError('Jira network request failed. Check your connection and site URL.'); }
     if (!response.ok) {
-      if (response.status === 401) throw new JiraError('Jira credentials were rejected. Check your email and API token.');
-      if (response.status === 403) throw new JiraError('Jira permission denied. Check your token and issue access.');
+      if (response.status === 401) throw new JiraError('Jira credentials were rejected. Check your email and API token.', 401);
+      if (response.status === 403) throw new JiraError('Jira permission denied. Check your token and issue access.', 403);
       if (response.status === 400) throw new JiraError('Jira rejected the request. Check your JQL in project settings.');
       if (response.status === 429) throw new JiraError('Jira rate limit reached. Try again later.');
-      throw new JiraError(`Jira is unavailable or the issue cannot be read (HTTP ${response.status}).`);
+      throw new JiraError(`Jira is unavailable or the issue cannot be read (HTTP ${response.status}).`, response.status);
     }
     try { return await response.json() as T; } catch { throw new JiraError('Jira returned an invalid response.'); }
+  }
+
+  /** Read-only launch refresh; successful pages survive a partial upstream failure. */
+  async launchContext(key: string, configuredFieldIds?: string[]): Promise<JiraLaunchContext> {
+    if (!/^[A-Z][A-Z0-9_]*-\d+$/i.test(key)) throw new JiraError('Invalid Jira issue key.');
+    let mapping = (configuredFieldIds ?? []).map(id => ({ id, name: id }));
+    const context: JiraLaunchContext = {
+      key, url: `${this.siteUrl}/browse/${key}`, attemptedAt: new Date().toISOString(),
+      description: { status: 'failed', markdown: '' }, acceptanceCriteria: [],
+      fieldDiscovery: mapping.length ? 'configured' : 'discovered',
+      comments: { status: 'failed', items: [] },
+    };
+    if (!mapping.length) {
+      try {
+        const fields = await this.request<Array<{ id: string; name: string }>>('/rest/api/3/field');
+        if (!Array.isArray(fields)) throw new JiraError('Jira returned an invalid field list.');
+        mapping = fields.filter(f => typeof f.id === 'string' && typeof f.name === 'string' && /^acceptance[\s_-]*criteria$/i.test(f.name.trim()));
+      } catch (error) {
+        context.fieldDiscovery = 'failed'; context.discoveryError = contextError(error);
+      }
+    }
+    // Validate configured ids before interpolating them into the request.
+    if (mapping.some(f => !/^[a-zA-Z][a-zA-Z0-9_]*$/.test(f.id))) throw new JiraError('Invalid Jira acceptance criteria field mapping.');
+    try {
+      const fields = ['summary', 'description', ...mapping.map(f => f.id)];
+      const issue = await this.request<JiraIssue & { names?: Record<string, string> }>(`/rest/api/3/issue/${encodeURIComponent(key)}?fields=${fields.join(',')}&expand=names`);
+      if (issue.key !== key || typeof issue.fields?.summary !== 'string') throw new JiraError('Jira returned an invalid issue.');
+      context.title = issue.fields.summary;
+      context.refreshedAt = new Date().toISOString();
+      context.description = contextField(issue.fields, 'description');
+      context.acceptanceCriteria = mapping.map(f => ({ id: f.id, name: issue.names?.[f.id] ?? f.name, ...contextField(issue.fields, f.id) }));
+    } catch (error) {
+      context.issueError = contextError(error);
+      context.description = { status: failureStatus(error), markdown: '' };
+      context.acceptanceCriteria = mapping.map(f => ({ ...f, status: failureStatus(error), markdown: '' }));
+    }
+    let startAt = 0;
+    const seenIds = new Set<string>();
+    try {
+      while (true) {
+        const page = await this.request<{ comments: Array<JiraComment & { id?: string; updated?: string }>; total: number; startAt?: number }>(`/rest/api/3/issue/${encodeURIComponent(key)}/comment?startAt=${startAt}&maxResults=100&orderBy=created`);
+        if (!Array.isArray(page.comments) || !Number.isInteger(page.total) || page.total < 0 || (page.startAt !== undefined && page.startAt !== startAt)) throw new JiraError('Jira returned an invalid or repeated comment page.');
+        context.comments.total = page.total;
+        for (const comment of page.comments) {
+          if (comment.id && seenIds.has(comment.id)) throw new JiraError('Jira returned a repeated comment. Retry the launch refresh.');
+          if (comment.id) seenIds.add(comment.id);
+          context.comments.items.push({ id: comment.id, author: comment.author?.displayName ?? 'Unknown author', created: comment.created ?? 'Timestamp unavailable', updated: comment.updated, ...contextField(comment as unknown as Record<string, unknown>, 'body') });
+        }
+        startAt += page.comments.length;
+        if (startAt >= page.total) break;
+        if (!page.comments.length) throw new JiraError('Jira comments pagination stopped before all comments were read.');
+      }
+      context.comments.status = 'complete';
+    } catch (error) {
+      context.comments.status = context.comments.items.length ? 'partial' : failureStatus(error);
+      context.comments.error = contextError(error);
+    }
+    return context;
   }
 
   async *search(jql: string): AsyncGenerator<JiraIssue> {

@@ -4,7 +4,7 @@ import { useSessionSelectionFallback } from '../../../hooks/useSessionSelectionF
 import { store } from '@nimbalyst/runtime/store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { initAgentModeLayout } from '../agentMode';
+import { initAgentModeLayout, agentModeLayoutAtomFamily, mergeWithDefaults, updateOpenSessionsAtom } from '../agentMode';
 import { activeWorkspacePathAtom, openProjectsAtom } from '../openProjects';
 import { selectedWorkstreamAtom } from '../sessions';
 import { initWorkstreamState, workstreamStatesLoadedAtom } from '../workstreamState';
@@ -63,6 +63,7 @@ describe('initAgentModeLayout selection restore', () => {
   let errorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
+    store.set(agentModeLayoutAtomFamily(PROJECT_A), mergeWithDefaults(undefined));
     errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     store.set(openProjectsAtom, [openProject(PROJECT_A), openProject(PROJECT_B)]);
     store.set(activeWorkspacePathAtom, PROJECT_B);
@@ -72,6 +73,50 @@ describe('initAgentModeLayout selection restore', () => {
     // `workspace:get-state` below.
     store.set(workstreamStatesLoadedAtom, true);
     store.set(selectedWorkstreamAtom(PROJECT_A), { type: 'session', id: 'session-a-old' });
+  });
+
+  it('restores open session tabs and the split pane after a restart', async () => {
+    installWindow({}, async () => ({ agenticCodingWindowState: {
+      openSessionIds: ['one', 'two', 'three'], secondarySessionId: 'two',
+      selectedWorkstream: { type: 'session', id: 'three' },
+    } }));
+    await initAgentModeLayout(PROJECT_A);
+    expect(store.get(agentModeLayoutAtomFamily(PROJECT_A))).toMatchObject({
+      openSessionIds: ['one', 'two', 'three'], secondarySessionId: 'two',
+    });
+  });
+
+  it('normalizes old or invalid saved navigation without inventing sessions', () => {
+    expect(mergeWithDefaults(undefined)).toMatchObject({ openSessionIds: [], secondarySessionId: null });
+    expect(mergeWithDefaults({ openSessionIds: ['one', 'one', '', 'two'], secondarySessionId: 'missing' }))
+      .toMatchObject({ openSessionIds: ['one', 'two'], secondarySessionId: null });
+  });
+
+  it('keeps tabs opened while an older workspace restore is in flight', async () => {
+    const restore = heldRestore('old');
+    installWindow({}, () => restore.persisted);
+    const done = initAgentModeLayout(PROJECT_A);
+    store.set(updateOpenSessionsAtom, { workspacePath: PROJECT_A, openSessionIds: ['clicked'] });
+    restore.answer();
+    await done;
+    expect(store.get(agentModeLayoutAtomFamily(PROJECT_A)).openSessionIds).toEqual(['clicked']);
+  });
+
+  it('keeps the board open after the last session tab closes instead of auto-selecting a session', async () => {
+    vi.useFakeTimers();
+    store.set(activeWorkspacePathAtom, PROJECT_A);
+    store.set(selectedWorkstreamAtom(PROJECT_A), null);
+    const layout = mergeWithDefaults(undefined);
+    store.set(agentModeLayoutAtomFamily(PROJECT_A), {
+      ...layout, sessionHistoryLayout: { ...layout.sessionHistoryLayout, viewMode: 'kanban' },
+    });
+    const select = vi.fn();
+    renderHook(() => useSessionSelectionFallback(PROJECT_A, null, 'first', select));
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+    expect(select).not.toHaveBeenCalled();
+    act(() => { store.set(agentModeLayoutAtomFamily(PROJECT_A), layout); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+    expect(select).toHaveBeenCalledExactlyOnceWith('first');
   });
 
   afterEach(() => {

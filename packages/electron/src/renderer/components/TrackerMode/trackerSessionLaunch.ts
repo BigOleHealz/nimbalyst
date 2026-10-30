@@ -1,4 +1,5 @@
 import type { TrackerRecord } from '@nimbalyst/runtime/core/TrackerRecord';
+import { ModelIdentifier } from '@nimbalyst/runtime/ai/server/types';
 import {
   getRecordFieldStr,
   getRecordPriority,
@@ -13,6 +14,27 @@ export interface TrackerLaunchContext {
   trackerLinkId: string;
   draftInput: string;
   worktreeName: string;
+}
+
+/** Keep provider selection, durable linking and draft submission in the existing IPC flow. */
+export async function createTrackerSession(
+  context: TrackerLaunchContext,
+  model: string | undefined,
+  getActiveWorkspace: () => string | null | undefined,
+  invoke: (channel: string, ...args: any[]) => Promise<any>,
+): Promise<string> {
+  if (!context.workspacePath || getActiveWorkspace() !== context.workspacePath) {
+    throw new Error('The active project changed. Start the session from the original project.');
+  }
+  const provider = (model ? ModelIdentifier.tryParse(model)?.provider : undefined) || 'claude-code';
+  const result = await invoke('sessions:create', {
+    session: { id: crypto.randomUUID(), provider, model, title: 'New Session' },
+    workspaceId: context.workspacePath,
+  });
+  if (!result?.success || !result.id) throw new Error(result?.error || 'Session was not created.');
+  await invoke('tracker:link-session', { trackerId: context.trackerLinkId, sessionId: result.id });
+  await invoke('ai:saveDraftInput', result.id, context.draftInput, context.workspacePath);
+  return result.id;
 }
 
 /**
@@ -33,12 +55,33 @@ export async function createTrackerWorktreeSession(
   activeWorkspacePath: string | null,
   options: { baseBranch: string; name?: string },
   createSession: (options: { baseBranch: string; name?: string; initialDraft: string }) => Promise<string | undefined>,
+  prepare?: () => Promise<TrackerLaunchContext>,
+  getActiveWorkspace?: () => string | null | undefined,
 ): Promise<string | undefined> {
   if (!context.workspacePath || context.workspacePath !== activeWorkspacePath) {
     throw new Error('The active project changed. Cancel and start the worktree from the original project.');
   }
+  const prepared = prepare ? await prepare() : context;
+  if (prepared.workspacePath !== context.workspacePath || (getActiveWorkspace && getActiveWorkspace() !== context.workspacePath)) {
+    throw new Error('The active project changed. Cancel and start the worktree from the original project.');
+  }
   // Invoke synchronously after the check so creation captures the same active project.
-  return createSession({ ...options, initialDraft: context.draftInput });
+  return createSession({ ...options, initialDraft: prepared.draftInput });
+}
+
+/** Resolve Jira from canonical storage in main, never from the description preview. */
+export async function prepareTrackerLaunchContext(
+  trackerItemId: string,
+  trackerItem: TrackerRecord,
+  invoke: (channel: string, args: { workspacePath: string; itemId: string }) => Promise<{ draftInput: string }>,
+): Promise<TrackerLaunchContext> {
+  const context = buildTrackerLaunchContext(trackerItemId, trackerItem);
+  const origin = trackerItem.system.origin;
+  if (origin?.kind !== 'external' || origin.external.providerId !== 'jira') return context;
+  if (!context.workspacePath) throw new Error('Jira launch requires workspacePath.');
+  const prepared = await invoke('jira:prepare-launch', { workspacePath: context.workspacePath, itemId: trackerItemId });
+  if (!prepared?.draftInput) throw new Error('Jira launch context could not be prepared. Retry the launch.');
+  return { ...context, draftInput: prepared.draftInput };
 }
 
 function slugifyWorktreeName(value: string): string {
