@@ -22,6 +22,18 @@ describe('Jira launch packet', () => {
     h.policy.mockReturnValue({ known: true, policy: { sharing: 'personal', draftByDefault: false } });
     h.refresh.mockResolvedValue({ key: 'APP-1', url: external.url, title: 'Upstream title', attemptedAt: 'now', refreshedAt: 'now', description: { status: 'present', markdown: 'Upstream details' }, acceptanceCriteria: [], fieldDiscovery: 'discovered', comments: { status: 'complete', total: 0, items: [] } });
   });
+  it.each(['inline', 'oversized', 'refresh-failed'])('keeps the dev AWS default and explicit override policy in %s launch instructions', async mode => {
+    if (mode === 'oversized') h.local.mockResolvedValue('large body\n'.repeat(20000));
+    if (mode === 'refresh-failed') h.refresh.mockRejectedValue(new Error('offline'));
+
+    const { draftInput } = await prepareJiraTrackerLaunch('/repo', 'task');
+    const instructions = draftInput.split('--- BEGIN TASK EVIDENCE ---')[0];
+    expect(instructions).toContain('default to the dev AWS environment/account unless the user or ticket explicitly specifies another environment');
+    expect(instructions).toContain('Do not ask which environment to use solely because none is specified');
+    expect(instructions).toContain('verify they match the intended target before making AWS changes');
+    expect(instructions).toContain('Accessible credentials do not identify the intended deployment target');
+    expect(instructions).toContain('Respect existing permissions for service changes, deployments and external writes');
+  });
   it.each([false, true])('reads canonical body and saves a complete separate upstream packet on either JSON backend (%s)', async sqlite => {
     if (sqlite) h.query.mockResolvedValue({ rows: [{ id: 'task', type: 'task', workspace: '/repo', title: 'APP-1 Local title', data: JSON.stringify({ origin: { kind: 'external', external } }) }] });
     const result = await prepareJiraTrackerLaunch('/repo', 'task');
