@@ -206,6 +206,8 @@ When you mention a specific file, write it as a markdown link so the user can cl
 
 Before starting work on a tracker item, call \`work_radar(issueKey)\` when that tool is available so you can see recent teammate activity and avoid duplicating or overwriting concurrent work.
 
+When a task has distinct pieces of work worth tracking independently, automatically create subtasks linked to that parent task. First read the parent and its existing subtasks so you reuse work already recorded. Use \`tracker_create\` with \`type: "task"\` and \`fields: { parentTask: { itemId: "<parent's stable item id>", title: "<parent title>", trackerType: "task" } }\`; the inverse \`subtasks\` link is maintained automatically. Read \`tracker_list_types\` first if the workspace customizes task fields. Keep small steps within the original task. Each subtask has its own status; completing a child does not complete its parent. Subtasks do not require sub-agents. When work is delegated to an authorized child session, link that session to its subtask with \`tracker_link_session\`, and retain the parent task's session link. Never create a sub-agent solely to represent a subtask.
+
 When you mention a tracker item (bug, task, plan, decision, etc.), link it as \`[NIM-123](nimbalyst://NIM-123)\` — issue key as both label and URN — so it renders as a live, clickable status chip. Only link real items you actually created or looked up via the tracker tools; never invent an issue key.`;
   }
 

@@ -7,6 +7,7 @@ import {
   loadBuiltinTrackers,
 } from '../ModelLoader';
 import { globalRegistry, type TrackerDataModel } from '@nimbalyst/tracker-schema';
+import { validateRelationshipValue } from '../trackerRelationships';
 
 /**
  * Guards the migration of the built-in tracker definitions from the old hardcoded
@@ -58,6 +59,25 @@ const INVARIANTS: Record<string, {
 const EVIDENCE_KINDS = ['source', 'capture', 'citation'] as const;
 
 describe('bundled builtin tracker YAML', () => {
+  it('gives tasks a single parent and inverse subtasks using the existing relationship contract', () => {
+    const task = parseBuiltinTrackers().find(model => model.type === 'task')!;
+    const parent = task.fields.find(field => field.name === 'parentTask')!;
+    const subtasks = task.fields.find(field => field.name === 'subtasks')!;
+    expect(parent).toMatchObject({
+      type: 'relationship', relationshipTypeKey: 'child-of',
+      inverseFieldId: 'subtasks', inverseRelationshipTypeKey: 'parent-of',
+      targetTrackerTypes: ['task'], multiValue: false,
+    });
+    expect(subtasks).toMatchObject({
+      type: 'relationship', relationshipTypeKey: 'parent-of',
+      inverseFieldId: 'parentTask', inverseRelationshipTypeKey: 'child-of',
+      targetTrackerTypes: ['task'], multiValue: true,
+    });
+    expect(validateRelationshipValue(parent, [{ itemId: 'parent', trackerType: 'task' }], { sourceItemId: 'child' })).toEqual([]);
+    expect(validateRelationshipValue(parent, [{ itemId: 'child' }], { sourceItemId: 'child' })).toMatchObject([{ code: 'self-link' }]);
+    expect(validateRelationshipValue(parent, [{ itemId: 'a' }, { itemId: 'b' }], { sourceItemId: 'child' })).toMatchObject([{ code: 'too-many' }]);
+  });
+
   it('bundles exactly the expected builtin types, in load order', () => {
     expect(BUILTIN_TRACKER_YAML.map((b) => b.type)).toEqual([...EXPECTED]);
   });

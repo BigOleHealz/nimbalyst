@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 <!-- New features go here -->
+- Create linked subtasks with independent statuses and optional agent sessions, and filter task boards by parent task.
 - Sync assigned Jira Cloud issues into project tasks with secure credentials, duplicate protection, and optional automatic refresh, then launch agents with complete descriptions, acceptance criteria, comments, and clarification of essential gaps.
 - Sync assigned Jira Cloud issues into project tasks with full descriptions and comments, secure credentials, duplicate protection, and optional automatic refresh.
 - Open sessions in tabs or side by side, switch to the board while agents keep running, and restore open tabs and splits after restarting.

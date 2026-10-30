@@ -1,6 +1,16 @@
 # Tracker Workflows
 
-This doc covers tracker-item workflows for decisions and bugs.
+This doc covers tracker-item workflows for tasks, decisions, and bugs.
+
+## Tasks and subtasks
+
+A subtask is an ordinary Task with a single `parentTask` relationship to another Task. The parent has the inverse `subtasks` list. Both fields use the existing synced relationship storage; setting or clearing either side maintains the other. Changing a subtask's parent removes it from the former parent's list. Each task keeps its own workflow status, assignee, and optional session links; finishing a child does not finish the parent.
+
+Agents should create subtasks automatically when a task has distinct pieces worth tracking independently, after reading the parent and reusing existing subtasks. Small implementation steps can stay in the original task. Create a child with `tracker_create({ type: "task", title: "Implement search indexing", fields: { parentTask: { itemId: "<parent stable item id>", title: "Search", trackerType: "task" } } })`. A customized workspace schema may use different fields; inspect `tracker_list_types` first. Link an authorized delegated session to its subtask with `tracker_link_session`; a subtask does not require a sub-agent.
+
+If creation returns a `relationshipWrite` warning, the item and its own relationship fields are already saved. Keep its returned ID, inspect the related items, and repair their inverse fields rather than creating a duplicate subtask.
+
+In the Tasks or All tracker kanban, open the field filter, select **Parent Task**, and choose the parent. This shows its direct subtasks and uses the same persisted filter as the list and saved views. The advanced filter's **is empty** operator shows top-level tasks. The parent and subtasks relationship fields in task details let people inspect, attach, detach, or move existing tasks.
 
 ## Recording Decisions
 
