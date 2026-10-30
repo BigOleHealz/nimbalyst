@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 <!-- Changes to existing functionality go here -->
+- Refresh the light and dark themes with softer surfaces, clearer text, quieter borders, and rounder controls while preserving the layout.
 
 ### Fixed
 <!-- Bug fixes go here -->

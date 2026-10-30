@@ -77,10 +77,10 @@
   justify-content: center;
   gap: 0.5rem;
   padding: 0.5rem 1rem;
-  border-radius: 0.375rem;
+  border-radius: 0.5rem;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
   border: none;
 }
 
@@ -96,10 +96,10 @@
   justify-content: center;
   gap: 0.5rem;
   padding: 0.5rem 1rem;
-  border-radius: 0.375rem;
+  border-radius: 0.5rem;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
   border: none;
   color: var(--nim-on-primary);
   background: var(--nim-primary);
@@ -121,10 +121,10 @@
   justify-content: center;
   gap: 0.5rem;
   padding: 0.5rem 1rem;
-  border-radius: 0.375rem;
+  border-radius: 0.5rem;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
   background: var(--nim-bg-tertiary);
   color: var(--nim-text);
   border: 1px solid var(--nim-border);
@@ -132,7 +132,7 @@
 
 .nim-btn-secondary:hover:not(:disabled) {
   background: var(--nim-bg-hover);
-  border-color: var(--nim-primary);
+  border-color: var(--nim-border-focus);
 }
 
 .nim-btn-secondary:disabled {
@@ -147,10 +147,10 @@
   justify-content: center;
   gap: 0.5rem;
   padding: 0.5rem 1rem;
-  border-radius: 0.375rem;
+  border-radius: 0.5rem;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
   border: none;
   background: transparent;
   color: var(--nim-text-muted);
@@ -168,10 +168,10 @@
   justify-content: center;
   gap: 0.5rem;
   padding: 0.5rem 1rem;
-  border-radius: 0.375rem;
+  border-radius: 0.5rem;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
   border: none;
   color: white;
   background: var(--nim-error);
@@ -191,7 +191,7 @@
   padding: 0;
   border-radius: 0.25rem;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
   background: transparent;
   border: none;
   color: var(--nim-text-muted);
@@ -222,7 +222,7 @@
 .nim-input {
   width: 100%;
   padding: 0.5rem 0.75rem;
-  border-radius: 0.375rem;
+  border-radius: 0.5rem;
   outline: none;
   transition: border-color 0.2s;
   background: var(--nim-bg-secondary);
@@ -236,7 +236,7 @@
 
 .nim-input:focus {
   border-color: var(--nim-primary);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--nim-primary) 16%, transparent);
 }
 
 .nim-input:disabled {
