@@ -37,4 +37,9 @@ describe('Jira settings custody', () => {
     for (const minutes of [-1, 0.5, NaN, 10081]) expect(() => saveJiraProjectSettings('/project', { jql: 'mine', autoSyncMinutes: minutes })).toThrow('whole number');
     expect(h.set).not.toHaveBeenCalled();
   });
+  it('persists project-specific acceptance mappings and rejects request injection', () => {
+    saveJiraProjectSettings('/project', { jql: 'mine', autoSyncMinutes: 0, acceptanceCriteriaFieldIds: ['customfield_77', 'customfield_77'] });
+    expect(h.set).toHaveBeenCalledWith('jiraProjects', { '/project': { jql: 'mine', autoSyncMinutes: 0, acceptanceCriteriaFieldIds: ['customfield_77'] } });
+    expect(() => saveJiraProjectSettings('/project', { jql: 'mine', autoSyncMinutes: 0, acceptanceCriteriaFieldIds: ['bad&fields=*all'] })).toThrow('field IDs');
+  });
 });

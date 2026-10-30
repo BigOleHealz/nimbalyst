@@ -6,6 +6,73 @@ const doc = (text: string) => ({ type: 'doc', content: [{ type: 'paragraph', con
 const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 
 describe('Jira Cloud', () => {
+  it('refreshes launch evidence with discovered acceptance fields and every comment page', async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(response([{ id: 'customfield_912', name: 'Acceptance Criteria' }]))
+      .mockResolvedValueOnce(response({ key: 'APP-1', fields: { summary: 'Complete', description: doc('Details'), customfield_912: doc('- passes') }, names: { customfield_912: 'Acceptance Criteria' } }))
+      .mockResolvedValueOnce(response({ startAt: 0, comments: [{ id: '1', author: { displayName: 'Alice' }, created: '2026-10-01', body: doc('First') }], total: 2 }))
+      .mockResolvedValueOnce(response({ startAt: 1, comments: [{ id: '2', author: { displayName: 'Bob' }, created: '2026-10-02', body: doc('Second') }], total: 2 }));
+    const client = new JiraClient({ siteUrl: 'https://team.atlassian.net', email: 'me', apiToken: 'secret' }, fetcher);
+    const context = await client.launchContext('APP-1');
+    expect(context.description).toMatchObject({ status: 'present', markdown: 'Details' });
+    expect(context.acceptanceCriteria).toEqual([{ id: 'customfield_912', name: 'Acceptance Criteria', status: 'present', markdown: '- passes' }]);
+    expect(context.comments).toMatchObject({ status: 'complete', total: 2, items: [{ author: 'Alice', created: '2026-10-01' }, { author: 'Bob', created: '2026-10-02' }] });
+    expect(fetcher.mock.calls[1][0]).toContain('customfield_912');
+    expect(fetcher.mock.calls[3][0]).toContain('startAt=1');
+  });
+
+  it('retains successful pages when later comments fail and distinguishes absent from unavailable fields', async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(response({ key: 'APP-1', fields: { summary: 'Partial', description: null, customfield_7: null } }))
+      .mockResolvedValueOnce(response({ comments: [{ id: '1', created: 'now', body: doc('keep') }], total: 2 }))
+      .mockResolvedValueOnce(response({}, 403));
+    const client = new JiraClient({ siteUrl: 'https://team.atlassian.net', email: 'me', apiToken: 'secret' }, fetcher);
+    const context = await client.launchContext('APP-1', ['customfield_7', 'customfield_8']);
+    expect(context.description.status).toBe('absent');
+    expect(context.acceptanceCriteria.map(f => f.status)).toEqual(['absent', 'unavailable']);
+    expect(context.comments).toMatchObject({ status: 'partial', total: 2, items: [{ markdown: 'keep' }], error: expect.stringContaining('permission') });
+  });
+
+  it('keeps description criteria when discovery is inaccessible instead of claiming no criteria exist', async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(response({}, 403))
+      .mockResolvedValueOnce(response({ key: 'APP-1', fields: { summary: 'Embedded criteria', description: '## Acceptance criteria\n\n- Retain [links](https://example.com)\n\n```ts\nrun();\n```' } }))
+      .mockResolvedValueOnce(response({ comments: [], total: 0 }));
+    const client = new JiraClient({ siteUrl: 'https://team.atlassian.net', email: 'me', apiToken: 'secret' }, fetcher);
+    const context = await client.launchContext('APP-1');
+    expect(context.fieldDiscovery).toBe('failed');
+    expect(context.discoveryError).toContain('permission');
+    expect(context.description.markdown).toContain('```ts\nrun();\n```');
+    expect(context.comments).toMatchObject({ status: 'complete', total: 0, items: [] });
+  });
+
+  it('labels inaccessible issues separately from failed network requests while retaining comment evidence', async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(response({}, 403))
+      .mockResolvedValueOnce(response({}, 403));
+    const client = new JiraClient({ siteUrl: 'https://team.atlassian.net', email: 'me', apiToken: 'secret' }, fetcher);
+    const inaccessible = await client.launchContext('APP-1', ['customfield_1']);
+    expect(inaccessible.refreshedAt).toBeUndefined();
+    expect(inaccessible.description.status).toBe('unavailable');
+    expect(inaccessible.comments.status).toBe('unavailable');
+    fetcher.mockRejectedValue(new Error('secret transport details'));
+    const failed = await client.launchContext('APP-1', ['customfield_1']);
+    expect(failed.description.status).toBe('failed');
+    expect(failed.comments.status).toBe('failed');
+    expect(JSON.stringify(failed)).not.toContain('secret transport details');
+  });
+
+  it('does not report repeated or prematurely empty comment pages as complete', async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(response({ key: 'APP-1', fields: { summary: 'Comments', description: '' } }))
+      .mockResolvedValueOnce(response({ startAt: 0, comments: [{ id: '1', created: 'today', body: doc('first') }], total: 2 }))
+      .mockResolvedValueOnce(response({ startAt: 0, comments: [{ id: '1', created: 'today', body: doc('first') }], total: 2 }));
+    const client = new JiraClient({ siteUrl: 'https://team.atlassian.net', email: 'me', apiToken: 'secret' }, fetcher);
+    const context = await client.launchContext('APP-1', ['customfield_1']);
+    expect(context.comments.status).toBe('partial');
+    expect(context.comments.items).toHaveLength(1);
+    expect(context.comments.error).toContain('repeated');
+  });
   it('converts structured descriptions without losing unsupported node children', () => {
     expect(adfToMarkdown({ type: 'doc', content: [
       { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: 'Details' }] },

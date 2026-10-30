@@ -12,6 +12,7 @@ export function JiraPanel({ workspacePath }: { workspacePath: string }): React.J
   const [hasToken, setHasToken] = useState(false);
   const [jql, setJql] = useState(DEFAULT_JIRA_JQL);
   const [autoSyncMinutes, setAutoSyncMinutes] = useState(0);
+  const [acceptanceCriteriaFields, setAcceptanceCriteriaFields] = useState('');
   const [busy, setBusy] = useState(true);
   const [message, setMessage] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
@@ -20,9 +21,10 @@ export function JiraPanel({ workspacePath }: { workspacePath: string }): React.J
     let cancelled = false;
     window.electronAPI.invoke('jira:get-settings', workspacePath).then((value) => {
       if (cancelled) return;
-      const settings = value as { siteUrl: string; email: string; hasToken: boolean; jql: string; autoSyncMinutes: number; lastResult?: JiraSyncResult };
+      const settings = value as { siteUrl: string; email: string; hasToken: boolean; jql: string; autoSyncMinutes: number; acceptanceCriteriaFieldIds?: string[]; lastResult?: JiraSyncResult };
       setSiteUrl(settings.siteUrl); setEmail(settings.email); setHasToken(settings.hasToken);
       setJql(settings.jql); setAutoSyncMinutes(settings.autoSyncMinutes);
+      setAcceptanceCriteriaFields(settings.acceptanceCriteriaFieldIds?.join(', ') ?? '');
       if (settings.lastResult) { setMessage(jiraSyncSummary(settings.lastResult)); setErrors(settings.lastResult.errors); }
     }).catch(error => { if (!cancelled) setErrors([String(error.message ?? error)]); })
       .finally(() => { if (!cancelled) setBusy(false); });
@@ -32,7 +34,8 @@ export function JiraPanel({ workspacePath }: { workspacePath: string }): React.J
   const save = async (sync: boolean) => {
     setBusy(true); setErrors([]); setMessage('');
     try {
-      await window.electronAPI.invoke('jira:save-settings', { workspacePath, credentials: { siteUrl, email, apiToken }, settings: { jql, autoSyncMinutes } });
+      const fieldIds = acceptanceCriteriaFields.split(',').map(id => id.trim()).filter(Boolean);
+      await window.electronAPI.invoke('jira:save-settings', { workspacePath, credentials: { siteUrl, email, apiToken }, settings: { jql, autoSyncMinutes, ...(fieldIds.length ? { acceptanceCriteriaFieldIds: fieldIds } : {}) } });
       setApiToken(''); setHasToken(true); setMessage('Jira settings saved.');
       if (sync) {
         const result = await window.electronAPI.invoke('jira:sync', workspacePath) as JiraSyncResult;
@@ -49,6 +52,8 @@ export function JiraPanel({ workspacePath }: { workspacePath: string }): React.J
     <label className="block space-y-1 text-sm">Email<input className={inputClass} type="email" value={email} onChange={e => setEmail(e.target.value)} /></label>
     <label className="block space-y-1 text-sm">API token<input className={inputClass} type="password" autoComplete="new-password" placeholder={hasToken ? 'Saved securely; leave blank to keep' : 'API token'} value={apiToken} onChange={e => setApiToken(e.target.value)} /></label>
     <label className="block space-y-1 text-sm">JQL<textarea className={inputClass} rows={3} value={jql} onChange={e => setJql(e.target.value)} /></label>
+    <label className="block space-y-1 text-sm">Acceptance criteria field IDs (optional)<input className={inputClass} placeholder="customfield_12345, customfield_67890" value={acceptanceCriteriaFields} onChange={e => setAcceptanceCriteriaFields(e.target.value)} /></label>
+    <p className="text-xs text-nim-muted">Leave blank to discover fields named Acceptance Criteria when launching an agent. For other field names, enter the Jira field IDs separated by commas. Criteria embedded in descriptions are always included.</p>
     <label className="block space-y-1 text-sm">Auto-sync interval in minutes (0 = off)<input className={inputClass} type="number" min={0} max={10080} step={1} value={autoSyncMinutes} onChange={e => setAutoSyncMinutes(Number(e.target.value))} /></label>
     <p className="text-xs text-nim-muted">Auto-sync runs while Nimbalyst is open. Jira controls which issues and comments your account can read. Synced descriptions and comments replace the imported task body.</p>
     <div className="flex gap-2"><button className="rounded border border-nim px-3 py-2 text-sm disabled:opacity-50" disabled={busy} onClick={() => void save(false)}>Save</button><button className="rounded bg-nim-primary px-3 py-2 text-sm text-white disabled:opacity-50" disabled={busy} onClick={() => void save(true)}>{busy ? 'Working…' : 'Sync Jira'}</button></div>
