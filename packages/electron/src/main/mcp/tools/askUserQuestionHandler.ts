@@ -4,6 +4,7 @@ import { AgentMessagesRepository } from "@nimbalyst/runtime/storage/repositories
 import { AISessionsRepository } from "@nimbalyst/runtime/storage/repositories/AISessionsRepository";
 import { getSessionStateManager } from "@nimbalyst/runtime/ai/server/SessionStateManager";
 import { setSessionPendingPrompt } from "../../services/ai/pendingPromptPersistence";
+import { notificationService } from "../../services/NotificationService";
 import { resolveToolUseIdFromMcpRequest } from "./codexToolCallResolver";
 import {
   isClaudeCliSession,
@@ -207,6 +208,14 @@ export async function handleAskUserQuestion(
   // panel filed those sessions under "Running".
   if (sessionId) {
     void setSessionPendingPrompt(sessionId, true, "decision");
+    void AISessionsRepository.get(sessionId).then(session => {
+      if (!session?.workspacePath) return;
+      return notificationService.showBlockedNotification(
+        sessionId, session.title || "AI Session", "question", session.workspacePath,
+      );
+    }).catch(error => {
+      console.warn("[MCP Server] Failed to notify waiting question:", error);
+    });
   }
   if (isCliSession && sessionId) {
     for (const w of BrowserWindow.getAllWindows()) {

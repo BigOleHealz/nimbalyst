@@ -551,7 +551,7 @@ Companion app; pairs with a desktop over encrypted sync. Voice mode is not inclu
 - System tray with session status and click-to-navigate
 - macOS menu bar fleet monitoring -- follow active sessions, see which need attention, and open them from the menu bar
 - Dock badge for sessions needing attention
-- OS notifications for session events
+- OS notifications for sessions awaiting input and ready for review, with independent application settings for each type and click-to-open session routing. Existing companion push delivery respects the same type preferences; review pushes retain desktop presence suppression.
 - Sound notifications
 - Auto-updater with toast notification
 - Deferred restart (waits for active AI sessions)

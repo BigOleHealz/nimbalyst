@@ -62,8 +62,7 @@ import { AnalyticsService } from '../analytics/AnalyticsService';
 import { notificationService } from '../NotificationService';
 import { composeNotificationTitle } from '../../../shared/notificationTitle';
 import { SoundNotificationService } from '../SoundNotificationService';
-import { isDesktopTrulyAway } from '../SyncManager';
-import { requestMobilePush } from './mobilePushRequest';
+import { notifySessionReview } from '../SessionReviewNotifications';
 import { AISessionsRepository } from '@nimbalyst/runtime';
 import { getClaudeCodeApiUpstreamUrl } from '../../utils/store';
 import { ClaudeSettingsManager } from '../ClaudeSettingsManager';
@@ -92,22 +91,7 @@ async function notifyClaudeCliTurnComplete(
       // best-effort label
     }
 
-    await notificationService.showNotification({
-      title: composeNotificationTitle(title, 'Response Ready'),
-      body,
-      kind: 'agent-complete',
-      sessionId,
-      workspacePath,
-      sourceLabel: title,
-      provider: 'claude-code-cli',
-    });
-
-    // Mobile push only when the user has truly left the machine (screen
-    // locked / idle past threshold) — otherwise the OS notification above
-    // already covers it and a push would duplicate via Continuity.
-    if (isDesktopTrulyAway()) {
-      void requestMobilePush(sessionId, title, body, { reason: 'cli_turn_complete' });
-    }
+    await notifySessionReview(sessionId, title, workspacePath, body, 'cli_turn_complete');
   } catch (err) {
     console.warn('[ClaudeCliObservation] Failed to fire turn-complete notification:', err);
   }

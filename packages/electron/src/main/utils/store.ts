@@ -145,6 +145,7 @@ interface AppStoreSchema {
   completionSoundVolume?: number;
   // OS notifications
   osNotificationsEnabled?: boolean;
+  sessionReviewNotificationsEnabled?: boolean;
   // Release channel
   releaseChannel?: ReleaseChannel;
   // Shared fallback for native file/folder dialogs outside workspace context.
@@ -2001,6 +2002,14 @@ export function isSessionBlockedNotificationsEnabled(): boolean {
 
 export function setSessionBlockedNotificationsEnabled(enabled: boolean): void {
   getAppStore().set('sessionBlockedNotificationsEnabled', enabled);
+}
+
+export function isSessionReviewNotificationsEnabled(): boolean {
+  return getAppStore().get('sessionReviewNotificationsEnabled', true);
+}
+
+export function setSessionReviewNotificationsEnabled(enabled: boolean): void {
+  getAppStore().set('sessionReviewNotificationsEnabled', enabled);
 }
 
 // Release Channel Settings

@@ -27,6 +27,7 @@ vi.mock('@nimbalyst/runtime/storage/repositories/AgentMessagesRepository', () =>
 vi.mock('@nimbalyst/runtime/storage/repositories/AISessionsRepository', () => ({ AISessionsRepository: { get: async () => ({ provider: seams.cli ? 'claude-code-cli' : 'claude-code' }) } }));
 vi.mock('@nimbalyst/runtime/ai/server/SessionStateManager', () => ({ getSessionStateManager: () => ({ updateActivity: async (...args: unknown[]) => { seams.activity(...args); }, isSessionActive: () => true }) }));
 vi.mock('../../services/ai/pendingPromptPersistence', () => ({ setSessionPendingPrompt: async (...args: unknown[]) => { seams.pending(...args); } }));
+vi.mock('../../services/NotificationService', () => ({ notificationService: { showBlockedNotification: vi.fn().mockResolvedValue(undefined) } }));
 vi.mock('../tools/interactivePromptTranscript', () => ({ isClaudeCliSession: async () => seams.cli, persistInteractivePromptToolResult: seams.persistResult }));
 vi.mock('../tools/codexToolCallResolver', () => ({ resolveToolUseIdFromMcpRequest: async (req: { params: { _meta: { toolUseId: string } } }) => req.params._meta.toolUseId }));
 

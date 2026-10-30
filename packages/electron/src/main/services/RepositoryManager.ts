@@ -14,6 +14,9 @@ import { AISessionsRepository, SessionFilesRepository, AgentMessagesRepository, 
 import { TranscriptMigrationService } from '@nimbalyst/runtime/ai/server/transcript/TranscriptMigrationService';
 import { createRawMessageStoreAdapter } from './TranscriptMigrationAdapters';
 import { createPGLiteSessionStore } from './PGLiteSessionStore';
+import { createReviewNotifyingSessionStore } from './ReviewNotifyingSessionStore';
+import { notifySessionReview } from './SessionReviewNotifications';
+import { getSessionStateManager } from '@nimbalyst/runtime/ai/server/SessionStateManager';
 import { createPGLiteSessionFileStore } from './PGLiteSessionFileStore';
 import { createPGLiteAgentMessagesStore } from './PGLiteAgentMessagesStore';
 import { createSyncedAgentMessagesStore } from './SyncedAgentMessagesStore';
@@ -88,7 +91,19 @@ class RepositoryManager {
         }
       );
 
-      // Wrap with sync if configured (returns base store if sync not enabled)
+      // Observe explicit review transitions before the optional sync decorator.
+      this.baseSessionStore = createReviewNotifyingSessionStore(
+        this.baseSessionStore,
+        session => {
+          if (!session.workspacePath) throw new Error('Review notification requires workspacePath');
+          return notifySessionReview(session.id, session.title || 'AI Session', session.workspacePath);
+        },
+        sessionId => {
+          const status = getSessionStateManager().getSessionState(sessionId)?.status;
+          return status === 'running' || status === 'waiting_for_input';
+        },
+      );
+      // Wrap with sync if configured (returns base store if sync not enabled).
       this.sessionStore = await initializeSync(this.baseSessionStore);
 
       // Register session store with runtime's AISessionsRepository

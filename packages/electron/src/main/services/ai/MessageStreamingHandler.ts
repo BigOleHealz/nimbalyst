@@ -81,7 +81,6 @@ import { extractFilePath } from './tools/extractFilePath';
 import { geminiUsageService } from '../GeminiUsageService';
 import { SoundNotificationService } from '../SoundNotificationService';
 import { notificationService } from '../NotificationService';
-import { composeNotificationTitle } from '../../../shared/notificationTitle';
 import { logger } from '../../utils/logger';
 import { windowStates, findWindowByWorkspace } from '../../window/WindowManager';
 import { sessionFileTracker } from '../SessionFileTracker';
@@ -93,7 +92,8 @@ import { FeatureUsageService, FEATURES } from '../FeatureUsageService.ts';
 import { ToolUsageService } from '../ToolUsageService';
 import { historyManager } from '../../HistoryManager';
 import { addGitignoreBypass } from '../../file/WorkspaceEventBus';
-import { getSyncProvider, isDesktopTrulyAway } from '../SyncManager';
+import { getSyncProvider } from '../SyncManager';
+import { notifySessionReview } from '../SessionReviewNotifications';
 import { publishContextUsage } from './publishContextUsage';
 import { requestMobilePush } from './mobilePushRequest';
 import { createAskUserQuestionListeners } from './askUserQuestionListeners';
@@ -2622,29 +2622,7 @@ export class MessageStreamingHandler {
               //     : 'fullResponse',
               // });
 
-              await notificationService.showNotification({
-                title: composeNotificationTitle(sessionLabel, 'Response Ready'),
-                body: notificationBody,
-                kind: 'agent-complete',
-                sessionId: session.id,
-                workspacePath: workspacePath,
-                sourceLabel: sessionLabel,
-                provider: session.provider
-              });
-
-              // Request mobile push notification for agent completion.
-              // Only send when user has truly left their computer (screen locked or idle
-              // past threshold). When the window is merely unfocused (user in another app),
-              // the Electron notification above already covers it -- sending a mobile push
-              // too causes duplicates via iPhone Mirroring / Continuity.
-              if (syncProvider && isDesktopTrulyAway()) {
-                void requestMobilePush(
-                  session.id,
-                  session.title || 'AI Session',
-                  notificationBody,
-                  { reason: 'session_complete' }
-                );
-              }
+              await notifySessionReview(session.id, sessionLabel, workspacePath, notificationBody);
 
               // Track session completion in feature usage system
               FeatureUsageService.getInstance().recordUsage(FEATURES.SESSION_COMPLETED);

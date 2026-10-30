@@ -10,6 +10,39 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+describe('session notification preferences', () => {
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+  it('defaults new review preferences on for an older settings store', async () => {
+    const { initNotificationSettings } = await import('../appSettings');
+    vi.stubGlobal('window', { electronAPI: { invoke: vi.fn().mockResolvedValue(undefined) } });
+    expect(await initNotificationSettings()).toMatchObject({
+      sessionBlockedNotificationsEnabled: true, sessionReviewNotificationsEnabled: true,
+    });
+  });
+
+  it('loads and persists input and review preferences independently', async () => {
+    const { createStore } = await import('jotai');
+    const { initNotificationSettings, notificationSettingsAtom, setNotificationSettingsAtom } = await import('../appSettings');
+    const invoke = vi.fn(async (channel: string) => {
+      if (channel === 'notifications:get-review-enabled') return false;
+      if (channel === 'notifications:get-blocked-enabled') return true;
+      return undefined;
+    });
+    vi.stubGlobal('window', { electronAPI: { invoke } });
+    const settings = await initNotificationSettings();
+    expect(settings.sessionReviewNotificationsEnabled).toBe(false);
+    const store = createStore();
+    store.set(notificationSettingsAtom, settings);
+    vi.useFakeTimers();
+    store.set(setNotificationSettingsAtom, { sessionBlockedNotificationsEnabled: false });
+    store.set(setNotificationSettingsAtom, { sessionReviewNotificationsEnabled: true });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(invoke).toHaveBeenCalledWith('notifications:set-blocked-enabled', false);
+    expect(invoke).toHaveBeenCalledWith('notifications:set-review-enabled', true);
+  });
+});
+
 // Each test dynamically imports the large `appSettings` module graph. Under the
 // full 444-file concurrent suite (run via the ROOT vitest config, whose default
 // testTimeout is 5s -- the electron config's 10s does not apply at root), that

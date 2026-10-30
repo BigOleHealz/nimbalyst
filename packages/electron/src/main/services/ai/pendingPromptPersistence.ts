@@ -27,6 +27,7 @@ import { requestMobilePush } from './mobilePushRequest';
 import { TrayManager } from '../../tray/TrayManager';
 import type { PromptKind } from '../../tray/fleetSnapshot';
 import { logger } from '../../utils/logger';
+import { isSessionBlockedNotificationsEnabled } from '../../utils/store';
 
 /**
  * NIM-2208: session ids whose bit this process has set since startup.
@@ -110,7 +111,7 @@ export async function setSessionPendingPrompt(
     );
   }
 
-  if (hasPendingPrompt && !wasAlreadyPending) {
+  if (hasPendingPrompt && !wasAlreadyPending && isSessionBlockedNotificationsEnabled()) {
     void notifyMobileOfBlockedSession(sessionId);
   }
 }
