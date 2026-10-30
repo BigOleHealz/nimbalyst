@@ -20,7 +20,11 @@ import {
   patchWorktreeRecordAtom,
   worktreeDisplayNameUpdateAtom,
   worktreePinnedUpdateAtom,
+  worktreeRecordsAtom,
+  setWorktreeRecordAtom,
+  type WorktreeRecord,
 } from '../atoms/worktrees';
+import { sessionRegistryAtom } from '../atoms/sessions';
 
 let initialized = false;
 
@@ -33,6 +37,26 @@ export function initWorktreeListeners(): () => void {
   const cleanups: Array<() => void> = [];
   let displayNameVersion = 0;
   let pinnedVersion = 0;
+  let disposed = false;
+  const pending = new Set<string>();
+  const resolveSessionWorktrees = async () => {
+    const ids = [...new Set([...store.get(sessionRegistryAtom).values()].flatMap(s => s.worktreeId ? [s.worktreeId] : []))]
+      .filter(id => !pending.has(id) && !store.get(worktreeRecordsAtom).get(id)?.branch);
+    if (!ids.length) return;
+    ids.forEach(id => pending.add(id));
+    try {
+      const result = await window.electronAPI.invoke('worktree:get-batch', ids);
+      if (!disposed && result.success) {
+        for (const record of Object.values(result.worktrees ?? {}) as WorktreeRecord[]) {
+          store.set(setWorktreeRecordAtom, record);
+        }
+      }
+    } catch (error) {
+      console.error('[worktreeListeners] Failed to resolve session branches:', error);
+    } finally { ids.forEach(id => pending.delete(id)); }
+  };
+  void resolveSessionWorktrees();
+  cleanups.push(store.sub(sessionRegistryAtom, () => { void resolveSessionWorktrees(); }));
 
   const u1 = window.electronAPI?.on?.(
     'worktree:display-name-updated',
@@ -69,6 +93,7 @@ export function initWorktreeListeners(): () => void {
   if (typeof u2 === 'function') cleanups.push(u2);
 
   return () => {
+    disposed = true;
     initialized = false;
     cleanups.forEach((fn) => fn?.());
   };

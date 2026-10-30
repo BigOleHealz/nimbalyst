@@ -42,6 +42,7 @@ export function projectSessionList(
       agentRole: entry.agentRole || "standard",
       createdBySessionId: entry.createdBySessionId || null,
       messageCount: entry.messageCount || 0,
+      hasStarted: entry.hasStarted,
       isArchived: entry.isArchived || false,
       isPinned: entry.isPinned || false, // Include isPinned from repository
       worktreeId: entry.worktreeId, // Include worktreeId from repository
@@ -58,6 +59,7 @@ export function projectSessionList(
       branchedAt: entry.branchedAt,
       // Kanban board phase and tags
       phase: (entry as any).phase || undefined,
+      kanbanOverride: entry.kanbanOverride,
       tags: (entry as any).tags || undefined,
       // Linked tracker item IDs
       linkedTrackerItemIds: (entry as any).linkedTrackerItemIds || undefined,

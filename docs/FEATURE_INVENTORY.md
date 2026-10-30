@@ -108,14 +108,15 @@ Twelve built-in provider lanes, plus any agent an extension contributes. Every l
 
 ## Session Kanban Board
 
-- Sessions organized into phase columns (backlog / planning / implementing / validating / complete)
-- Configurable columns
+- Session board follows live status in Backlog / Running / Awaiting Input / Review / Done, including questions, structured input, permissions and commit approvals; grouped cards surface waiting descendants
+- Manual drags persist until operational status changes; cards open live sessions on click and show linked Jira keys/titles, provider, branch and live activity age, with counts and collapsible columns
 - Agent-assisted cleanup (`/session-cleanup` slash command in the Planning extension) — audits sessions, proposes phase corrections and "mark complete" candidates for approval, and flags old sessions to archive
 - Workspace coaching (`/planning:nimbalyst-coach` slash command in the Planning extension) — reviews the project and recent sessions, then recommends extensions matching the project's file types, product features going unused, and additions to the project's agent instructions; read-only until the user approves each edit
 
 ## Agent Mode
 
 - Full-screen AI session interface
+- Workspace session tabs with a second conversation pane; switch between open sessions and the board or close views while agents continue running, and restore open tabs and the split after restart
 - Agent navigation badge with a grouped list of sessions awaiting input, running, or unread
 - Plan mode toggle (Shift+Tab)
 - Suggested next prompt for Claude Code sessions (on by default, toggle under Agent Features): shown in the empty input after a turn you started, Tab fills it in; skipped for turns started by agents or automations
@@ -371,6 +372,7 @@ Companion app; pairs with a desktop over encrypted sync. Voice mode is not inclu
 ## Tracker System
 
 - Tracker mode (Cmd+T) with list, table, grid, kanban, tag-board, timeline, and inbox views
+- Tasks have a single parentTask and inverse subtasks relationships, independent child status and optional session links; agents reuse or create subtasks for meaningful decomposition, and Task and All list/kanban views support persisted parent-task filters
 - Board lanes and timeline grouping by milestone, goal, or another field, with drag-and-drop and bulk assignment
 - Full-document tracker view with collaborative body editing, inline comments, editable field chips, AI chat, and shareable reopen links
 - Tag-board view with one column per tag (items appear in every matching column, plus an Untagged column)

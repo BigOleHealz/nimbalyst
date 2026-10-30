@@ -35,6 +35,8 @@ export interface SessionMeta {
   createdAt: number;
   updatedAt: number;
   messageCount: number;
+  /** Lightweight transcript-existence signal; list queries do not count messages. */
+  hasStarted?: boolean;
   isArchived: boolean;
   isPinned: boolean;
   hasUnread?: boolean;
@@ -48,6 +50,8 @@ export interface SessionMeta {
   hasPendingInteractivePrompt?: boolean;
   // Kanban board phase and tags (from metadata JSONB)
   phase?: string;
+  /** User board placement, valid only while the observed operational status matches. */
+  kanbanOverride?: { column: 'backlog' | 'implementing' | 'awaiting-input' | 'validating' | 'complete'; status: string };
   tags?: string[];
   // Linked tracker item IDs (from metadata JSONB)
   linkedTrackerItemIds?: string[];
