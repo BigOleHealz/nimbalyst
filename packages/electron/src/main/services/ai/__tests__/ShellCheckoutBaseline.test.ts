@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { it, expect, vi } from 'vitest';
+import { afterEach, it, expect, vi } from 'vitest';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -9,6 +9,20 @@ import { prepareShellCheckoutBaseline } from '../ShellCheckoutBaseline';
 import { SHELL_BASELINE_CAPTURE_MS } from '../ShellContentBaseline';
 import { contentFingerprint } from '../../../file/knownFileWrites';
 import { ShellTrackingCoverage } from '../ShellTrackingCoverage';
+
+const captureBudget = vi.hoisted(() => ({ realGit: false }));
+vi.mock('../ShellContentBaseline', async importOriginal => {
+  const actual = await importOriginal<typeof import('../ShellContentBaseline')>();
+  return {
+    ...actual,
+    // Real-Git fixtures need room for scheduler delays in the full suite.
+    // The mocked-Git deadline tests retain the production capture budget.
+    get SHELL_BASELINE_CAPTURE_MS() {
+      return captureBudget.realGit ? 10_000 : actual.SHELL_BASELINE_CAPTURE_MS;
+    },
+  };
+});
+afterEach(() => { captureBudget.realGit = false; });
 
 type GitExec = (command: string, args: readonly string[], options: ExecFileOptionsWithStringEncoding,
   callback: (error: Error | null, stdout: string, stderr: string) => void) => ReturnType<typeof execFile>;
@@ -66,6 +80,7 @@ it('shares one decreasing deadline across inventory, content and common-director
 });
 
 it.each(['inventory', 'content'])('reports a timed-out %s git call and abstains from identical rebuild links', async site => {
+  captureBudget.realGit = true;
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'nim-baseline-timeout-')));
   const git = (...args: string[]) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' });
   const file = path.join(root, 'generated.d.ts');
@@ -126,6 +141,7 @@ it.each(['inventory', 'content'])('reports a timed-out %s git call and abstains 
 });
 
 it('excludes checkout copies but retains edits committed by the creating tool and subsequent shell edits', async () => {
+  captureBudget.realGit = true;
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'nim-checkout-regression-'));
   const root = await fs.realpath(temp), nested = path.join(root, 'scratch', 'checkout');
   const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-C', cwd, ...args], { encoding: 'utf8' });
@@ -185,6 +201,7 @@ it('excludes checkout copies but retains edits committed by the creating tool an
 });
 
 it.each(['alone', 'external session', 'overlapping shell'])('ignores cold-cache identical rebuilds with %s while retaining real change evidence', async mode => {
+  captureBudget.realGit = true;
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'nim-rebuild-regression-'));
   const root = await fs.realpath(temp);
   const git = (...args: string[]) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' });
