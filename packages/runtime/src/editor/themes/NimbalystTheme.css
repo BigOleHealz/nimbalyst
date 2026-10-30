@@ -24,25 +24,25 @@
 :root {
   /* Backgrounds */
   --nim-bg: #ffffff;
-  --nim-bg-secondary: #f9fafb;
-  --nim-bg-tertiary: #f3f4f6;
-  --nim-bg-hover: rgba(0, 0, 0, 0.05);
-  --nim-bg-selected: rgba(59, 130, 246, 0.1);
-  --nim-bg-active: rgba(59, 130, 246, 0.2);
+  --nim-bg-secondary: #f7f8fa;
+  --nim-bg-tertiary: #eef0f4;
+  --nim-bg-hover: rgba(24, 32, 52, 0.05);
+  --nim-bg-selected: rgba(53, 99, 233, 0.09);
+  --nim-bg-active: rgba(53, 99, 233, 0.15);
 
   /* Text */
-  --nim-text: #111827;
-  --nim-text-muted: #6b7280;
-  --nim-text-faint: #9ca3af;
-  --nim-text-disabled: #d1d5db;
+  --nim-text: #202532;
+  --nim-text-muted: #626b7c;
+  --nim-text-faint: #6c7586;
+  --nim-text-disabled: #a5adba;
 
   /* Borders */
-  --nim-border: #e5e7eb;
-  --nim-border-focus: #3b82f6;
+  --nim-border: #e1e4ea;
+  --nim-border-focus: #3563e9;
 
   /* Primary (action/brand color) */
-  --nim-primary: #3b82f6;
-  --nim-primary-hover: #2563eb;
+  --nim-primary: #3563e9;
+  --nim-primary-hover: #284fc7;
   /* Foreground for use on top of --nim-primary backgrounds. Themes that
      contribute a light/pastel --nim-primary should override this with a
      dark color; the theme system also luminance-derives a fallback when
@@ -50,48 +50,48 @@
   --nim-on-primary: #ffffff;
 
   /* Links */
-  --nim-link: rgb(33, 111, 219);
-  --nim-link-hover: rgb(33, 111, 219);
+  --nim-link: #315bd6;
+  --nim-link-hover: #2447b3;
 
   /* Accent subtle (for override banners, etc.) */
-  --nim-accent-subtle: rgba(59, 130, 246, 0.1);
+  --nim-accent-subtle: var(--nim-bg-selected);
 
   /* Status */
   --nim-success: #10b981;
   --nim-warning: #f59e0b;
   --nim-error: #ef4444;
-  --nim-info: #3b82f6;
+  --nim-info: #3563e9;
   --nim-purple: #7c3aed;
 
   /* Code blocks */
-  --nim-code-bg: rgb(240, 242, 245);
-  --nim-code-text: #111827;
-  --nim-code-border: #ccc;
-  --nim-code-gutter: #eee;
+  --nim-code-bg: #f3f5f8;
+  --nim-code-text: #202532;
+  --nim-code-border: #e1e4ea;
+  --nim-code-gutter: #eef0f4;
 
   /* Table */
-  --nim-table-border: #bbb;
-  --nim-table-header: #f2f3f5;
+  --nim-table-border: #e1e4ea;
+  --nim-table-header: #f3f5f8;
   --nim-table-cell: #ffffff;
-  --nim-table-stripe: #f2f5fb;
+  --nim-table-stripe: #f7f8fa;
 
   /* Toolbar */
   --nim-toolbar-bg: #ffffff;
-  --nim-toolbar-border: #e5e7eb;
-  --nim-toolbar-hover: #f3f4f6;
-  --nim-toolbar-active: rgba(59, 130, 246, 0.2);
+  --nim-toolbar-border: #e1e4ea;
+  --nim-toolbar-hover: #eef0f4;
+  --nim-toolbar-active: rgba(53, 99, 233, 0.15);
 
   /* Special */
   --nim-highlight-bg: rgba(255, 212, 0, 0.14);
   --nim-highlight-border: rgba(255, 212, 0, 0.3);
   /* Solid base color for comment-thread marks; states derive from it via color-mix. */
   --nim-comment-mark: #ffd400;
-  --nim-quote-text: rgb(101, 103, 107);
-  --nim-quote-border: rgb(206, 208, 212);
+  --nim-quote-text: #626b7c;
+  --nim-quote-border: #d2d8e2;
 
   /* Scrollbar */
-  --nim-scrollbar-thumb: #d1d5db;
-  --nim-scrollbar-thumb-hover: #9ca3af;
+  --nim-scrollbar-thumb: #cbd1dc;
+  --nim-scrollbar-thumb-hover: #a5adba;
   --nim-scrollbar-track: transparent;
 
   /* Diff */

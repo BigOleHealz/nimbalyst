@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, it, expect, beforeEach } from 'vitest';
 import { globalRegistry } from '@nimbalyst/tracker-schema';
 import type { TrackerDataModel } from '@nimbalyst/tracker-schema';
@@ -53,6 +54,31 @@ function makeDeps(targets: FakeTarget[]) {
 }
 
 describe('propagateInverseRelationships', () => {
+  const task = model('task', [
+    { name: 'parentTask', type: 'relationship', multiValue: false, relationshipTypeKey: 'child-of', inverseFieldId: 'subtasks', inverseRelationshipTypeKey: 'parent-of' },
+    { name: 'subtasks', type: 'relationship', multiValue: true, relationshipTypeKey: 'parent-of', inverseFieldId: 'parentTask', inverseRelationshipTypeKey: 'child-of' },
+  ]);
+
+  it('reparents a subtask without leaving it on the former parent', async () => {
+    globalRegistry.register(task);
+    const { writes, deps } = makeDeps([
+      { id: 'child', type: 'task', data: { customFields: { parentTask: { itemId: 'old' } } } },
+      { id: 'old', type: 'task', data: { customFields: { subtasks: [{ itemId: 'child' }, { itemId: 'sibling' }] } } },
+    ]);
+    await propagateInverseRelationships({ id: 'new', type: 'task' }, { subtasks: [{ itemId: 'child' }] }, {}, deps);
+    expect(writes).toContainEqual({ itemId: 'old', fieldName: 'subtasks', value: [{ itemId: 'sibling' }] });
+    expect(writes).toContainEqual({ itemId: 'child', fieldName: 'parentTask', value: expect.objectContaining({ itemId: 'new' }) });
+  });
+
+  it('does not clear a subtask’s current parent when a stale former parent drops it', async () => {
+    globalRegistry.register(task);
+    const { writes, deps } = makeDeps([
+      { id: 'child', type: 'task', data: { parentTask: { itemId: 'new' } } },
+    ]);
+    await propagateInverseRelationships({ id: 'old', type: 'task' }, { subtasks: [] }, { subtasks: [{ itemId: 'child' }] }, deps);
+    expect(writes).toEqual([]);
+  });
+
   beforeEach(() => {
     globalRegistry.register(PLAN);
     globalRegistry.register(BUG);

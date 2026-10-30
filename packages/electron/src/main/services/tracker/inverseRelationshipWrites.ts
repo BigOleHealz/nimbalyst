@@ -88,6 +88,25 @@ export async function propagateInverseRelationships(
       // customFields storage — reading top-level only would see it as empty and
       // clobber the target's other links on write (NIM-1305).
       const current = normalizeRelationshipValue(readStoredFieldValue(target.data, delta.inverseFieldId));
+      if (delta.op === 'remove' && !current.some(value => value.itemId === delta.value.itemId)) continue;
+
+      // A single-value inverse (a task's parent) replaces its previous target.
+      // Drop the child's backlink from that former parent as part of the move.
+      if (delta.op === 'add' && !invDef.multiValue && invDef.inverseFieldId) {
+        for (const previous of current) {
+          if (previous.itemId === delta.value.itemId) continue;
+          const previousTarget = await deps.loadItem(previous.itemId);
+          const previousDef = previousTarget && globalRegistry.get(previousTarget.type)?.fields.find(
+            field => field.name === invDef.inverseFieldId && isRelationshipField(field),
+          );
+          if (!previousTarget || !previousDef) continue;
+          const previousValue = readStoredFieldValue(previousTarget.data, previousDef.name);
+          await deps.applyTargetUpdate(previousTarget.id, previousDef.name, serializeRelationshipValue(
+            previousDef, removeRelationshipValue(previousValue, target.id),
+          ));
+          targetsUpdated++;
+        }
+      }
       const next = delta.op === 'add'
         ? addRelationshipValue(invDef, current, delta.value)
         : removeRelationshipValue(current, delta.value.itemId);

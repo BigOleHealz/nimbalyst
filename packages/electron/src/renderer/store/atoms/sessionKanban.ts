@@ -2,21 +2,24 @@
  * Session Kanban Board Atoms
  *
  * State for the session kanban board view in TrackerMode.
- * Sessions/workstreams/worktrees are organized into phase columns
- * (backlog, planning, implementing, validating, complete).
- *
- * Workflow phase is stored in metadata.phase on each session. Approval waiting
- * is a live overlay: it never overwrites the session's workflow phase.
+ * Board placement derives from existing operational state. Workflow phases
+ * remain independent; manual board overrides live in the same session metadata.
  */
 
-import { atom } from 'jotai';
+import { atom, type Getter, type createStore } from 'jotai';
 import { atomFamily } from '../debug/atomFamilyRegistry';
 import type { SessionMeta } from '@nimbalyst/runtime';
-import { sessionApprovalSnapshotAtom, sessionAwaitingApprovalAtom } from './sessionApproval';
+import { sessionAwaitingApprovalAtom } from './sessionApproval';
+import { trackerItemsMapAtom } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerDataAtoms';
+import { getRecordPrReferences } from '@nimbalyst/runtime/plugins/TrackerPlugin/prReferences';
+import { prListAtom } from './pullRequests';
+import { worktreeRecordsAtom } from './worktrees';
+import { sessionArchiveSubtreeIds } from '../../components/AgenticCoding/sessionArchiveSelection';
 import {
   sessionRegistryAtom,
   sessionProcessingAtom,
   sessionHasPendingInteractivePromptAtom,
+  sessionLastActivityAtom,
 } from './sessions';
 
 // ============================================================
@@ -25,7 +28,7 @@ import {
 
 /** Phase columns on the kanban board */
 export type SessionPhase = 'backlog' | 'planning' | 'implementing' | 'validating' | 'complete';
-export type SessionBoardColumn = SessionPhase | 'awaiting-approval';
+export type SessionBoardColumn = NonNullable<SessionMeta['kanbanOverride']>['column'];
 
 /** Card type determines visual treatment and whether child run states are shown */
 export type KanbanCardType = 'session' | 'workstream' | 'worktree';
@@ -53,21 +56,14 @@ export const SESSION_PHASE_COLUMNS: { value: SessionPhase; label: string; color:
 ];
 
 export const SESSION_BOARD_COLUMNS: { value: SessionBoardColumn; label: string; color: string }[] = [
-  ...SESSION_PHASE_COLUMNS.slice(0, 3),
-  { value: 'awaiting-approval', label: 'Awaiting approval', color: 'var(--nim-warning)' },
-  ...SESSION_PHASE_COLUMNS.slice(3),
+  { value: 'backlog', label: 'Backlog', color: 'var(--nim-text-muted)' },
+  { value: 'implementing', label: 'Running', color: 'var(--nim-primary)' },
+  { value: 'awaiting-input', label: 'Awaiting Input', color: 'var(--nim-warning)' },
+  { value: 'validating', label: 'Review', color: 'var(--nim-warning)' },
+  { value: 'complete', label: 'Done', color: 'var(--nim-success)' },
 ];
 
-const VALID_PHASES = new Set<string>(SESSION_PHASE_COLUMNS.map(c => c.value));
-
-/** Phase priority for deriving workstream phase from children (lower = more active) */
-const PHASE_PRIORITY: Record<string, number> = {
-  implementing: 0,
-  validating: 1,
-  planning: 2,
-  backlog: 3,
-  complete: 4,
-};
+const VALID_COLUMNS = new Set<string>(SESSION_BOARD_COLUMNS.map(c => c.value));
 
 // ============================================================
 // Helpers
@@ -81,28 +77,44 @@ export function getCardType(meta: SessionMeta | undefined): KanbanCardType {
   return 'session';
 }
 
-/**
- * Derive the effective phase for a workstream parent from its children's phases.
- * Returns the "most active" child phase (implementing > validating > planning > backlog > complete).
- * Returns undefined if no children have a phase.
- */
-function derivePhaseFromChildren(parentId: string, registry: Map<string, SessionMeta>): string | undefined {
-  let bestPhase: string | undefined;
-  let bestPriority = Infinity;
+const sessionHasActivityAtom = atomFamily((id: string) => atom(get => get(sessionLastActivityAtom(id)) > 0));
 
-  for (const [_id, meta] of registry) {
-    if (meta.parentSessionId !== parentId) continue;
-    if (meta.phase && VALID_PHASES.has(meta.phase)) {
-      const priority = PHASE_PRIORITY[meta.phase] ?? Infinity;
-      if (priority < bestPriority) {
-        bestPriority = priority;
-        bestPhase = meta.phase;
-      }
-    }
-  }
+function ownColumn(get: Getter, meta: SessionMeta): SessionBoardColumn {
+  if (meta.isArchived) return 'complete';
+  if (get(sessionAwaitingApprovalAtom(meta.id)) || get(sessionHasPendingInteractivePromptAtom(meta.id))) return 'awaiting-input';
+  if (get(sessionProcessingAtom(meta.id))) return 'implementing';
 
-  return bestPhase;
+  const records = get(trackerItemsMapAtom);
+  const references = (meta.linkedTrackerItemIds ?? []).flatMap(id => {
+    const record = records.get(id);
+    return record ? getRecordPrReferences(record) : [];
+  });
+  const branch = meta.worktreeId ? get(worktreeRecordsAtom).get(meta.worktreeId)?.branch : undefined;
+  const prs = get(prListAtom).filter(pr => pr.workspaceId === meta.workspaceId && (
+    (branch && pr.headRef === branch) || references.some(ref => ref.remote === pr.remote.toLowerCase() && ref.number === pr.number)
+  ));
+  if (prs.some(pr => pr.state === 'open')) return 'validating';
+  if (prs.some(pr => pr.state === 'merged')) return 'complete';
+  // A completed agent turn is reviewable work, not evidence of a merge.
+  return meta.hasStarted || meta.messageCount > 0 || get(sessionHasActivityAtom(meta.id)) ? 'validating' : 'backlog';
 }
+
+/** Derived from existing status sources; includes descendants in a grouped card. */
+export const sessionAutomaticBoardStateAtom = atom(get => {
+  const registry = get(sessionRegistryAtom);
+  const own = new Map([...registry].map(([id, meta]) => [id, ownColumn(get, meta)]));
+  const result = new Map<string, { column: SessionBoardColumn; status: string }>();
+  const priority = ['awaiting-input', 'implementing', 'validating', 'backlog', 'complete'];
+  for (const [id, meta] of registry) {
+    if (meta.parentSessionId) continue;
+    const states = sessionArchiveSubtreeIds(registry, [id]).map(childId => [childId, own.get(childId)!] as [string, SessionBoardColumn]);
+    const candidates = states.length > 1 && (meta.sessionType === 'workstream' || meta.sessionType === 'blitz' || own.get(id) === 'backlog')
+      ? states.filter(([childId]) => childId !== id) : states;
+    const column = meta.isArchived ? 'complete' : [...candidates].sort((a, b) => priority.indexOf(a[1]) - priority.indexOf(b[1]))[0][1];
+    result.set(id, { column, status: JSON.stringify(states.sort(([a], [b]) => a.localeCompare(b))) });
+  }
+  return result;
+});
 
 // ============================================================
 // Filter State
@@ -132,14 +144,7 @@ export type SessionPhaseKey = SessionBoardColumn | 'unphased';
 export const sessionsByPhaseAtom = atom((get) => {
   const registry = get(sessionRegistryAtom);
   const filter = get(sessionKanbanFilterAtom);
-  const awaitingSessions = new Set<string>();
-  for (const approval of get(sessionApprovalSnapshotAtom).approvals) {
-    let id: string | null | undefined = approval.sessionId;
-    while (id && !awaitingSessions.has(id)) {
-      awaitingSessions.add(id);
-      id = registry.get(id)?.parentSessionId;
-    }
-  }
+  const automatic = get(sessionAutomaticBoardStateAtom);
 
   const grouped = new Map<SessionPhaseKey, SessionMeta[]>();
   grouped.set('unphased', []);
@@ -151,20 +156,23 @@ export const sessionsByPhaseAtom = atom((get) => {
     // Only show root sessions (not children of workstreams)
     if (meta.parentSessionId) continue;
 
-    // For workstream parents without an explicit phase, derive from children
-    const phase = awaitingSessions.has(meta.id) ? 'awaiting-approval' : meta.phase
-      ?? (meta.childCount > 0 ? derivePhaseFromChildren(meta.id, registry) : undefined);
+    const state = automatic.get(meta.id)!;
+    const override = meta.kanbanOverride;
+    const phase = override && override.status === state.status && VALID_COLUMNS.has(override.column)
+      ? override.column : state.column;
 
     // Skip complete if filter says hide
     if (!filter.showComplete && phase === 'complete') continue;
 
-    // Skip archived unless in complete column
-    if (meta.isArchived && phase !== 'complete') continue;
-
     // Apply search filter
     if (filter.search) {
       const q = filter.search.toLowerCase();
-      if (!meta.title.toLowerCase().includes(q)) continue;
+      const records = get(trackerItemsMapAtom);
+      const linkedText = (meta.linkedTrackerItemIds ?? []).map(id => {
+        const item = records.get(id);
+        return item ? `${item.issueKey ?? ''} ${item.fields.title ?? ''} ${item.system.origin?.kind === 'external' ? item.system.origin.external?.externalId ?? '' : ''}` : '';
+      }).join(' ');
+      if (!`${meta.title} ${linkedText}`.toLowerCase().includes(q)) continue;
     }
 
     // Apply tag filter
@@ -173,11 +181,7 @@ export const sessionsByPhaseAtom = atom((get) => {
       if (!filter.tags.some(t => sessionTags.includes(t))) continue;
     }
 
-    if (phase === 'awaiting-approval' || (phase && VALID_PHASES.has(phase))) {
-      grouped.get(phase as SessionBoardColumn)!.push(meta);
-    } else {
-      grouped.get('unphased')!.push(meta);
-    }
+    grouped.get(phase)!.push(meta);
   }
 
   // Sort each column by updatedAt desc
@@ -230,19 +234,27 @@ export const childRunStatesAtom = atomFamily((sessionId: string) =>
     };
 
     for (const [_id, meta] of registry) {
-      if (meta.parentSessionId !== sessionId) continue;
+      const seen = new Set<string>();
+      let parent: string | null | undefined = meta.parentSessionId;
+      while (parent && parent !== sessionId && !seen.has(parent)) {
+        seen.add(parent);
+        parent = registry.get(parent)?.parentSessionId;
+      }
+      if (parent !== sessionId) continue;
       summary.total++;
 
       const isProcessing = get(sessionProcessingAtom(meta.id));
       const hasPendingPrompt = get(sessionHasPendingInteractivePromptAtom(meta.id));
 
-      if (get(sessionAwaitingApprovalAtom(meta.id)) || hasPendingPrompt) {
+      if (meta.isArchived) {
+        summary.done++;
+      } else if (get(sessionAwaitingApprovalAtom(meta.id)) || hasPendingPrompt) {
         summary.waiting++;
       } else if (isProcessing) {
         summary.running++;
-      } else if (meta.isArchived) {
+      } else if (ownColumn(get, meta) === 'complete') {
         summary.done++;
-      } else if (meta.uncommittedCount > 0) {
+      } else if (ownColumn(get, meta) === 'validating') {
         summary.review++;
       } else {
         summary.idle++;
@@ -256,6 +268,48 @@ export const childRunStatesAtom = atomFamily((sessionId: string) =>
 // ============================================================
 // Action Atoms
 // ============================================================
+
+/** Board drags do not change the agent's workflow phase or resolve its prompts. */
+export const setSessionBoardColumnAtom = atom(null, async (get, set, { sessionId, phase }: {
+  sessionId: string; phase: SessionBoardColumn | null;
+}) => {
+  const meta = get(sessionRegistryAtom).get(sessionId);
+  const state = get(sessionAutomaticBoardStateAtom).get(sessionId);
+  if (!meta || !state) return;
+  const kanbanOverride = phase ? { column: phase, status: state.status } : undefined;
+  set(sessionRegistryAtom, new Map(get(sessionRegistryAtom)).set(sessionId, { ...meta, kanbanOverride }));
+  try {
+    const result = await window.electronAPI.invoke('sessions:update-session-metadata', sessionId, { kanbanOverride: kanbanOverride ?? null });
+    if (result?.success === false) throw new Error(result.error || 'Unable to save board placement');
+  } catch (error) {
+    const current = get(sessionRegistryAtom).get(sessionId);
+    if (current && current.kanbanOverride === kanbanOverride) {
+      set(sessionRegistryAtom, new Map(get(sessionRegistryAtom)).set(sessionId, { ...current, kanbanOverride: meta.kanbanOverride }));
+    }
+    console.error('[sessionKanban] Failed to save board placement:', error);
+  }
+});
+
+/** Install with the central session listeners so overrides expire even off-board. */
+export function observeSessionKanbanStatus(store: ReturnType<typeof createStore>): () => void {
+  const expire = () => {
+    const automatic = store.get(sessionAutomaticBoardStateAtom);
+    const registry = store.get(sessionRegistryAtom);
+    const expired = [...registry.values()].filter(meta => meta.kanbanOverride && automatic.has(meta.id)
+      && meta.kanbanOverride.status !== automatic.get(meta.id)!.status);
+    if (!expired.length) return;
+    const next = new Map(registry);
+    for (const meta of expired) next.set(meta.id, { ...meta, kanbanOverride: undefined });
+    store.set(sessionRegistryAtom, next);
+    for (const meta of expired) {
+      void window.electronAPI.invoke('sessions:update-session-metadata', meta.id, { kanbanOverride: null })
+        .catch(error => console.error('[sessionKanban] Failed to expire board placement:', error));
+    }
+  };
+  const stop = store.sub(sessionAutomaticBoardStateAtom, expire);
+  expire();
+  return stop;
+}
 
 /** Set the phase of a session (writes to metadata JSONB via IPC) */
 export const setSessionPhaseAtom = atom(

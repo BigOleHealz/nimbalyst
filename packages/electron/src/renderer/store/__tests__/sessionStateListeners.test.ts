@@ -1006,6 +1006,21 @@ describe('contract: per-message events must not bump turn activity', () => {
   });
 });
 
+it('preserves a running session board override while startup restores processing state', async () => {
+  cleanup?.();
+  const sid = uniqueSessionId('board-startup');
+  seedRegistry([{ id: sid, messageCount: 1 }]);
+  const kanbanOverride = { column: 'validating' as const, status: JSON.stringify([[sid, 'implementing']]) };
+  const registry = new Map(store.get(sessionRegistryAtom));
+  registry.set(sid, { ...registry.get(sid)!, kanbanOverride });
+  store.set(sessionRegistryAtom, registry);
+  window.electronAPI.sessionState.getRunningSessionIds = vi.fn().mockResolvedValue({ success: true, sessionIds: [sid] });
+  const mod = await import('../sessionStateListeners');
+  cleanup = mod.initSessionStateListeners();
+  await vi.waitFor(() => expect(store.get(sessionProcessingAtom(sid))).toBe(true));
+  expect(store.get(sessionRegistryAtom).get(sid)?.kanbanOverride).toEqual(kanbanOverride);
+});
+
 describe('processing reconcile on terminal events', () => {
   it('heals a stuck processing session promptly when any session reaches a terminal state', async () => {
     vi.useFakeTimers();

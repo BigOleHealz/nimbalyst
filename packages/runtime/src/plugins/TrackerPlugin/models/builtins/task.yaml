@@ -80,6 +80,25 @@ fields:
   - name: description
     type: text
 
+  # Subtasks are ordinary tasks with an independent workflow and optional session.
+  - name: parentTask
+    type: relationship
+    relationshipTypeKey: child-of
+    inverseRelationshipTypeKey: parent-of
+    inverseFieldId: subtasks
+    targetTrackerTypes:
+      - task
+    multiValue: false
+
+  - name: subtasks
+    type: relationship
+    relationshipTypeKey: parent-of
+    inverseRelationshipTypeKey: child-of
+    inverseFieldId: parentTask
+    targetTrackerTypes:
+      - task
+    multiValue: true
+
   # Dependency pair. `dependsOn` records work this item waits on; `blocks` records
   # work waiting on this item. Writing either side materializes the other.
   - name: dependsOn

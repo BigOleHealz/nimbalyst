@@ -22,9 +22,10 @@ it('saves project settings before syncing, clears the token field, and reports p
   expect(screen.getByLabelText('API token')).toHaveValue('');
   fireEvent.change(screen.getByLabelText('API token'), { target: { value: 'new-token' } });
   fireEvent.change(screen.getByLabelText('JQL'), { target: { value: 'project = APP' } });
+  fireEvent.change(screen.getByLabelText('Acceptance criteria field IDs (optional)'), { target: { value: 'customfield_77, customfield_88' } });
   fireEvent.click(screen.getByRole('button', { name: 'Sync Jira' }));
   await waitFor(() => expect(invoke).toHaveBeenCalledWith('jira:sync', '/project'));
-  expect(invoke).toHaveBeenCalledWith('jira:save-settings', expect.objectContaining({ workspacePath: '/project', credentials: expect.objectContaining({ apiToken: 'new-token' }), settings: { jql: 'project = APP', autoSyncMinutes: 0 } }));
+  expect(invoke).toHaveBeenCalledWith('jira:save-settings', expect.objectContaining({ workspacePath: '/project', credentials: expect.objectContaining({ apiToken: 'new-token' }), settings: { jql: 'project = APP', autoSyncMinutes: 0, acceptanceCriteriaFieldIds: ['customfield_77', 'customfield_88'] } }));
   expect(screen.getByLabelText('API token')).toHaveValue('');
   expect(screen.getByRole('status')).toHaveTextContent('4 imported, 2 refreshed, 1 skipped');
   expect(screen.getByRole('alert')).toHaveTextContent('APP-9: Jira permission denied.');

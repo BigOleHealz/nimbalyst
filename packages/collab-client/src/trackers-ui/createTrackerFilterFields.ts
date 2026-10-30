@@ -130,6 +130,14 @@ export function createTrackerFilterFields(
       group: 'common',
     });
   }
+  // The All board uses role columns, so schema-specific relationship columns
+  // are absent. Keep task hierarchy filtering available there as well.
+  const parentTask = trackerTypes.find(model => model.type === 'task')?.fields.find(
+    field => field.name === 'parentTask' && field.relationshipTypeKey === 'child-of',
+  );
+  if (!fields.some(field => field.id === 'parentTask') && parentTask && !schemaType) {
+    fields.push({ id: 'parentTask', label: 'Parent task', type: 'relationship', multiValue: false, group: 'common' });
+  }
   if (!fields.some(field => field.id === 'favorite')) {
     fields.push({
       id: 'favorite',

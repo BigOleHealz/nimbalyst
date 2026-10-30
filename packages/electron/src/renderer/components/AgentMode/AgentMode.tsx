@@ -19,6 +19,7 @@ import { SessionHistory } from '../AgenticCoding/SessionHistory';
 import { SessionKanbanBoard } from '../TrackerMode/SessionKanbanBoard';
 import { useSuperLoopInit } from '../../hooks/useSuperLoop';
 import { AgentWorkstreamPanel, type AgentWorkstreamPanelRef } from './AgentWorkstreamPanel';
+import { SessionWorkspace } from './SessionWorkspace';
 import {
   selectedWorkstreamAtom,
   setSelectedWorkstreamAtom,
@@ -61,6 +62,8 @@ import { initDeepLinkListeners } from '../../store/listeners/deepLinkListeners';
 import {
   requestOpenSessionAtom,
   toggleSessionHistoryCollapsedAtom,
+  secondarySessionFocusedAtom,
+  agentModeLayoutAtomFamily,
 } from '../../store/atoms/agentMode';
 import { fetchSessionSharesAtom } from '../../store';
 import { BlitzDialog } from '../BlitzDialog/BlitzDialog';
@@ -155,6 +158,9 @@ export const AgentMode = forwardRef<AgentModeRef, AgentModeProps>(function Agent
   // Selection state
   const selectedWorkstream = useAtomValue(selectedWorkstreamAtom(workspacePath));
   const selectedWorkstreamId = selectedWorkstream?.id ?? null;
+  const secondaryFocused = useAtomValue(secondarySessionFocusedAtom(workspacePath));
+  const { secondarySessionId } = useAtomValue(agentModeLayoutAtomFamily(workspacePath));
+  const viewMode = useAtomValue(viewModeAtom);
   const setSelectedWorkstream = useSetAtom(setSelectedWorkstreamAtom);
   const toggleFilesSidebar = useSetAtom(toggleWorkstreamFilesSidebarAtom);
   const setRightPanelMode = useSetAtom(setWorkstreamRightPanelModeAtom);
@@ -223,8 +229,8 @@ export const AgentMode = forwardRef<AgentModeRef, AgentModeProps>(function Agent
   // the previous workspace's session id instead of leaving a cross-
   // workspace stale value behind.
   useEffect(() => {
-    store.set(activeSessionIdAtom, actualActiveSessionId);
-  }, [actualActiveSessionId]);
+    store.set(activeSessionIdAtom, secondaryFocused && secondarySessionId ? secondarySessionId : actualActiveSessionId);
+  }, [actualActiveSessionId, secondaryFocused, secondarySessionId]);
 
   // Initialize before child passive effects write workspace state. Restored
   // projects can already have Git status when GitOperationsPanel mounts.
@@ -582,7 +588,7 @@ export const AgentMode = forwardRef<AgentModeRef, AgentModeProps>(function Agent
       <MetaAgentMode
         key={selectedWorkstream.id}
         workspacePath={workspacePath}
-        isActive={isActive}
+        isActive={isActive && viewMode !== 'kanban' && !secondaryFocused}
         sessionId={selectedWorkstream.id}
         onOpenSessionInAgent={dispatchSelectSession}
       />
@@ -592,7 +598,7 @@ export const AgentMode = forwardRef<AgentModeRef, AgentModeProps>(function Agent
         workspacePath={workspacePath}
         workstreamId={selectedWorkstream.id}
         workstreamType={selectedWorkstream.type}
-        isActive={isActive ?? false}
+        isActive={(isActive ?? false) && viewMode !== 'kanban' && !secondaryFocused}
         onFileOpen={onFileOpen}
         onAddSessionToWorktree={dispatchAddSessionToWorktree}
         onCreateWorktreeSession={createWorktreeSession}
@@ -619,8 +625,6 @@ export const AgentMode = forwardRef<AgentModeRef, AgentModeProps>(function Agent
   // directly from atoms; no props are required.
   const leftContent = <SessionHistory />;
 
-  const viewMode = useAtomValue(viewModeAtom);
-
   const kanbanContent = (
     <SessionKanbanBoard
       onSessionSelect={dispatchSelectSession}
@@ -632,7 +636,16 @@ export const AgentMode = forwardRef<AgentModeRef, AgentModeProps>(function Agent
     <div className="agent-mode flex flex-row h-full w-full overflow-hidden">
       <ResizablePanel
         leftPanel={leftContent}
-        rightPanel={viewMode === 'kanban' ? kanbanContent : rightContent}
+        rightPanel={
+          <SessionWorkspace workspacePath={workspacePath} isActive={isActive} activeSessionId={actualActiveSessionId}
+            showBoard={viewMode === 'kanban'} board={kanbanContent}
+            onShowBoard={() => store.set(setViewModeAtom, 'kanban')}
+            onSelectSession={dispatchSelectSession}
+            onClearSelection={() => setSelectedWorkstream({ workspacePath, selection: null })}
+            onFileClick={onFileOpen}>
+            {rightContent}
+          </SessionWorkspace>
+        }
         leftWidth={historyWidth}
         minWidth={200}
         maxWidth={500}

@@ -108,14 +108,15 @@ Twelve built-in provider lanes, plus any agent an extension contributes. Every l
 
 ## Session Kanban Board
 
-- Sessions organized into phase columns (backlog / planning / implementing / validating / complete)
-- Configurable columns
+- Session board follows live status in Backlog / Running / Awaiting Input / Review / Done, including questions, structured input, permissions and commit approvals; grouped cards surface waiting descendants
+- Manual drags persist until operational status changes; cards open live sessions on click and show linked Jira keys/titles, provider, branch and live activity age, with counts and collapsible columns
 - Agent-assisted cleanup (`/session-cleanup` slash command in the Planning extension) — audits sessions, proposes phase corrections and "mark complete" candidates for approval, and flags old sessions to archive
 - Workspace coaching (`/planning:nimbalyst-coach` slash command in the Planning extension) — reviews the project and recent sessions, then recommends extensions matching the project's file types, product features going unused, and additions to the project's agent instructions; read-only until the user approves each edit
 
 ## Agent Mode
 
 - Full-screen AI session interface
+- Workspace session tabs with a second conversation pane; switch between open sessions and the board or close views while agents continue running, and restore open tabs and the split after restart
 - Agent navigation badge with a grouped list of sessions awaiting input, running, or unread
 - Plan mode toggle (Shift+Tab)
 - Suggested next prompt for Claude Code sessions (on by default, toggle under Agent Features): shown in the empty input after a turn you started, Tab fills it in; skipped for turns started by agents or automations
@@ -371,6 +372,7 @@ Companion app; pairs with a desktop over encrypted sync. Voice mode is not inclu
 ## Tracker System
 
 - Tracker mode (Cmd+T) with list, table, grid, kanban, tag-board, timeline, and inbox views
+- Tasks have a single parentTask and inverse subtasks relationships, independent child status and optional session links; agents reuse or create subtasks for meaningful decomposition, and Task and All list/kanban views support persisted parent-task filters
 - Board lanes and timeline grouping by milestone, goal, or another field, with drag-and-drop and bulk assignment
 - Full-document tracker view with collaborative body editing, inline comments, editable field chips, AI chat, and shareable reopen links
 - Tag-board view with one column per tag (items appear in every matching column, plus an Untagged column)
@@ -395,6 +397,7 @@ Companion app; pairs with a desktop over encrypted sync. Voice mode is not inclu
 - Tracker schema overrides in Trackers settings -- customize a built-in type into `.nimbalyst/trackers`, edit an existing override, reset back to the built-in default, and resync the local database mirror when schema files drift. A personal tracker type can be shared with the team from its right-click menu in the tracker sidebar or the Wiki's Personal Types table, and a notice shows when a project's team types are not syncing
 - External-source importers: import GitHub issues (extension-provided) into the tracker as native bug, task, or feature items with a back-link to the source, a "from GitHub" chip, re-snapshot ("pull latest from source") with conservative merge, and a Source filter; agent tools `tracker_importer_list` / `tracker_importer_search` / `tracker_import` / `tracker_resnapshot` / `tracker_get_by_urn`
 - Jira Cloud connector: OS-encrypted site/email/API-token credentials, project-level editable JQL and **Sync Jira**, paginated REST v3 search and comments, ADF-to-markdown descriptions and attributed dated comments in native tasks with source links, deduplication by site and issue key, refresh that protects running/waiting sessions, per-issue error isolation, and optional auto-sync (off by default).
+- Context-aware Jira agent launches: **Launch Session** and **Launch Worktree** prepare canonical tracker content and a separate read-only Jira refresh with descriptions, embedded or discovered/configured acceptance criteria, and paginated attributed comments. Explicit availability/freshness markers and durable complete context files cover partial failures and oversized tickets without replacing local additions. Shared instructions direct supported agents to investigate repository and connected-service evidence, establish AWS targets, use durable interactive clarification before dependent work, and validate every criterion; launch remains a draft and performs no Jira writes.
 - Per-project "AI Agent Access" toggle in tracker settings -- allow or block AI agents from using tracker tools in that project (on by default)
 - Knowledge kinds (earlier knowledge graph; the Wiki skills no longer create them) -- existing entity, claim, question, finding, and investigation trackers and a project's labels.yaml still load and sync, and values stored with qualifiers keep them when edited. The desktop no longer shows claim statements, qualifier editors, or Add statement, and agents can no longer author labels; the frozen web-console wiki still reads them
 - Ontology inspector (web console Tracker setup) -- a read-only "What we track" view of a team project: the categories it tracks with examples, how completely each relationship between them is recorded, and a "Worth fixing" list of gaps, with links to the wiki's Types section, where per-label health and proposals live. Health checks report pages missing the statements their labels expect, statements whose target has the wrong label, unknown labels, undeclared properties, label cycles, and near-duplicate labels, and never block a write. Each gap drafts an ontology proposal (add a label or property, give a label a property or broader label, extend a range, apply or split a label) that is previewed, accepted or rejected per change, applied, and undoable

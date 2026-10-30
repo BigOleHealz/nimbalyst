@@ -29,6 +29,7 @@ import { nestRelationshipFieldsIntoCustomFields, readStoredFieldValue, writeStor
 import { reindexItemRelationshipsAfterWrite } from '../../services/tracker/trackerRelationshipIndexStore';
 import {
   isRelationshipField,
+  normalizeRelationshipValue,
   matchesFilterSet,
   isUntriaged,
   priorityOptionsFor,
@@ -663,7 +664,7 @@ export const trackerToolSchemas = [
   {
     name: "tracker_create",
     description:
-      "Create a new tracker item (bug, task, plan, idea, decision, or any custom type).\n\nBy default, the new item is NOT linked to the current session. Pass linkSession: true to link it, or call tracker_link_session afterward.\n\nIMPORTANT: Never create an item already marked 'done' or 'completed'. Use 'to-do', 'in-progress', or 'in-review'.",
+      "Create a new tracker item (bug, task, plan, idea, decision, or any custom type). For a subtask, use type: 'task' and fields: { parentTask: { itemId: '<parent stable id>', title: '<parent title>', trackerType: 'task' } }. Subtasks have independent statuses and optional session links.\n\nBy default, the new item is NOT linked to the current session. Pass linkSession: true to link it, or call tracker_link_session afterward.\n\nIMPORTANT: Never create an item already marked 'done' or 'completed'. Use 'to-do', 'in-progress', or 'in-review'.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -2021,6 +2022,10 @@ export async function handleTrackerCreate(
       return buildTrackerSchemaValidationError('tracker_create', args.type, validationResult.errors);
     }
 
+    const relationshipFields = (model?.fields ?? []).filter(field => isRelationshipField(field) && field.name in data);
+    const relationshipValues = Object.fromEntries(relationshipFields.map(field => [field.name, data[field.name]]));
+    nestRelationshipFieldsIntoCustomFields(data, model?.fields ?? []);
+
     // Per-item sync decision (NIM-876): team drafts sync only once published, so
     // the initial status depends on the assembled `data` (its share flag).
     const syncStatus = getInitialTrackerSyncStatus(sharingPolicy, data);
@@ -2166,6 +2171,36 @@ export async function handleTrackerCreate(
       }
     }
 
+    // Match native creation: materialize the inverse fields as well as indexing
+    // the outgoing edge, so an agent-created child appears on its parent.
+    let relationshipWriteResult: {
+      status: 'failed';
+      itemFieldsStored: true;
+      inverseLinksComplete: false;
+      message: string;
+    } | undefined;
+    if (relationshipFields.some(field => field.inverseFieldId && normalizeRelationshipValue(relationshipValues[field.name]).length > 0)) {
+      try {
+        const { docService } = await getDocumentServiceForWorkspace(workspacePath);
+        if (!docService) throw new Error('Workspace document service is unavailable for inverse relationship writes');
+        await docService.propagateInverseForUpdate(
+          { id, type: args.type, issueKey: createdItem?.issueKey, title: data[titleField] },
+          relationshipValues,
+          {},
+          model?.sharing,
+          model?.draftByDefault,
+        );
+      } catch (error) {
+        console.error('[MCP Server] tracker_create inverse propagation failed:', error);
+        relationshipWriteResult = {
+          status: 'failed',
+          itemFieldsStored: true,
+          inverseLinksComplete: false,
+          message: 'The item was created and its relationship fields were saved, but inverse links are incomplete. Do not create another item. Inspect the saved item and repair the inverse fields on its related items.',
+        };
+      }
+    }
+
     // This tool inserts into `tracker_items` directly rather than going through
     // `createNativeTrackerItem`, so it owns its own edge projection: an agent
     // can set `subject`/`object` in the same call that creates the item. Last,
@@ -2204,6 +2239,7 @@ export async function handleTrackerCreate(
         tags: data.tags || [],
       },
       ...(bodyWriteResult ? { bodyWrite: bodyWriteResult } : {}),
+      ...(relationshipWriteResult ? { relationshipWrite: relationshipWriteResult } : {}),
     };
 
     return {
@@ -2212,7 +2248,7 @@ export async function handleTrackerCreate(
           type: "text",
           text: JSON.stringify({
             structured,
-            summary: `Created tracker item:\n- **Type**: ${args.type}\n- **Title**: ${data[titleField]}\n- **Status**: ${data[statusField]}\n- **Ref**: ${getTrackerDisplayRef(createdRef)}\n- **ID**: ${id}${issueKeyAvailabilityNote(createdRef, createdKeyContext)}${bodyWriteResult ? `\n- **Body write**: Failed — ${bodyWriteResult.message}` : ''}${trackerRadarAdvisory(createdItem, workspacePath)}`,
+            summary: `Created tracker item:\n- **Type**: ${args.type}\n- **Title**: ${data[titleField]}\n- **Status**: ${data[statusField]}\n- **Ref**: ${getTrackerDisplayRef(createdRef)}\n- **ID**: ${id}${issueKeyAvailabilityNote(createdRef, createdKeyContext)}${bodyWriteResult ? `\n- **Body write**: Failed — ${bodyWriteResult.message}` : ''}${relationshipWriteResult ? `\n- **Relationship write**: ${relationshipWriteResult.message}` : ''}${trackerRadarAdvisory(createdItem, workspacePath)}`,
           }),
         },
       ],
