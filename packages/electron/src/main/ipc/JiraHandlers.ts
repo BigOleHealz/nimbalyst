@@ -6,6 +6,7 @@ import { safeHandle } from '../utils/ipcRegistry';
 import { getTrackerImportService } from '../services/tracker/TrackerImportService';
 import { getTrackerImporterRegistry } from '../services/tracker/TrackerImporterRegistry';
 import { JiraSyncService } from '../services/jira/JiraSyncService';
+import { prepareJiraTrackerLaunch } from '../services/jira/JiraLaunchService';
 import { jiraProjects, jiraProjectSettings, readJiraCredentials, saveJiraCredentials, saveJiraProjectSettings } from '../services/jira/jiraSettings';
 
 function requireWorkspace(value: string): string {
@@ -38,6 +39,10 @@ export async function jiraTaskHasActiveSession(workspacePath: string, id: string
 }
 
 export function registerJiraHandlers(): void {
+  safeHandle('jira:prepare-launch', (_event, args: { workspacePath: string; itemId: string }) => {
+    requireWorkspace(args.workspacePath);
+    return prepareJiraTrackerLaunch(args.workspacePath, args.itemId);
+  });
   const client = () => {
     const credentials = readJiraCredentials();
     if (!credentials) throw new Error('Configure Jira in Settings → Project → Jira before syncing.');

@@ -14,6 +14,7 @@ vi.mock('../../services/jira/jiraSettings', () => ({
   readJiraCredentials: h.read, saveJiraCredentials: h.save, saveJiraProjectSettings: h.saveProject,
 }));
 import { jiraTaskHasActiveSession, registerJiraHandlers } from '../JiraHandlers';
+vi.mock('../../services/jira/JiraLaunchService', () => ({ prepareJiraTrackerLaunch: vi.fn(async (workspacePath, itemId) => ({ draftInput: `${workspacePath}:${itemId}`, contextPath: '/context.md' })) }));
 
 describe('Jira IPC and scheduling', () => {
   beforeEach(() => {
@@ -24,6 +25,13 @@ describe('Jira IPC and scheduling', () => {
   });
   afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
   const invoke = (key: string, ...args: unknown[]) => h.handlers.get(key)!(null, ...args);
+
+  it('prepares launch context using the explicit workspace and stable tracker id', async () => {
+    registerJiraHandlers();
+    expect(h.handlers.has('jira:prepare-launch')).toBe(true);
+    await expect(invoke('jira:prepare-launch', { workspacePath: '/project', itemId: 'task' })).resolves.toEqual({ draftInput: '/project:task', contextPath: '/context.md' });
+    expect(() => invoke('jira:prepare-launch', { workspacePath: '', itemId: 'task' })).toThrow('workspacePath');
+  });
 
   it('registers the connector and returns token presence without exposing the token', () => {
     registerJiraHandlers();
