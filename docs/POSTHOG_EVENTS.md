@@ -136,12 +136,12 @@ The three outcomes are instrumented together so the duplicate thresholds can be 
 
 | Event Name | File(s) | Trigger | Properties | First Added (Public) | Significant Changes |
 | --- | --- | --- | --- | --- | --- |
-| `kanban_card_phase_changed` | `SessionKanbanBoard.tsx` | Card moved between phase columns via drag-drop or Cmd+Arrow keyboard shortcut | `method` (drag/keyboard)<br/>`toPhase` (backlog/planning/implementing/validating/complete/unphased)<br/>`cardCount` (number of cards moved)<br/>`cardType` (session/workstream/worktree/mixed) | (pending release) |  |
-| `kanban_card_opened` | `SessionKanbanBoard.tsx` | User opens a session from the kanban board (Enter key or double-click) | `cardType` (session/workstream/worktree) | (pending release) |  |
+| `kanban_card_phase_changed` | `SessionKanbanBoard.tsx` | Card moved between phase columns via drag-drop or Cmd+Arrow keyboard shortcut | `method` (drag/keyboard)<br/>`toPhase` (backlog/implementing/awaiting-input/validating/complete/unphased (reset to automatic))<br/>`cardCount` (number of cards moved)<br/>`cardType` (session/workstream/worktree/mixed) | (pending release) |  |
+| `kanban_card_opened` | `SessionKanbanBoard.tsx` | User opens a session from the kanban board (Enter key or plain click) | `cardType` (session/workstream/worktree) | (pending release) |  |
 | `kanban_card_peeked` | `SessionKanbanBoard.tsx` | User toggles transcript peek on a kanban card (Space key or hover) | `action` (opened/closed) | (pending release) |  |
 | `kanban_card_archived` | `SessionKanbanBoard.tsx` | User archives card(s) from the kanban board via drag to archive gutter or context menu | `cardCount` (number of cards archived)<br/>`cardType` (session/workstream/worktree/mixed) | (pending release) |  |
 | `kanban_filter_applied` | `SessionKanbanBoard.tsx` | User applies a tag filter or searches on the kanban board | `filterType` (tag/search)<br/>`activeTagCount` (number of active tag filters) | (pending release) |  |
-| `kanban_column_collapsed` | `SessionKanbanBoard.tsx` | User collapses or expands a kanban phase column | `action` (collapsed/expanded)<br/>`column` (backlog/planning/implementing/validating/complete) | (pending release) |  |
+| `kanban_column_collapsed` | `SessionKanbanBoard.tsx` | User collapses or expands a kanban phase column | `action` (collapsed/expanded)<br/>`column` (backlog/implementing/awaiting-input/validating/complete) | (pending release) |  |
 
 ### File History
 

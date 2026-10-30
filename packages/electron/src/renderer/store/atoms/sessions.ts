@@ -2233,6 +2233,8 @@ export const sessionListWorkspaceAtom = atom<string | null>(null);
  * Show archived sessions toggle.
  */
 export const showArchivedSessionsAtom = atom<boolean>(false);
+/** The session board includes archived cards in Done without changing sidebar preferences. */
+export const sessionKanbanActiveAtom = atom(false);
 
 /**
  * Refresh the session list from the database.
@@ -2252,7 +2254,7 @@ export const refreshSessionListAtom = atom(
     }
 
     const refreshVersion = ++sessionListRefreshVersion;
-    const showArchived = includeArchivedOverride ?? get(showArchivedSessionsAtom);
+    const showArchived = get(sessionKanbanActiveAtom) || (includeArchivedOverride ?? get(showArchivedSessionsAtom));
 
     try {
       set(sessionListLoadingAtom, true);

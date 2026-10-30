@@ -2,8 +2,8 @@
  * SessionKanbanBoard - Kanban board view for AI sessions organized by phase.
  *
  * Cards represent standalone sessions, workstreams, or worktrees.
- * Columns represent development phases: Backlog, Planning, Implementing, Validating, Complete.
- * Phase is stored in metadata.phase on each session.
+ * Columns follow live status: Backlog, Running, Awaiting Input, Review, Done.
+ * Manual placement is stored in existing session metadata until status changes.
  *
  * Keyboard navigation:
  *   Arrow Up/Down  - move focus between cards within a column
@@ -29,19 +29,18 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { usePostHog } from 'posthog-js/react';
-import { MaterialSymbol, ProviderIcon } from '@nimbalyst/runtime';
+import { MaterialSymbol } from '@nimbalyst/runtime/ui/icons/MaterialSymbol';
+import { ProviderIcon } from '@nimbalyst/runtime/ui/icons/ProviderIcons';
 import type { SessionMeta } from '@nimbalyst/runtime';
 import {
   sessionsByPhaseAtom,
   sessionKanbanFilterAtom,
   sessionKanbanTotalCountAtom,
   sessionKanbanTagsAtom,
-  setSessionPhaseAtom,
+  setSessionBoardColumnAtom,
   childRunStatesAtom,
   getCardType,
-  SESSION_PHASE_COLUMNS,
   SESSION_BOARD_COLUMNS,
-  type SessionPhase,
   type SessionBoardColumn,
   type SessionPhaseKey,
   type KanbanCardType,
@@ -55,6 +54,8 @@ import {
   removeSessionFullAtom,
   sessionRegistryAtom,
   sessionListWorkspaceAtom,
+  sessionKanbanActiveAtom,
+  refreshSessionListAtom,
 } from '../../store/atoms/sessions';
 import { sessionAwaitingApprovalAtom } from '../../store/atoms/sessionApproval';
 import { SessionContextMenu } from '../AgenticCoding/SessionContextMenu';
@@ -64,6 +65,10 @@ import { SessionTranscriptPeek } from '../AgenticCoding/SessionTranscriptPeek';
 import { ArchiveWorktreeDialog } from '../AgentMode/ArchiveWorktreeDialog';
 import { useArchiveWorktreeDialog } from '../../hooks/useArchiveWorktreeDialog';
 import { saveSessionArchived } from '../../utils/saveSessionArchived';
+import { SessionRelativeTime } from '../AgenticCoding/SessionRelativeTime';
+import { trackerItemByIdAtom } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerDataAtoms';
+import { worktreeRecordAtom } from '../../store/atoms/worktrees';
+import { gitStatusAtom } from '../../store/atoms/gitOperations';
 import { useFloatingMenu, FloatingPortal, virtualElement } from '../../hooks/useFloatingMenu';
 
 // ============================================================
@@ -75,12 +80,6 @@ interface BoardPosition {
   columnKey: SessionPhaseKey;
   cardIndex: number;
 }
-
-/** All column keys in display order (unphased first, then phase columns) */
-const ALL_COLUMN_KEYS: SessionPhaseKey[] = [
-  'unphased',
-  ...SESSION_BOARD_COLUMNS.map(c => c.value),
-];
 
 // ============================================================
 // ChildRunStateBar
@@ -251,6 +250,25 @@ function CardStatusBadge({ info }: { info: CardStateInfo }) {
 // SessionKanbanCard
 // ============================================================
 
+function LinkedTrackerLabel({ itemId }: { itemId: string }) {
+  const item = useAtomValue(trackerItemByIdAtom(itemId));
+  if (!item) return null;
+  const external = item.system.origin?.kind === 'external' ? item.system.origin.external : undefined;
+  const key = external?.providerId === 'jira' ? external.externalId : item.issueKey;
+  return <div className="session-kanban-tracker text-[10px] text-nim-muted line-clamp-2" title={String(item.fields.title ?? '')}>
+    {key && <span className="font-medium mr-1">{key}</span>}{String(item.fields.title ?? '')}
+  </div>;
+}
+
+function CardBranch({ session }: { session: SessionMeta }) {
+  const worktree = useAtomValue(worktreeRecordAtom(session.worktreeId ?? ''));
+  const git = useAtomValue(gitStatusAtom);
+  const branch = session.worktreeId ? worktree?.branch : git?.branch;
+  return <div className="session-kanban-branch flex items-center gap-1 min-w-0 text-[10px] text-nim-faint" title={branch}>
+    <MaterialSymbol icon="fork_right" size={12} /><span className="truncate">{branch ?? 'Branch unavailable'}</span>
+  </div>;
+}
+
 interface SessionKanbanCardProps {
   session: SessionMeta;
   onSelect: (sessionId: string) => void;
@@ -324,19 +342,6 @@ function SessionKanbanCard({ session, onSelect, onArchive, onRename, phaseColor,
     }
   }, [isFocused]);
 
-  // Relative time display
-  const timeAgo = useMemo(() => {
-    const diff = Date.now() - session.updatedAt;
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return 'just now';
-    if (mins < 60) return `${mins}m ago`;
-    const hours = Math.floor(mins / 60);
-    if (hours < 24) return `${hours}h ago`;
-    const days = Math.floor(hours / 24);
-    if (days === 1) return 'yesterday';
-    return `${days}d ago`;
-  }, [session.updatedAt]);
-
   // Cleanup hover timer on unmount
   useEffect(() => {
     return () => {
@@ -365,7 +370,7 @@ function SessionKanbanCard({ session, onSelect, onArchive, onRename, phaseColor,
     <>
       <div
         ref={cardRef}
-        className={`w-full text-left p-2.5 rounded-md border transition-colors cursor-default ${
+        className={`session-kanban-card w-full text-left p-2.5 rounded-md border transition-colors cursor-default ${
           isFocused
             ? 'border-[var(--nim-primary)] ring-1 ring-[var(--nim-primary)]'
             : isSelected
@@ -380,7 +385,6 @@ function SessionKanbanCard({ session, onSelect, onArchive, onRename, phaseColor,
           backgroundColor: isFocused ? stateStyle.bg || undefined : isSelected ? undefined : stateStyle.bg || undefined,
           borderColor: isFocused ? undefined : isSelected ? undefined : stateStyle.border || undefined,
         }}
-        onDoubleClick={() => onSelect(session.id)}
         onContextMenu={handleContextMenu}
         data-testid="session-kanban-card"
         data-session-id={session.id}
@@ -407,6 +411,12 @@ function SessionKanbanCard({ session, onSelect, onArchive, onRename, phaseColor,
             )}
           </div>
           <CardStatusBadge info={cardState} />
+        </div>
+
+        <div className="session-kanban-details mb-1.5 space-y-1 select-text">
+          {(session.linkedTrackerItemIds ?? []).filter(id => !id.startsWith('file:')).map(id => <LinkedTrackerLabel key={id} itemId={id} />)}
+          <div className="text-[10px] text-nim-muted">{session.provider}</div>
+          <CardBranch session={session} />
         </div>
 
         {/* Child session count (workstream/worktree only) */}
@@ -469,7 +479,7 @@ function SessionKanbanCard({ session, onSelect, onArchive, onRename, phaseColor,
             >
               <MaterialSymbol icon="chat_bubble_outline" size={12} />
             </span>
-            <span className="text-[10px] text-nim-disabled">{timeAgo}</span>
+            <span className="text-[10px] text-nim-disabled"><SessionRelativeTime sessionId={session.id} fallbackTimestamp={session.updatedAt} /></span>
           </div>
         </div>
       </div>
@@ -523,7 +533,7 @@ interface SessionKanbanColumnProps {
   onSelect: (sessionId: string) => void;
   onArchive?: (sessionId: string) => void;
   onRename?: (sessionId: string, newName: string) => void;
-  onDrop: (sessionIds: string[], phase: SessionPhase) => void;
+  onDrop: (sessionIds: string[], phase: SessionBoardColumn) => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   focusedCardId: string | null;
@@ -541,7 +551,6 @@ function SessionKanbanColumn({ phase, label, color, sessions, onSelect, onArchiv
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    if (phase === 'awaiting-approval') return;
     e.dataTransfer.dropEffect = 'move';
     setIsDragOver(true);
   }, [phase]);
@@ -557,7 +566,7 @@ function SessionKanbanColumn({ phase, label, color, sessions, onSelect, onArchiv
     if (raw) {
       try {
         const ids: string[] = JSON.parse(raw);
-        if (ids.length > 0 && phase !== 'awaiting-approval') onDrop(ids, phase);
+        if (ids.length > 0) onDrop(ids, phase);
       } catch { /* ignore malformed */ }
     }
   }, [onDrop, phase]);
@@ -689,170 +698,6 @@ function SessionKanbanColumn({ phase, label, color, sessions, onSelect, onArchiv
 }
 
 // ============================================================
-// UnphasedColumn (collapsible, leftmost)
-// ============================================================
-
-interface UnphasedColumnProps {
-  sessions: SessionMeta[];
-  onSelect: (sessionId: string) => void;
-  onArchive?: (sessionId: string) => void;
-  onRename?: (sessionId: string, newName: string) => void;
-  onDropToPhase: (sessionIds: string[], phase: SessionPhase) => void;
-  onRemovePhase: (sessionIds: string[]) => void;
-  focusedCardId: string | null;
-  selectedIds: Set<string>;
-  peekCardId: string | null;
-  onCardClick: (sessionId: string, e: React.MouseEvent) => void;
-  onPeekToggle: (sessionId: string) => void;
-  onDragStart: (sessionId: string) => string[];
-  onSelectAll: (sessionIds: string[]) => void;
-  onHeaderContextMenu: (e: React.MouseEvent, phase: SessionPhaseKey, sessionIds: string[]) => void;
-}
-
-function UnphasedColumn({ sessions, onSelect, onArchive, onRename, onDropToPhase, onRemovePhase, focusedCardId, selectedIds, peekCardId, onCardClick, onPeekToggle, onDragStart: onDragStartProp, onSelectAll, onHeaderContextMenu }: UnphasedColumnProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [isDragOver, setIsDragOver] = useState(false);
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setIsDragOver(true);
-  }, []);
-
-  const handleDragLeave = useCallback(() => {
-    setIsDragOver(false);
-  }, []);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    const raw = e.dataTransfer.getData('text/session-ids');
-    if (raw) {
-      try {
-        const ids: string[] = JSON.parse(raw);
-        if (ids.length > 0) onRemovePhase(ids);
-      } catch { /* ignore malformed */ }
-    }
-  }, [onRemovePhase]);
-
-  const handleDragStart = useCallback((e: React.DragEvent, sessionId: string) => {
-    const ids = onDragStartProp(sessionId);
-    e.dataTransfer.setData('text/session-ids', JSON.stringify(ids));
-    e.dataTransfer.effectAllowed = 'move';
-    if (ids.length > 1) {
-      const badge = document.createElement('div');
-      badge.textContent = `${ids.length} sessions`;
-      badge.style.cssText = 'position:fixed;left:-1000px;top:-1000px;padding:4px 10px;border-radius:6px;background:#60a5fa;color:#fff;font-size:12px;font-weight:600;white-space:nowrap;';
-      document.body.appendChild(badge);
-      e.dataTransfer.setDragImage(badge, badge.offsetWidth / 2, badge.offsetHeight / 2);
-      requestAnimationFrame(() => document.body.removeChild(badge));
-    }
-  }, [onDragStartProp]);
-
-  if (sessions.length === 0) return null;
-
-  // Collapsed: vertical strip with count
-  if (!isExpanded) {
-    return (
-      <div
-        className={`session-kanban-column flex flex-col w-10 shrink-0 rounded-lg bg-nim-secondary cursor-pointer transition-colors ${
-          isDragOver ? 'bg-[rgba(96,165,250,0.08)] outline outline-2 outline-dashed outline-[rgba(96,165,250,0.3)] -outline-offset-2' : ''
-        }`}
-        data-testid="session-kanban-column"
-        data-phase="unphased"
-        onClick={() => setIsExpanded(true)}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-      >
-        <div className="flex flex-col items-center gap-1 py-3">
-          <span
-            className="w-2 h-2 rounded-full shrink-0 bg-neutral-600"
-          />
-          <span className="text-[10px] font-semibold text-nim-faint">
-            {sessions.length}
-          </span>
-          <span
-            className="text-[10px] font-semibold text-nim-faint uppercase tracking-wide"
-            style={{ writingMode: 'vertical-lr', textOrientation: 'mixed' }}
-          >
-            Inbox
-          </span>
-        </div>
-      </div>
-    );
-  }
-
-  // Expanded: full column
-  return (
-    <div
-      className="session-kanban-column flex flex-col min-w-[240px] max-w-[300px] flex-1 rounded-lg bg-nim-secondary"
-      data-testid="session-kanban-column"
-      data-phase="unphased"
-    >
-      {/* Column header */}
-      <div
-        className="flex items-center gap-2 px-3 py-2 border-b border-nim cursor-pointer hover:bg-[var(--nim-bg-hover)] transition-colors"
-        onClick={(e) => {
-          if (sessions.length > 0) {
-            onSelectAll(sessions.map(s => s.id));
-          }
-        }}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          onHeaderContextMenu(e, 'unphased', sessions.map(s => s.id));
-        }}
-      >
-        <span className="w-2 h-2 rounded-full shrink-0 bg-neutral-600" />
-        <span className="text-[11px] font-semibold text-nim uppercase tracking-wide truncate">
-          Inbox
-        </span>
-        <span className="text-[10px] font-semibold text-nim-faint ml-auto">
-          {sessions.length}
-        </span>
-        <button
-          className="text-nim-faint hover:text-nim transition-colors"
-          onClick={(e) => { e.stopPropagation(); setIsExpanded(false); }}
-          title="Collapse"
-        >
-          <MaterialSymbol icon="chevron_left" size={16} />
-        </button>
-      </div>
-
-      {/* Column cards */}
-      <div
-        className={`flex-1 overflow-y-auto p-1.5 space-y-1.5 transition-colors ${
-          isDragOver ? 'bg-[rgba(96,165,250,0.05)] outline outline-2 outline-dashed outline-[rgba(96,165,250,0.3)] -outline-offset-2 rounded' : ''
-        }`}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-      >
-        {sessions.map(session => (
-          <div
-            key={session.id}
-            draggable
-            onDragStart={(e) => handleDragStart(e, session.id)}
-            onClick={(e) => onCardClick(session.id, e)}
-          >
-            <SessionKanbanCard
-              session={session}
-              onSelect={onSelect}
-              onArchive={onArchive}
-              onRename={onRename}
-              phaseColor="#525252"
-              isFocused={focusedCardId === session.id}
-              isSelected={selectedIds.has(session.id)}
-              selectedCount={selectedIds.size}
-              showPeekOverride={peekCardId === session.id ? true : undefined}
-              onPeekToggle={() => onPeekToggle(session.id)}
-            />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 // ============================================================
 // SessionKanbanToolbar
@@ -1068,7 +913,7 @@ function SessionKanbanToolbar({ selectedCount, onClearSelection }: { selectedCou
         data-testid="kanban-toggle-complete"
       >
         <MaterialSymbol icon="visibility" size={13} />
-        Complete
+        Done
       </button>
     </div>
   );
@@ -1085,7 +930,7 @@ interface ColumnHeaderContextMenuProps {
   onClose: () => void;
   onSelectAll: (ids: string[]) => void;
   onArchiveAll: (ids: string[]) => void;
-  onMoveAll: (ids: string[], phase: SessionPhase) => void;
+  onMoveAll: (ids: string[], phase: SessionBoardColumn) => void;
   onRemovePhase: (ids: string[]) => void;
 }
 
@@ -1167,7 +1012,7 @@ function ColumnHeaderContextMenu({ phase, sessionIds, position, onClose, onSelec
           </button>
           {showMoveSubmenu && (
             <div className={`absolute top-0 min-w-[140px] p-1 bg-[var(--nim-bg)] border border-[var(--nim-border)] rounded-md shadow-[0_4px_12px_rgba(0,0,0,0.15)] z-[1001] ${submenuFlipped ? 'right-full mr-0.5' : 'left-full ml-0.5'}`}>
-              {SESSION_PHASE_COLUMNS.filter(col => col.value !== phase).map((col) => (
+              {SESSION_BOARD_COLUMNS.filter(col => col.value !== phase).map((col) => (
                 <button
                   key={col.value}
                   className={`flex items-center gap-2 w-full px-2.5 py-2 bg-transparent border-none rounded text-[var(--nim-text)] text-[0.8125rem] cursor-pointer text-left transition-colors duration-150 hover:bg-[var(--nim-bg-hover)]`}
@@ -1185,7 +1030,7 @@ function ColumnHeaderContextMenu({ phase, sessionIds, position, onClose, onSelec
                     onClick={(e) => { e.stopPropagation(); onClose(); onRemovePhase(sessionIds); }}
                   >
                     <MaterialSymbol icon="close" size={14} />
-                    Remove from board
+                    Follow live status
                   </button>
                 </>
               )}
@@ -1274,18 +1119,25 @@ function ArchiveGutter({ onArchive }: { onArchive: (sessionIds: string[]) => voi
 
 interface SessionKanbanBoardProps {
   onSessionSelect?: (sessionId: string) => void;
-  /** Called on double-click to open a session (select + navigate to it) */
+  /** Opens the live session on a plain click or Enter. */
   onSessionOpen?: (sessionId: string) => void;
 }
 
 export const SessionKanbanBoard: React.FC<SessionKanbanBoardProps> = ({ onSessionSelect, onSessionOpen }) => {
   const posthog = usePostHog();
   const grouped = useAtomValue(sessionsByPhaseAtom);
-  const setPhase = useSetAtom(setSessionPhaseAtom);
+  const setPhase = useSetAtom(setSessionBoardColumnAtom);
   const updateSessionStore = useSetAtom(updateSessionStoreAtom);
   const registry = useAtomValue(sessionRegistryAtom);
   const removeSession = useSetAtom(removeSessionFullAtom);
   const workspacePath = useAtomValue(sessionListWorkspaceAtom);
+  const setBoardActive = useSetAtom(sessionKanbanActiveAtom);
+  const refreshSessions = useSetAtom(refreshSessionListAtom);
+  useEffect(() => {
+    setBoardActive(true);
+    void refreshSessions();
+    return () => { setBoardActive(false); void refreshSessions(); };
+  }, [setBoardActive, refreshSessions, workspacePath]);
 
   // Worktree archive dialog
   const {
@@ -1334,8 +1186,6 @@ export const SessionKanbanBoard: React.FC<SessionKanbanBoardProps> = ({ onSessio
   // Flat list of all visible session IDs in board order (for shift-select ranges)
   const flatSessionIds = useMemo(() => {
     const ids: string[] = [];
-    const unphasedSessions = grouped.get('unphased') || [];
-    for (const s of unphasedSessions) ids.push(s.id);
     for (const col of SESSION_BOARD_COLUMNS) {
       const sessions = grouped.get(col.value) || [];
       for (const s of sessions) ids.push(s.id);
@@ -1346,11 +1196,6 @@ export const SessionKanbanBoard: React.FC<SessionKanbanBoardProps> = ({ onSessio
   // Build a flat ordered list of [columnKey, sessionId] for keyboard navigation
   const navigationGrid = useMemo(() => {
     const grid: { columnKey: SessionPhaseKey; sessions: SessionMeta[] }[] = [];
-
-    const unphasedSessions = grouped.get('unphased') || [];
-    if (unphasedSessions.length > 0 && !collapsedColumns.has('unphased')) {
-      grid.push({ columnKey: 'unphased', sessions: unphasedSessions });
-    }
 
     for (const col of SESSION_BOARD_COLUMNS) {
       const sessions = grouped.get(col.value) || [];
@@ -1398,7 +1243,7 @@ export const SessionKanbanBoard: React.FC<SessionKanbanBoardProps> = ({ onSessio
     }
   }, [onSessionSelect, onSessionOpen, posthog, registry]);
 
-  const handleDrop = useCallback((sessionIds: string[], phase: SessionPhase) => {
+  const handleDrop = useCallback((sessionIds: string[], phase: SessionBoardColumn) => {
     for (const id of sessionIds) {
       setPhase({ sessionId: id, phase });
     }
@@ -1545,6 +1390,7 @@ export const SessionKanbanBoard: React.FC<SessionKanbanBoardProps> = ({ onSessio
     } else {
       // Plain click: select just this card
       setSelectedIds(new Set([sessionId]));
+      handleSelect(sessionId);
     }
 
     lastClickedIdRef.current = sessionId;
@@ -1554,7 +1400,7 @@ export const SessionKanbanBoard: React.FC<SessionKanbanBoardProps> = ({ onSessio
     if (peekCardId && peekCardId !== sessionId) {
       setPeekCardId(null);
     }
-  }, [peekCardId, flatSessionIds]);
+  }, [peekCardId, flatSessionIds, handleSelect]);
 
   // Called by columns when a drag starts. Returns the set of IDs being dragged.
   // If the dragged card is part of the selection, drag the whole selection.
@@ -1583,7 +1429,7 @@ export const SessionKanbanBoard: React.FC<SessionKanbanBoardProps> = ({ onSessio
   }, []);
 
   // Batch move all sessions in a column to a new phase
-  const handleMoveAllToPhase = useCallback((sessionIds: string[], phase: SessionPhase) => {
+  const handleMoveAllToPhase = useCallback((sessionIds: string[], phase: SessionBoardColumn) => {
     for (const id of sessionIds) {
       setPhase({ sessionId: id, phase });
     }
@@ -1720,8 +1566,8 @@ export const SessionKanbanBoard: React.FC<SessionKanbanBoardProps> = ({ onSessio
     // Cmd+Right: move selected cards to next phase
     if (key === 'ArrowRight' && mod) {
       e.preventDefault();
-      const phaseKeys = SESSION_PHASE_COLUMNS.map(c => c.value);
-      const currentPhaseIdx = pos.columnKey === 'unphased' ? -1 : phaseKeys.indexOf(pos.columnKey as SessionPhase);
+      const phaseKeys = SESSION_BOARD_COLUMNS.map(c => c.value);
+      const currentPhaseIdx = pos.columnKey === 'unphased' ? -1 : phaseKeys.indexOf(pos.columnKey as SessionBoardColumn);
       const nextPhaseIdx = currentPhaseIdx + 1;
       if (nextPhaseIdx < phaseKeys.length) {
         const ids = getActionIds();
@@ -1741,8 +1587,8 @@ export const SessionKanbanBoard: React.FC<SessionKanbanBoardProps> = ({ onSessio
     // Cmd+Left: move selected cards to previous phase
     if (key === 'ArrowLeft' && mod) {
       e.preventDefault();
-      const phaseKeys = SESSION_PHASE_COLUMNS.map(c => c.value);
-      const currentPhaseIdx = pos.columnKey === 'unphased' ? -1 : phaseKeys.indexOf(pos.columnKey as SessionPhase);
+      const phaseKeys = SESSION_BOARD_COLUMNS.map(c => c.value);
+      const currentPhaseIdx = pos.columnKey === 'unphased' ? -1 : phaseKeys.indexOf(pos.columnKey as SessionBoardColumn);
       if (currentPhaseIdx > 0) {
         const ids = getActionIds();
         for (const id of ids) {
@@ -1821,28 +1667,12 @@ export const SessionKanbanBoard: React.FC<SessionKanbanBoardProps> = ({ onSessio
             <MaterialSymbol icon="view_kanban" size={48} className="opacity-30" />
             <p className="mt-2 text-sm">No sessions on the board</p>
             <p className="mt-1 text-xs text-nim-faint">
-              Sessions appear here when an AI agent sets a phase, or you can drag sessions from the history sidebar.
+              Create a session to add it to Backlog. Cards follow agent activity automatically.
             </p>
           </div>
         </div>
       ) : (
         <div className="flex-1 flex gap-2 p-2 overflow-x-auto overflow-y-hidden">
-          <UnphasedColumn
-            sessions={unphasedSessions}
-            onSelect={handleSelect}
-            onArchive={handleArchiveSingle}
-            onRename={handleRename}
-            onDropToPhase={handleDrop}
-            onRemovePhase={handleRemovePhase}
-            focusedCardId={focusedCardId}
-            selectedIds={selectedIds}
-            peekCardId={peekCardId}
-            onCardClick={handleCardClick}
-            onPeekToggle={handlePeekToggle}
-            onDragStart={handleDragStart}
-            onSelectAll={handleSelectAllInColumn}
-            onHeaderContextMenu={handleHeaderContextMenu}
-          />
           {SESSION_BOARD_COLUMNS.map(col => (
             <SessionKanbanColumn
               key={col.value}
