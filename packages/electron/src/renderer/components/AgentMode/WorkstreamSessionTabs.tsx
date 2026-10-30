@@ -52,14 +52,15 @@ export interface WorkstreamSessionTabsProps {
 /**
  * Individual session tab - subscribes to atoms for isolated re-renders.
  */
-const SessionTab: React.FC<{
+export const SessionTab: React.FC<{
   sessionId: string;
   isActive: boolean;
   onClick: () => void;
+  onClose?: () => void;
   onArchive?: () => void;
   onUnarchive?: () => void;
   onRename?: (newName: string) => void;
-}> = React.memo(({ sessionId, isActive, onClick, onArchive, onUnarchive, onRename }) => {
+}> = React.memo(({ sessionId, isActive, onClick, onClose, onArchive, onUnarchive, onRename }) => {
   const title = useAtomValue(sessionTitleAtom(sessionId));
   const provider = useAtomValue(sessionProviderAtom(sessionId));
   const isProcessing = useAtomValue(sessionProcessingAtom(sessionId));
@@ -117,6 +118,7 @@ const SessionTab: React.FC<{
             : 'bg-transparent text-[var(--nim-text-muted)] hover:bg-[var(--nim-bg-hover)] hover:text-[var(--nim-text)]'
         } ${hasUnread ? 'unread' : ''} ${isArchived ? 'opacity-60' : ''}`}
         onClick={onClick}
+        aria-pressed={isActive}
         onContextMenu={handleContextMenu}
         title={title || 'Untitled'}
       >
@@ -148,6 +150,12 @@ const SessionTab: React.FC<{
           <span className="session-tab-unread-dot w-1.5 h-1.5 rounded-full bg-[var(--nim-warning)]" />
         )}
       </button>
+      {onClose && (
+        <button className="session-tab-close nim-btn-icon-sm" onClick={onClose}
+          aria-label={`Close ${title || 'Untitled'} tab`} title="Close tab (agent keeps running)">
+          <MaterialSymbol icon="close" size={14} />
+        </button>
+      )}
 
       {/* Context Menu */}
       {showContextMenu && (
