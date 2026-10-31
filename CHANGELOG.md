@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 <!-- New features go here -->
+- See token usage, elapsed session time, reported cost, and session counts on completed cards and tickets, with clear labels for missing or partial metrics.
 - Create linked subtasks with independent statuses and optional agent sessions, and filter task boards by parent task.
 - Sync assigned Jira Cloud issues into project tasks with secure credentials, duplicate protection, and optional automatic refresh, then launch agents with complete descriptions, acceptance criteria, comments, clarification of essential gaps, and AWS work defaulting to dev unless explicitly specified otherwise.
 - Sync assigned Jira Cloud issues into project tasks with full descriptions and comments, secure credentials, duplicate protection, and optional automatic refresh.

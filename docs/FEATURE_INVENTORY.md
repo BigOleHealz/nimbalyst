@@ -110,6 +110,7 @@ Twelve built-in provider lanes, plus any agent an extension contributes. Every l
 
 - Session board follows live status in Backlog / Running / Awaiting Input / Review / Done, including questions, structured input, permissions and commit approvals; grouped cards surface waiting descendants
 - Manual drags persist until operational status changes; cards open live sessions on click and show linked Jira keys/titles, provider, branch and live activity age, with counts and collapsible columns
+- Done session cards and completed tracker tickets show recorded lifetime tokens (including reported cache use), transcript elapsed time, provider-reported USD cost when available, and session counts, with deduplicated descendant totals and explicit missing/partial data; tracker details show the same linked-session totals
 - Agent-assisted cleanup (`/session-cleanup` slash command in the Planning extension) — audits sessions, proposes phase corrections and "mark complete" candidates for approval, and flags old sessions to archive
 - Workspace coaching (`/planning:nimbalyst-coach` slash command in the Planning extension) — reviews the project and recent sessions, then recommends extensions matching the project's file types, product features going unused, and additions to the project's agent instructions; read-only until the user approves each edit
 

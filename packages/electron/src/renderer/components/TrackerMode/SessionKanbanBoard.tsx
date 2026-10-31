@@ -31,7 +31,8 @@ import { useAtomValue, useSetAtom } from 'jotai';
 import { usePostHog } from 'posthog-js/react';
 import { MaterialSymbol } from '@nimbalyst/runtime/ui/icons/MaterialSymbol';
 import { ProviderIcon } from '@nimbalyst/runtime/ui/icons/ProviderIcons';
-import type { SessionMeta } from '@nimbalyst/runtime';
+import type { SessionMeta } from '@nimbalyst/runtime/ai/adapters/sessionStore';
+import { SessionCompletionMetrics } from './CompletionMetrics';
 import {
   sessionsByPhaseAtom,
   sessionKanbanFilterAtom,
@@ -275,6 +276,7 @@ interface SessionKanbanCardProps {
   onArchive?: (sessionId: string) => void;
   onRename?: (sessionId: string, newName: string) => void;
   phaseColor: string;
+  isDone?: boolean;
   isFocused?: boolean;
   isSelected?: boolean;
   selectedCount?: number;
@@ -282,7 +284,7 @@ interface SessionKanbanCardProps {
   onPeekToggle?: () => void;
 }
 
-function SessionKanbanCard({ session, onSelect, onArchive, onRename, phaseColor, isFocused, isSelected, selectedCount = 1, showPeekOverride, onPeekToggle }: SessionKanbanCardProps) {
+function SessionKanbanCard({ session, onSelect, onArchive, onRename, phaseColor, isDone, isFocused, isSelected, selectedCount = 1, showPeekOverride, onPeekToggle }: SessionKanbanCardProps) {
   const cardType = useMemo(() => getCardType(session), [session]);
   const cardState = useCardState(session.id, cardType);
   const stateStyle = CARD_STATE_STYLES[cardState.state];
@@ -450,6 +452,8 @@ function SessionKanbanCard({ session, onSelect, onArchive, onRename, phaseColor,
             )}
           </div>
         )}
+
+        {isDone && <div className="session-kanban-completion mb-2"><SessionCompletionMetrics sessionId={session.id} /></div>}
 
         {/* Footer: uncommitted + peek + time */}
         <div className="flex items-center justify-between">
@@ -683,6 +687,7 @@ function SessionKanbanColumn({ phase, label, color, sessions, onSelect, onArchiv
                 onArchive={onArchive}
                 onRename={onRename}
                 phaseColor={color}
+                isDone={phase === 'complete'}
                 isFocused={focusedCardId === session.id}
                 isSelected={selectedIds.has(session.id)}
                 selectedCount={selectedIds.size}

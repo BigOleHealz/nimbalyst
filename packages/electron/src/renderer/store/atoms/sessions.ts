@@ -2235,6 +2235,8 @@ export const sessionListWorkspaceAtom = atom<string | null>(null);
 export const showArchivedSessionsAtom = atom<boolean>(false);
 /** The session board includes archived cards in Done without changing sidebar preferences. */
 export const sessionKanbanActiveAtom = atom(false);
+/** Tracker completion metrics retain archived linked sessions without showing them in the sidebar. */
+export const trackerSessionMetricsActiveAtom = atom(false);
 
 /**
  * Refresh the session list from the database.
@@ -2254,7 +2256,7 @@ export const refreshSessionListAtom = atom(
     }
 
     const refreshVersion = ++sessionListRefreshVersion;
-    const showArchived = get(sessionKanbanActiveAtom) || (includeArchivedOverride ?? get(showArchivedSessionsAtom));
+    const showArchived = get(sessionKanbanActiveAtom) || get(trackerSessionMetricsActiveAtom) || (includeArchivedOverride ?? get(showArchivedSessionsAtom));
 
     try {
       set(sessionListLoadingAtom, true);

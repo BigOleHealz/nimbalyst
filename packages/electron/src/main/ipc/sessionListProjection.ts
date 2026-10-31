@@ -64,6 +64,7 @@ export function projectSessionList(
       // Linked tracker item IDs
       linkedTrackerItemIds: (entry as any).linkedTrackerItemIds || undefined,
       contextUsage: entry.contextUsage,
+      completionMetrics: entry.completionMetrics,
       metadata: {},
     };
   });

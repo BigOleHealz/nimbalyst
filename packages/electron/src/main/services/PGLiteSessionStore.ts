@@ -28,6 +28,7 @@ import type {
   AgentMessage
 } from '@nimbalyst/runtime';
 import { filterSessionsForPersonalSync } from '@nimbalyst/runtime/sync';
+import { readSessionCompletionMetrics } from '@nimbalyst/runtime/ai/sessionCompletionMetrics';
 import { readSessionContextUsage } from '@nimbalyst/runtime/ai/sessionContextUsage';
 
 type PGliteLike = {
@@ -882,7 +883,9 @@ export function createPGLiteSessionStore(db: PGliteLike, ensureDbReady?: EnsureR
                 (s.provider_session_id IS NOT NULL OR EXISTS (
                   SELECT 1 FROM ai_agent_messages m WHERE m.session_id = s.id AND m.direction = 'input' LIMIT 1
                 )) AS has_started,
-                COALESCE(child_stats.child_count, 0) as child_count
+                COALESCE(child_stats.child_count, 0) as child_count,
+                (SELECT m.created_at FROM ai_agent_messages m WHERE m.session_id = s.id ORDER BY m.id ASC LIMIT 1) AS transcript_started_at,
+                (SELECT m.created_at FROM ai_agent_messages m WHERE m.session_id = s.id ORDER BY m.id DESC LIMIT 1) AS transcript_ended_at
          FROM ai_sessions s
          LEFT JOIN worktrees w ON s.worktree_id = w.id
          LEFT JOIN (
@@ -955,6 +958,8 @@ export function createPGLiteSessionStore(db: PGliteLike, ensureDbReady?: EnsureR
           // Linked tracker item IDs from metadata JSONB
           linkedTrackerItemIds: Array.isArray(metadata.linkedTrackerItemIds) ? metadata.linkedTrackerItemIds : undefined,
           contextUsage: readSessionContextUsage(metadata.tokenUsage),
+          completionMetrics: readSessionCompletionMetrics(metadata.tokenUsage,
+            toMillis(row.transcript_started_at) ?? undefined, toMillis(row.transcript_ended_at) ?? undefined),
         } satisfies SessionMeta & { hasPendingInteractivePrompt?: boolean; phase?: string; tags?: string[]; linkedTrackerItemIds?: string[] };
       });
       return sessions.sort((a, b) => b.updatedAt - a.updatedAt);
