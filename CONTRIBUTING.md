@@ -36,7 +36,7 @@ All pnpm settings live in the root `pnpm-workspace.yaml`; `.npmrc` holds registr
 - `allowBuilds` is an allowlist of packages permitted to run install scripts. A new dependency with an install script fails `pnpm install` until it is added there as `true` or `false`, which is a security decision that reviewers will look at.
 - `minimumReleaseAge` is a 72 hour cooldown, so a version published less than 3 days ago will not resolve. Wait for it to age, or add a scoped entry to `minimumReleaseAgeExclude` with a comment giving the reason.
 
-Run a script in one package with `pnpm --filter <package> run <script>`, and run the pre-push gate with `pnpm typecheck && pnpm test:prepush`.
+Run a script in one package with `pnpm --filter <package> run <script>`. Run focused tests for your changes locally. The pre-push hook performs quick integrity checks; full builds, workspace typechecks, scanner tests, Sandbox checks, and the unit suite run in CI for pull requests and `main`. For the optional full local validation command, see [Pre-push and CI validation](docs/PREPUSH_AND_CI.md).
 
 ## Review and merge
 

@@ -1,11 +1,8 @@
 # Windows pre-push gate
 
-Local Windows pushes build the extension SDK, runtime, and memory-engine
-artifacts before running the full workspace typecheck. The complete Vitest
-suite remains mandatory in CI and on non-Windows machines, but is skipped for
-local Windows pushes until its platform failures are repaired.
+Local Windows pushes now use the same quick integrity checks as macOS and Linux. Builds, full typechecks, scanner tests, Sandbox checks, and the complete unit suite run in CI rather than blocking each local push. See [Pre-push and CI validation](PREPUSH_AND_CI.md) for the current policy and optional full local command.
 
-The 2026-07-13 baseline command, `npm run test:prepush`, failed in these
+For historical context, the 2026-07-13 baseline full-suite command failed in these
 unrelated suites: `claudeCodeEnvironment` (runtime and provider variants),
 `ClaudeCliSessionLauncher`, `FileSnapshotCache`, `WorkspaceEventBus-gitignore-bypass`,
 `workspaceDetection`, `ClaudeCodeProvider.bashParser`, `SafePathValidator`,
@@ -15,7 +12,4 @@ unrelated suites: `claudeCodeEnvironment` (runtime and provider variants),
 `aiSettingsMerge`, `MigrationOrchestrator`, `spawnCrashDiagnostics`,
 `claudeCliJsonlPath`, and `BrowserSessionHandlers`.
 
-The fallback is intentionally limited to `process.platform === 'win32'` with
-no CI flag. It does not bypass the manifest check, dependency override check,
-prerequisite builds, full workspace typecheck, or this repository's focused
-test requirements.
+The former Windows-specific full-suite fallback is no longer used. Focused local test requirements and CI coverage remain in place.
