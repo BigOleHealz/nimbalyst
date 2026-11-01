@@ -342,3 +342,27 @@ it('lists and searches sessions from projected metadata, never the whole blob', 
   expect(withMetadata.length).toBeGreaterThan(0);
   expect(withMetadata.some(row => JSON.stringify(row.metadata).includes('currentTasks'))).toBe(false);
 });
+
+
+it('carries lifetime usage and transcript times through the board registry without counting metadata edits', async () => {
+  const store = createPGLiteSessionStore(sqlite);
+  await store.create({ id: 'metrics', provider: 'claude-code', workspaceId: '/metrics' });
+  await store.create({ id: 'empty', provider: 'claude-code', workspaceId: '/metrics' });
+  await store.updateMetadata('metrics', { metadata: { tokenUsage: {
+    inputTokens: 100, outputTokens: 20, totalTokens: 120,
+    cacheReadInputTokens: 500, cacheCreationInputTokens: 50, costUSD: 0.25,
+    currentContext: { tokens: 5, contextWindow: 100 },
+  } } });
+  for (const [direction, time] of [['input', '2026-10-01T12:00:00Z'], ['output', '2026-10-01T12:02:30Z']]) {
+    await sqlite.query(`INSERT INTO ai_agent_messages (session_id, source, direction, content, created_at)
+      VALUES ('metrics', 'claude-code', $1, '{}', $2)`, [direction, time]);
+  }
+  await store.updateMetadata('metrics', { title: 'Renamed after completion', isArchived: true });
+  const entries = projectSessionList(await store.list('/metrics', { includeArchived: true }), new Map());
+  const metrics = sessionListMetadata(entries.find(s => s.id === 'metrics')!, '/metrics');
+  expect(metrics.completionMetrics).toEqual({
+    totalTokens: 670, costUSD: 0.25,
+    startedAt: Date.parse('2026-10-01T12:00:00Z'), endedAt: Date.parse('2026-10-01T12:02:30Z'),
+  });
+  expect(entries.find(s => s.id === 'empty')?.completionMetrics).toBeUndefined();
+});

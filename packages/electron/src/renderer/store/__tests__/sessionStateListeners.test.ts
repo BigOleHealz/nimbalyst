@@ -25,6 +25,7 @@ import {
   sessionChildrenAtom,
   sessionLastActivityAtom,
   sessionListWorkspaceAtom,
+  trackerSessionMetricsActiveAtom,
   selectedWorkstreamAtom,
   sessionUnreadAtom,
   type SessionMeta,
@@ -134,6 +135,7 @@ afterEach(() => {
   resetWindowMode();
   store.set(activeWorkspacePathAtom, null);
   store.set(sessionListWorkspaceAtom, null);
+  store.set(trackerSessionMetricsActiveAtom, false);
   store.set(openProjectsAtom, []);
   store.set(workstreamStatesLoadedAtom, false);
   vi.unstubAllGlobals();
@@ -1404,4 +1406,17 @@ describe('approval snapshots and multiple prompts', () => {
     handlers.get('ai:askUserQuestionAnswered')!({ sessionId: sid, questionId: 'q1' });
     expect(store.get(sessionHasPendingInteractivePromptAtom(sid))).toBe(false);
   });
+});
+
+
+it('refreshes archived completion metrics when a visible tracker session settles', async () => {
+  const sessionId = uniqueSessionId('completion-metrics');
+  seedRegistry([{ id: sessionId, workspaceId: WS }]);
+  store.set(sessionListWorkspaceAtom, WS);
+  store.set(trackerSessionMetricsActiveAtom, true);
+  const invoke = window.electronAPI.invoke as ReturnType<typeof vi.fn>;
+  invoke.mockClear();
+  handlers.get('ai-session-state:event')!({ type: 'session:completed', sessionId, workspacePath: WS });
+  await Promise.resolve();
+  expect(invoke).toHaveBeenCalledWith('sessions:list', WS, { includeArchived: true });
 });

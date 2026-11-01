@@ -39,6 +39,7 @@ import {
   TrackerBoardCard,
   TrackerSurfaceMessage,
 } from '@nimbalyst/collab-client/trackers-ui';
+import { TrackerCompletionMetrics } from './CompletionMetrics';
 import { TrackerCardMilestoneChip } from './TrackerCardMilestoneChip';
 
 interface KanbanBoardProps {
@@ -504,6 +505,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                       milestoneSlot={
                         <TrackerCardMilestoneChip item={item} onOpenItem={onItemSelect} />
                       }
+                      fieldsSlot={<TrackerCompletionMetrics item={item} />}
                       // Personal lane: desktop holds a personal JWT, so it is
                       // desktop that supplies these. The shared card has no
                       // import of either.

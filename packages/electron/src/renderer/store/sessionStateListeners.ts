@@ -30,6 +30,9 @@ import {
   sessionDataReleaseListenersAtom,
   reloadSessionDataAtom,
   sessionListWorkspaceAtom,
+  refreshSessionListAtom,
+  sessionKanbanActiveAtom,
+  trackerSessionMetricsActiveAtom,
   updateSessionStoreAtom,
   selectedWorkstreamAtom,
   sessionUnreadAtom,
@@ -452,6 +455,12 @@ export function initSessionStateListeners(): () => void {
           timestamp: turnBoundaryTimestamp,
         });
         bumpParentTurnActivity(sessionId, resolvedWorkspacePath, turnBoundaryTimestamp);
+        // Completion cards need persisted spend and transcript bounds even when
+        // the transcript itself is not resident. Refresh once per settled turn.
+        if (store.get(sessionListWorkspaceAtom) === resolvedWorkspacePath
+          && (store.get(sessionKanbanActiveAtom) || store.get(trackerSessionMetricsActiveAtom))) {
+          void store.set(refreshSessionListAtom);
+        }
 
         // Clear any pending throttle timer for this session - the final reload below
         // will fetch the complete state, so a stale throttled reload is unnecessary

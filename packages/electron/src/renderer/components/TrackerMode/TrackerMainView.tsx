@@ -75,7 +75,7 @@ import {
 } from '@nimbalyst/runtime/plugins/TrackerPlugin/models';
 import { resolveTrackerWriteAccess } from '@nimbalyst/runtime/plugins/TrackerPlugin/models/trackerLifecycle';
 import { useTrackerBodyPrewarm } from '../../hooks/useTrackerBodyPrewarm';
-import { agentSessionAttentionAtom, setSelectedWorkstreamAtom, sessionRegistryAtom, refreshSessionListAtom, initSessionList } from '../../store/atoms/sessions';
+import { agentSessionAttentionAtom, setSelectedWorkstreamAtom, sessionRegistryAtom, refreshSessionListAtom, trackerSessionMetricsActiveAtom, initSessionList } from '../../store/atoms/sessions';
 import {
   trackerItemsMapAtom,
   trackerRelationshipLabelAtom,
@@ -254,10 +254,14 @@ export const TrackerMainView: React.FC<TrackerMainViewProps> = ({
     };
   }, [agentAttention.running.length, currentRadarActorKey, gitStatus?.ahead, gitStatus?.behind]);
 
+  const setMetricsActive = useSetAtom(trackerSessionMetricsActiveAtom);
+  const refreshMetricsSessions = useSetAtom(refreshSessionListAtom);
   useEffect(() => {
     if (!workspacePath) return;
-    void initSessionList(workspacePath);
-  }, [workspacePath]);
+    setMetricsActive(true);
+    void initSessionList(workspacePath).then(() => refreshMetricsSessions());
+    return () => { setMetricsActive(false); void refreshMetricsSessions(); };
+  }, [workspacePath, setMetricsActive, refreshMetricsSessions]);
 
   // Drive the per-item "unread" dots from the local read-receipt store.
   useTrackerUnread(workspacePath, currentIdentity?.email ?? null);

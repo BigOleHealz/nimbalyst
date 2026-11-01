@@ -28,7 +28,7 @@ const PG_SCHEMA = `CREATE TABLE worktrees (id TEXT PRIMARY KEY, name TEXT, branc
     is_archived BOOLEAN DEFAULT FALSE, is_pinned BOOLEAN DEFAULT FALSE, status TEXT DEFAULT 'idle', last_activity TIMESTAMPTZ,
     last_read_timestamp TIMESTAMPTZ, last_document_state JSONB
   );
-  CREATE TABLE ai_agent_messages (id INTEGER, session_id TEXT, direction TEXT, hidden BOOLEAN);
+  CREATE TABLE ai_agent_messages (id INTEGER, session_id TEXT, direction TEXT, hidden BOOLEAN, created_at TIMESTAMPTZ, source TEXT, content TEXT);
   CREATE TABLE queued_prompts (id TEXT PRIMARY KEY, session_id TEXT, prompt TEXT, status TEXT);`;
 
 async function openBackend(backend: 'pglite' | 'sqlite') {
@@ -258,4 +258,23 @@ it.each(['pglite', 'sqlite'] as const)('%s keeps deferred launches charged throu
     await raw.query("UPDATE queued_prompts SET status='completed' WHERE session_id='queued0'");
     await expect(assertChildSpawnCapacity('/p', 'manager', raw)).resolves.toBeUndefined();
   } finally { driver.dispose(); await raw.close(); fs.rmSync(temporary, { recursive: true, force: true }); }
+});
+
+
+it.each(['pglite', 'sqlite'] as const)('%s lists recorded usage and transcript bounds after metadata edits', async backend => {
+  const { db, close } = await openBackend(backend);
+  try {
+    const store = createPGLiteSessionStore(db);
+    await store.create({ id: 'metrics', provider: 'openai-codex', workspaceId: '/p' });
+    await store.updateMetadata('metrics', { metadata: { tokenUsage: {
+      inputTokens: 30, outputTokens: 10, cacheReadInputTokens: 20, totalTokens: 60,
+    } } });
+    await db.query(`INSERT INTO ai_agent_messages (id, session_id, direction, created_at, source, content) VALUES
+      (1, 'metrics', 'input', $1, 'openai-codex', '{}'), (2, 'metrics', 'output', $2, 'openai-codex', '{}')`,
+      [new Date('2026-10-01T12:00:00Z'), new Date('2026-10-01T12:10:00Z')]);
+    await store.updateMetadata('metrics', { title: 'Later title', isArchived: true });
+    expect((await store.list('/p', { includeArchived: true }))[0].completionMetrics).toEqual({
+      totalTokens: 60, startedAt: Date.parse('2026-10-01T12:00:00Z'), endedAt: Date.parse('2026-10-01T12:10:00Z'),
+    });
+  } finally { await close(); }
 });

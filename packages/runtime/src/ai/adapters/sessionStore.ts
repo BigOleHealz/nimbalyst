@@ -1,4 +1,5 @@
 import type { AgentRole, SessionData, SessionMode, SessionType, TranscriptViewMessage } from '../server/types';
+import type { SessionCompletionMetrics } from '../sessionCompletionMetrics';
 import type { SessionContextUsage } from '../sessionContextUsage';
 
 // Type aliases for compatibility
@@ -57,6 +58,8 @@ export interface SessionMeta {
   linkedTrackerItemIds?: string[];
   /** Last persisted context-window fill (metadata.tokenUsage.currentContext). */
   contextUsage?: SessionContextUsage;
+  /** Lifetime spend and transcript time bounds; independent of metadata edit timestamps. */
+  completionMetrics?: SessionCompletionMetrics;
   // Branch tracking - SEPARATE from hierarchical parentSessionId
   branchedFromSessionId?: string;
   branchPointMessageId?: number;

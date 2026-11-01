@@ -1,3 +1,4 @@
+import { TrackerCompletionMetrics } from './CompletionMetrics';
 /**
  * TrackerItemDetail - Detail/edit panel for a selected tracker item.
  * Shows all model-defined fields with real editors, description area,
@@ -951,6 +952,8 @@ export const TrackerItemDetail: React.FC<TrackerItemDetailProps> = ({
       >
         {!focusActive && (
         <>
+        <TrackerCompletionMetrics item={item} />
+
         {/* Linked Sessions -- kept at the top so they're visible without scrolling */}
         {(linkedSessions.length > 0 || onLaunchSession || onLaunchWorktree || canLinkExistingSession || isLinkingExistingSession) && (
           <div className="tracker-sessions-section">
