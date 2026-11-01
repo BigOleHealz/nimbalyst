@@ -78,6 +78,13 @@ it('offers external following only in Agent Features and persists deliberate tog
     act(() => changed({ key: 'app.externalSessionFollowEnabled', value: false }));
     expect(checkbox.checked).toBe(false);
     expect(settingsSet).toHaveBeenCalledTimes(2);
+    const outbound = within(screen.getByTestId('desktop-session-sync-toggle')).getByRole('checkbox') as HTMLInputElement;
+    expect(outbound.checked).toBe(false);
+    fireEvent.click(outbound);
+    expect(settingsSet).toHaveBeenLastCalledWith('app.desktopSessionSyncEnabled', true);
+    act(() => changed({ key: 'app.desktopSessionSyncEnabled', value: true }));
+    expect(outbound.checked).toBe(true);
+    expect(checkbox.checked).toBe(false);
   } finally {
     window.electronAPI = originalApi;
   }

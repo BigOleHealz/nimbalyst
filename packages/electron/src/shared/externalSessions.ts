@@ -30,3 +30,17 @@ export interface ExternalSessionSyncResponse {
   failureCount: number;
   error?: string;
 }
+
+export interface DesktopSyncCounts {
+  synced: number;
+  unchanged: number;
+  unavailable: number;
+  conflicts: number;
+  failed: number;
+}
+export interface DesktopSessionSyncResult {
+  codex: DesktopSyncCounts;
+  claude: DesktopSyncCounts;
+  busy: number;
+  errors: string[];
+}

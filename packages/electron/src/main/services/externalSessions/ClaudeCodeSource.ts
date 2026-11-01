@@ -285,6 +285,8 @@ export class ClaudeCodeSource implements ExternalSessionSource {
       ),
     });
     const entries = head.entries.map((e) => e.value);
+    // Portable outbound mirrors have separate identities; importing them would create an echo.
+    if (entries[0]?.nimbalystExport?.version === 1) return null;
     // Claude Code stamps each entry with the agent shell's current directory,
     // which follows every `cd`. Only the launch cwd (the first one recorded, and
     // the one the project directory encodes) scopes the session; a sidecar

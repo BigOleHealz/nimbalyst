@@ -13,6 +13,7 @@ import { settingAtom } from '../../store/atoms/settingAtomFamily';
 import { ALPHA_FEATURES, type AlphaFeatureTag } from '../../../shared/alphaFeatures';
 import { AlphaBadge, SETTINGS_ALPHA_TOOLTIP } from '../common/AlphaBadge';
 import { SettingsToggle } from '../GlobalSettings/SettingsToggle';
+import { DesktopSessionSyncSetting } from './DesktopSessionSyncSetting';
 
 const AGENT_FEATURE_TAGS: AlphaFeatureTag[] = [
   'super-loops',
@@ -276,6 +277,8 @@ export function AgentFeaturesPanel() {
           description="Automatically follow Claude Code and Codex CLI sessions in open workspaces and their worktrees only. Off by default."
           testId="external-session-follow-setting"
         />
+
+        <DesktopSessionSyncSetting />
 
         <SettingsToggle
           checked={showMcpSessionStatus}

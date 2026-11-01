@@ -269,6 +269,11 @@ export const SETTINGS_REGISTRY = {
     { store: 'app-settings', path: 'externalSessionFollowEnabled' },
     false,
   ),
+  'app.desktopSessionSyncEnabled': setting(
+    z.boolean(),
+    { store: 'app-settings', path: 'desktopSessionSyncEnabled' },
+    false,
+  ),
   /** Width (px) of the gutter's agent sessions attention popover. */
   'agent.sessionsPopoverWidth': setting(
     z.number(),
