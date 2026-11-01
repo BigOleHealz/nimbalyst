@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 <!-- Removed features go here -->
+- Markdown scans no longer add automatic tracker cards; existing file cards are hidden while native tasks, explicit imports, and source documents are preserved.
 
 ## [0.82.4] - 2026-10-27
 
