@@ -191,6 +191,7 @@ Twelve built-in provider lanes, plus any agent an extension contributes. Every l
 - Real-time git status in file tree (modified, added, deleted, untracked)
 - Git operations panel with a Changes list where users select files and commit directly or ask AI to write the message
 - AI-assisted commit message generation
+- After a successful coding turn with uncommitted changes, choose Commit, Commit & Push, or Commit, Push & Open PR from the session composer; requests reuse the session's AI commit proposal flow, with a Later option to dismiss them
 - Interactive git commit proposal widget with individual-hunk selection to commit only the intended lines of a shared file
 - Commit proposals can target another registered worktree of the session's repository; the widget names its branch and path, and these commits always need approval on desktop, even with auto-commit on
 - Commit history view with ahead/behind tracking and links to the AI sessions that produced commits
