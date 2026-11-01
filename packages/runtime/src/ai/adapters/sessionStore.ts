@@ -52,7 +52,7 @@ export interface SessionMeta {
   // Kanban board phase and tags (from metadata JSONB)
   phase?: string;
   /** User board placement, valid only while the observed operational status matches. */
-  kanbanOverride?: { column: 'backlog' | 'implementing' | 'awaiting-input' | 'validating' | 'complete'; status: string };
+  kanbanOverride?: { column: 'backlog' | 'implementing' | 'awaiting-input' | 'git' | 'validating' | 'complete'; status: string };
   tags?: string[];
   // Linked tracker item IDs (from metadata JSONB)
   linkedTrackerItemIds?: string[];

@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 <!-- New features go here -->
 - Sync conversation copies from all providers to local Codex and Claude desktop apps, preserving project folders and session names, with automatic updates and a manual sync action.
+- Choose to commit, commit and push, or commit, push and open a pull request after a coding task finishes, with an option to defer.
 - See token usage, elapsed session time, reported cost, and session counts on completed cards and tickets, with clear labels for missing or partial metrics.
 - Create linked subtasks with independent statuses and optional agent sessions, and filter task boards by parent task.
 - Sync assigned Jira Cloud issues into project tasks with secure credentials, duplicate protection, and optional automatic refresh, then launch agents with complete descriptions, acceptance criteria, comments, clarification of essential gaps, and AWS work defaulting to dev unless explicitly specified otherwise.
@@ -20,14 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 <!-- Changes to existing functionality go here -->
-- Refresh the light and dark themes with softer surfaces, clearer text, quieter borders, and rounder controls while preserving the layout.
-- Session cards now follow agent activity through Backlog, Running, Awaiting Input, Review, and Done, with manual placement retained until status changes and linked Jira, branch, and activity details on each card.
+- Refresh the light and dark themes with Linear-inspired neutral surfaces, violet accents, finer borders, compact controls, and quieter navigation while preserving the layout.
+- Session cards follow agent activity through Backlog, Running, Awaiting Input, Git status, Review, and Done, with Ready for commit, Ready for push, and Ready for PR groups, linked Jira and branch details, and task completion only after the PR merges.
 
 ### Fixed
 <!-- Bug fixes go here -->
 
 ### Removed
 <!-- Removed features go here -->
+- Markdown scans no longer add automatic tracker cards; existing file cards are hidden while native tasks, explicit imports, and source documents are preserved.
 
 ## [0.82.4] - 2026-10-27
 

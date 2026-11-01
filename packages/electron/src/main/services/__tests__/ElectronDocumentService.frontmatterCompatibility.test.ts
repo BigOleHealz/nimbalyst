@@ -73,7 +73,7 @@ describe('ElectronDocumentService frontmatter compatibility', () => {
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
-  it('lists metadata-only full-document plans under their canonical public id', async () => {
+  it('keeps discovered Markdown plans out of the tracker without changing the file', async () => {
     await fs.writeFile(
       path.join(tempDir, 'plans/example.md'),
       `---
@@ -93,10 +93,38 @@ trackerStatus:
     await service.refreshWorkspaceData();
     const items = await service.listTrackerItems();
 
-    expect(items).toHaveLength(1);
-    expect(items[0].id).toBe(buildFullDocumentTrackerId('plan', 'plans/example.md'));
-    expect(items[0].source).toBe('frontmatter');
-    expect(items[0].status).toBe('to-do');
+    expect(items).toEqual([]);
+    expect(await fs.readFile(path.join(tempDir, 'plans/example.md'), 'utf8')).toContain('# Body');
+  });
+
+  it.each([false, true])('hides previously indexed file cards and retains native and imported items (JSON text: %s)', async (jsonText) => {
+    const rows = ['frontmatter', 'inline', null, 'native', 'import'].map((source, index) => ({
+      id: `item-${index}`, type: 'task', source, workspace: tempDir,
+      document_path: 'plans/example.md', source_ref: 'plans/example.md',
+      data: jsonText ? JSON.stringify({ title: `Item ${index}`, status: 'to-do' }) : { title: `Item ${index}`, status: 'to-do' },
+      last_indexed: new Date().toISOString(),
+    }));
+    mockQuery.mockResolvedValue({ rows });
+
+    expect((await service.listTrackerItems()).map(item => item.id)).toEqual(['item-3', 'item-4']);
+    expect((await service.getTrackerItemsByType('task')).map(item => item.id)).toEqual(['item-3', 'item-4']);
+    expect((await service.getTrackerItemsByModule('plans/example.md')).map(item => item.id)).toEqual(['item-3', 'item-4']);
+  });
+
+  it('does not create or broadcast tracker cards when scanned Markdown changes', async () => {
+    const relativePath = 'plans/example.md';
+    const fullPath = path.join(tempDir, relativePath);
+    await fs.writeFile(fullPath, '---\nplanStatus:\n  title: Example\n  status: draft\n---\nA task #task[status:to-do]\n');
+    mockQuery.mockResolvedValue({ rows: [] });
+    const listener = vi.fn();
+    service.watchTrackerItems(listener);
+
+    await service.refreshWorkspaceData();
+    await fs.appendFile(fullPath, '\nAnother task #task[status:to-do]\n');
+    await service.refreshFileMetadata(relativePath);
+
+    expect(listener).not.toHaveBeenCalled();
+    expect(mockQuery.mock.calls.filter(([sql]) => /INSERT INTO tracker_items|UPDATE tracker_items|DELETE FROM tracker_items/.test(sql))).toEqual([]);
   });
 
   it('normalizes the audited complete plan status only in its tracker projection', async () => {
@@ -113,7 +141,7 @@ planStatus:
     mockQuery.mockResolvedValue({ rows: [] });
 
     await service.refreshWorkspaceData();
-    const items = await service.listTrackerItems();
+    const items = await (service as any).listFullDocumentTrackerItemsFromMetadata();
 
     expect(items).toHaveLength(1);
     expect(items[0].status).toBe('completed');
@@ -134,7 +162,7 @@ planStatus:
     mockQuery.mockResolvedValue({ rows: [] });
 
     await service.refreshWorkspaceData();
-    const [item] = await service.listTrackerItems();
+    const [item] = await (service as any).listFullDocumentTrackerItemsFromMetadata();
     const record = trackerItemToRecord(item);
 
     expect(record.fields.status).toBe('finished');

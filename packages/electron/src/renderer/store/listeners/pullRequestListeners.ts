@@ -33,6 +33,7 @@ export function initPullRequestListeners(): () => void {
 
   const ghService = getGhCliService();
   const prService = getPullRequestService();
+  const pollingWorkspaces = new Set<string>();
   let listRequest = 0;
   const refreshList = async (workspacePath: string, remote: string) => {
     const request = ++listRequest;
@@ -87,7 +88,14 @@ export function initPullRequestListeners(): () => void {
       // Guard against a stale resolve after the user switched projects.
       if (store.get(activeWorkspacePathAtom) !== workspacePath) return;
       store.set(prRemoteAtom, result ? { workspacePath, ...result } : null);
-      if (result) void refreshList(workspacePath, result.remote);
+      if (result) {
+        pollingWorkspaces.add(workspacePath);
+        await prService.startPolling(workspacePath, workspacePath, result.remote)
+          .catch(error => console.error('[pullRequestListeners] Failed to start polling:', error));
+        if (disposed) { await prService.stopPolling(workspacePath); return; }
+        if (store.get(activeWorkspacePathAtom) !== workspacePath) return;
+        void refreshList(workspacePath, result.remote);
+      }
     } catch {
       if (!disposed) store.set(prRemoteAtom, null);
     }
@@ -104,5 +112,8 @@ export function initPullRequestListeners(): () => void {
   return () => {
     disposed = true;
     cleanups.forEach((cleanup) => cleanup());
+    for (const workspacePath of pollingWorkspaces) {
+      void prService.stopPolling(workspacePath).catch(error => console.error('[pullRequestListeners] Failed to stop polling:', error));
+    }
   };
 }

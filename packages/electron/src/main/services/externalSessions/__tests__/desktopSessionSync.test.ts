@@ -1,5 +1,11 @@
 // @vitest-environment node
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import * as fs from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import * as path from 'node:path';
+
+let projectPath: string;
+let workspacePath: string;
 const h = vi.hoisted(() => ({
   enabled: false,
   change: undefined as ((key: string) => void) | undefined,
@@ -17,8 +23,17 @@ vi.mock('@nimbalyst/runtime/ai/server/SessionStateManager', () => ({ getSessionS
 vi.mock('../DesktopSessionExporter', () => ({ DesktopSessionExporter: class { export = h.export; } }));
 vi.mock('../publishCodexProjects', () => ({ publishCodexProjects: h.publish }));
 
-beforeEach(() => { vi.resetModules(); vi.clearAllMocks(); h.enabled = false; h.release = undefined; });
-afterEach(() => { vi.useRealTimers(); });
+beforeEach(async () => {
+  vi.resetModules(); vi.clearAllMocks(); h.enabled = false; h.release = undefined;
+  projectPath = await fs.realpath(await fs.mkdtemp(path.join(tmpdir(), 'desktop-sync-')));
+  workspacePath = path.join(projectPath, 'worktree');
+  await fs.mkdir(workspacePath);
+});
+afterEach(async () => {
+  await (await import('../desktopSessionSync')).stopDesktopSessionSync();
+  await fs.rm(projectPath, { recursive: true, force: true });
+  vi.useRealTimers();
+});
 
 it('does no automatic work by default and cancels an enable before first usable', async () => {
   const module = await import('../desktopSessionSync');
@@ -38,7 +53,7 @@ it('runs after first usable, stops on shutdown, and extracts only visible top-le
   const module = await import('../desktopSessionSync');
   h.enabled = true;
   h.list.mockResolvedValueOnce([{ id: 's', updatedAt: 1 }] as never[]);
-  h.get.mockResolvedValue({ id: 's', title: 'Task', provider: 'openai', workspacePath: '/private/tmp', worktreePath: '/private/tmp', worktreeProjectPath: '/private', createdAt: 1 });
+  h.get.mockResolvedValue({ id: 's', title: 'Task', provider: 'openai', workspacePath: projectPath, worktreePath: workspacePath, worktreeProjectPath: projectPath, createdAt: 1 });
   const event = { parentEventId: null, subagentId: null, createdAt: new Date(1), payload: {} };
   h.events.mockResolvedValue([
     { ...event, eventType: 'user_message', searchableText: 'Hello' },
@@ -52,9 +67,23 @@ it('runs after first usable, stops on shutdown, and extracts only visible top-le
   expect(h.list).not.toHaveBeenCalled();
   h.release!();
   await vi.waitFor(() => expect(h.export).toHaveBeenCalledTimes(2));
-  expect(h.export.mock.calls[0][1]).toMatchObject({ projectPath: '/private', messages: [
+  expect(h.export.mock.calls[0][1]).toMatchObject({ workspacePath, projectPath, messages: [
     { role: 'user', text: 'Hello' }, { role: 'assistant', text: 'Answer' },
   ] });
   await module.stopDesktopSessionSync();
   await expect(module.getDesktopSessionSyncService().sync()).rejects.toThrow(/stopped/);
+});
+
+it('skips a session whose worktree no longer exists', async () => {
+  const module = await import('../desktopSessionSync');
+  await fs.rm(workspacePath, { recursive: true });
+  h.list.mockResolvedValueOnce([{ id: 's', updatedAt: 1 }] as never[]);
+  h.get.mockResolvedValue({ id: 's', provider: 'openai', workspacePath: projectPath, worktreePath: workspacePath });
+
+  const result = await module.getDesktopSessionSyncService().sync();
+
+  expect(h.events).not.toHaveBeenCalled();
+  expect(h.export).not.toHaveBeenCalled();
+  expect(h.publish).not.toHaveBeenCalled();
+  expect(result).toMatchObject({ codex: { synced: 0, failed: 0 }, claude: { synced: 0, failed: 0 }, errors: [] });
 });

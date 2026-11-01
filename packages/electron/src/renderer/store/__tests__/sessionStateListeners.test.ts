@@ -37,6 +37,7 @@ import {
 } from '../atoms/sessionActivity';
 import { scrollToMessageAtom } from '../atoms/agentMode';
 import { sessionApprovalSnapshotAtom, sessionAwaitingApprovalAtom } from '../atoms/sessionApproval';
+import { sessionSuccessfulCompletionAtom } from '../atoms/sessionCompletionActions';
 import { windowFocusedAtom } from '../atoms/windowFocus';
 import { activeWorkspacePathAtom, multiProjectModeAtom, openProjectsAtom } from '../atoms/openProjects';
 import { activeExtensionPanelAtom, activeExtensionBottomPanelAtom } from '../atoms/extensionPanels';
@@ -1420,3 +1421,16 @@ it('refreshes archived completion metrics when a visible tracker session settles
   await Promise.resolve();
   expect(invoke).toHaveBeenCalledWith('sessions:list', WS, { includeArchived: true });
 });
+
+it.each(['session:started', 'session:streaming', 'session:error', 'session:interrupted', 'ai:sessionCancelled'])(
+  'clears commit actions on %s and records only successful completion', type => {
+    const sessionId = uniqueSessionId('completion-actions');
+    seedRegistry([{ id: sessionId, workspaceId: WS }]);
+    const lifecycle = handlers.get('ai-session-state:event')!;
+    lifecycle({ type: 'session:completed', sessionId, workspacePath: WS, timestamp: 1234 });
+    expect(store.get(sessionSuccessfulCompletionAtom(sessionId))).toBe(1234);
+    if (type === 'ai:sessionCancelled') handlers.get(type)!({ sessionId });
+    else lifecycle({ type, sessionId, workspacePath: WS });
+    expect(store.get(sessionSuccessfulCompletionAtom(sessionId))).toBeNull();
+  },
+);

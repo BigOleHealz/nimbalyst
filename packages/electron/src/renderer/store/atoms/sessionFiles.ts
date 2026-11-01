@@ -227,6 +227,9 @@ export interface WorktreeGitStatus {
   ahead: number;
   behind: number;
   hasUncommittedChanges: boolean;
+  hasUpstream?: boolean;
+  unpushedCommits?: number;
+  headSha?: string;
 }
 
 export const worktreeGitStatusAtom = atomFamily((worktreeId: string) =>

@@ -8,6 +8,9 @@ import { sessionRegistryAtom, sessionProcessingAtom, sessionHasPendingInteractiv
 import { trackerItemsMapAtom } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerDataAtoms';
 import { trackerCompletionMetricsAtom } from '../../../store/atoms/completionMetrics';
 import { TrackerCompletionMetrics } from '../CompletionMetrics';
+import { worktreeRecordsAtom } from '../../../store/atoms/worktrees';
+import { worktreeGitStatusAtom } from '../../../store/atoms/sessionFiles';
+import { prListAtom } from '../../../store/atoms/pullRequests';
 import { observeSessionKanbanStatus } from '../../../store/atoms/sessionKanban';
 
 vi.mock('posthog-js/react', () => ({ usePostHog: () => undefined }));
@@ -57,7 +60,8 @@ it('routes a clicked card and moves three sessions and counts through a question
       dataTransfer: { getData: () => JSON.stringify(['three']) },
     });
   });
-  expect(cards('complete')).toEqual(['three']);
+  expect(cards('complete')).toEqual([]);
+  expect(cards('backlog')).toEqual(['three']);
   act(() => store.set(sessionProcessingAtom('three'), true));
   expect(cards('implementing')).toContain('three');
   stop();
@@ -76,6 +80,10 @@ it('shows recorded metrics only in Done, includes descendants once and responds 
     sessionType: 'session', hasStarted: true,
     completionMetrics: { totalTokens: 12500, startedAt: 1000, endedAt: 151000, costUSD: 0.25 },
   };
+  root.worktreeId = 'metrics-wt';
+  child.worktreeId = 'metrics-wt';
+  store.set(worktreeRecordsAtom, new Map([['metrics-wt', { id: 'metrics-wt', name: 'metrics', path: '/wt', branch: 'metrics', isPinned: false }]]));
+  store.set(prListAtom, [{ workspaceId: '/repo', remote: 'owner/repo', number: 1, headRef: 'metrics', state: 'merged' } as any]);
   store.set(sessionRegistryAtom, new Map([[root.id, root], [child.id, child]]));
   const view = render(<Provider store={store}><SessionKanbanBoard /></Provider>);
   const card = screen.getByTestId('session-kanban-card');
@@ -136,4 +144,23 @@ it('includes archived sessions for tracker metrics while preserving the sidebar 
   store.set(trackerSessionMetricsActiveAtom, false);
   await store.set(refreshSessionListAtom);
   expect(invoke).toHaveBeenLastCalledWith('sessions:list', '/repo', { includeArchived: false });
+});
+
+
+it('renders all three Git sub-rows and moves a card as upstream status changes', () => {
+  const store = createStore();
+  const session = { id: 'git-task', title: 'Git task', workspaceId: '/repo', provider: 'openai-codex', worktreeId: 'wt',
+    sessionType: 'session', childCount: 0, uncommittedCount: 0, messageCount: 1, hasStarted: true, createdAt: 1, updatedAt: 1 } as SessionMeta;
+  store.set(sessionRegistryAtom, new Map([[session.id, session]]));
+  const status = { ahead: 1, behind: 0, hasUncommittedChanges: true, hasUpstream: true, unpushedCommits: 0 };
+  store.set(worktreeGitStatusAtom('wt'), status);
+  const view = render(<Provider store={store}><SessionKanbanBoard /></Provider>);
+  const row = (stage: string) => view.container.querySelector(`[data-git-stage="${stage}"]`)! as HTMLElement;
+  expect(within(row('ready-for-commit')).getByText('Git task').textContent).toBe('Git task');
+  expect(within(row('ready-for-push')).queryAllByTestId('session-kanban-card')).toHaveLength(0);
+  expect(within(row('ready-for-pr')).queryAllByTestId('session-kanban-card')).toHaveLength(0);
+  act(() => store.set(worktreeGitStatusAtom('wt'), { ...status, hasUncommittedChanges: false, unpushedCommits: 1 }));
+  expect(within(row('ready-for-push')).getByText('Git task').textContent).toBe('Git task');
+  act(() => store.set(worktreeGitStatusAtom('wt'), { ...status, hasUncommittedChanges: false }));
+  expect(within(row('ready-for-pr')).getByText('Git task').textContent).toBe('Git task');
 });
