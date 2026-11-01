@@ -378,7 +378,7 @@ function SessionKanbanCard({ session, onSelect, onArchive, onRename, phaseColor,
           isFocused
             ? 'border-[var(--nim-primary)] ring-1 ring-[var(--nim-primary)]'
             : isSelected
-              ? 'border-[rgba(96,165,250,0.5)] bg-[rgba(96,165,250,0.06)]'
+              ? 'border-nim-focus bg-nim-selected'
               : stateStyle.border
                 ? ''
                 : 'border-nim'
@@ -386,7 +386,7 @@ function SessionKanbanCard({ session, onSelect, onArchive, onRename, phaseColor,
         style={{
           borderLeftWidth: '3px',
           borderLeftColor: phaseColor,
-          backgroundColor: isFocused ? stateStyle.bg || undefined : isSelected ? undefined : stateStyle.bg || undefined,
+          backgroundColor: isSelected && !isFocused ? undefined : stateStyle.bg || 'var(--nim-bg)',
           borderColor: isFocused ? undefined : isSelected ? undefined : stateStyle.border || undefined,
         }}
         onContextMenu={handleContextMenu}
@@ -621,7 +621,7 @@ function SessionKanbanColumn({ phase, label, color, sessions, onSelect, onArchiv
             {sessions.length}
           </span>
           <span
-            className="text-[10px] font-semibold text-nim-faint uppercase tracking-wide"
+            className="text-[11px] font-medium text-nim-muted"
             style={{ writingMode: 'vertical-lr', textOrientation: 'mixed' }}
           >
             {label}
@@ -650,7 +650,7 @@ function SessionKanbanColumn({ phase, label, color, sessions, onSelect, onArchiv
           className="w-2 h-2 rounded-full shrink-0"
           style={{ backgroundColor: color }}
         />
-        <span className="text-[11px] font-semibold text-nim uppercase tracking-wide truncate">
+        <span className="text-xs font-medium text-nim truncate">
           {label}
         </span>
         <span className="text-[10px] font-semibold text-nim-faint ml-auto">
