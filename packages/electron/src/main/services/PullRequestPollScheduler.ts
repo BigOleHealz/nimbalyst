@@ -22,6 +22,7 @@
 import { BrowserWindow } from 'electron';
 import log from 'electron-log/main';
 import type { GhApiService } from './GhApiService';
+import { applyPrMergeToTrackers } from './PrTrackerLifecycle';
 
 const logger = log.scope('PullRequestPollScheduler');
 
@@ -174,7 +175,15 @@ export class PullRequestPollScheduler {
     entry.inFlight = true;
     try {
       try {
-        await this.service.listPullRequests(entry.workspaceId, entry.remote, { state: 'open' });
+        const prs = await this.service.listPullRequests(entry.workspaceId, entry.remote, { state: 'all' });
+        for (const pr of prs) {
+          if (pr.state !== 'merged') continue;
+          try {
+            await applyPrMergeToTrackers(entry.workspaceId, entry.remote, pr.number, { headRef: pr.headRef, headSha: pr.headSha, automatic: true });
+          } catch (error) {
+            logger.warn('PR merge tracker reconciliation failed', { number: pr.number, error });
+          }
+        }
         this.broadcastListUpdated('pr:list-updated', workspacePath, entry.remote);
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'unknown';

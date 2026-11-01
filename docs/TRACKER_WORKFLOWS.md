@@ -12,6 +12,12 @@ If creation returns a `relationshipWrite` warning, the item and its own relation
 
 In the Tasks or All tracker kanban, open the field filter, select **Parent Task**, and choose the parent. This shows its direct subtasks and uses the same persisted filter as the list and saved views. The advanced filter's **is empty** operator shows top-level tasks. The parent and subtasks relationship fields in task details let people inspect, attach, detach, or move existing tasks.
 
+## Git delivery and task completion
+
+Local commits link to Task items but leave their workflow status open, including commits with closing keywords. A confirmed PR merge completes a task linked explicitly to that PR, or linked through a session whose clean worktree HEAD matches the merged PR head. Tasks referencing several PRs wait until every reference is confirmed merged. Background PR polling also handles merges performed outside Nimbalyst. Cancelled and already completed tasks keep their status.
+
+The Sessions board derives Done from merged PR evidence; archiving, setting the session phase to complete, or dragging an unmerged card into Done does not complete it. Its Git status column shows Ready for commit, Ready for push, and Ready for PR from live Git state. Push readiness uses the branch's tracked upstream rather than its base branch.
+
 ## Recording Decisions
 
 Record a decision where the next reader will look for it. Not every choice needs a record; most need one sentence in the right place.
@@ -50,7 +56,7 @@ When fixing a bug, **always ensure a tracker bug item exists** before starting t
 2. **Create if missing**: If no tracker item exists, create one before writing any fix code
 3. **Keep it updated**: Update the tracker item's status as you progress (`to-do` → `in-progress` → `in-review`)
 4. **Link the session**: Always call `tracker_link_session` so the bug and session are cross-referenced
-5. **Close it on the commit**: When the user commits the fix, put a closing reference on its own line in the commit message — `Fixes NIM-123`, using the item's issue key. That commit is the user's sign-off, and `CommitTrackerLinker` moves the item to `done` and marks the session `complete`. A bare `NIM-123` only links the commit; it does not close.
+5. **Close it on the commit**: When the user commits the fix, put a closing reference on its own line in the commit message — `Fixes NIM-123`, using the item's issue key. That commit is the user's sign-off, and `CommitTrackerLinker` moves the bug item to `done`. The Sessions board still waits for the PR to merge before showing Done. A bare `NIM-123` only links the commit; it does not close.
 
 Do not stop at step 3. An item left in `in-review` after its fix shipped is a false backlog entry — the user has to clear it by hand. If the item has no issue key, say so when you propose the commit rather than silently omitting the reference.
 

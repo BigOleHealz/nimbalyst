@@ -3,7 +3,8 @@ import { createStore } from 'jotai';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { applySessionApprovalSnapshotAtom, clearSessionApprovalsAtom, sessionAwaitingApprovalAtom } from '../sessionApproval';
 import { sessionRegistryAtom, sessionProcessingAtom, sessionHasPendingInteractivePromptAtom, type SessionMeta } from '../sessions';
-import { sessionsByPhaseAtom, sessionKanbanFilterAtom, setSessionBoardColumnAtom, observeSessionKanbanStatus } from '../sessionKanban';
+import { sessionsByPhaseAtom, sessionKanbanFilterAtom, setSessionBoardColumnAtom, observeSessionKanbanStatus, sessionAutomaticBoardStateAtom } from '../sessionKanban';
+import { worktreeGitStatusAtom } from '../sessionFiles';
 import { findApprovalMessageIndex } from '../../../../shared/approvalMessageTarget';
 import { prListAtom } from '../pullRequests';
 import { worktreeRecordsAtom } from '../worktrees';
@@ -80,7 +81,7 @@ describe('automatic session kanban', () => {
     store.set(sessionProcessingAtom('a'), false);
     expect(ids('validating')).toEqual(['a']);
     store.set(sessionRegistryAtom, new Map([['a', { ...session('a'), isArchived: true }], ['b', session('b')], ['c', session('c')]]));
-    expect(ids('complete')).toEqual(['a']);
+    expect(ids('complete')).toEqual([]);
   });
 
   it('keeps a drag through activity updates, expires it on status change, and never resurrects it', async () => {
@@ -101,7 +102,7 @@ describe('automatic session kanban', () => {
     stop();
   });
 
-  it('rolls up questions from nested descendants and keeps archived sessions done', () => {
+  it('rolls up questions and does not treat archived sessions as merged', () => {
     const store = createStore();
     store.set(sessionRegistryAtom, new Map([
       ['root', session('root')], ['child', session('child', undefined, 'root')],
@@ -110,7 +111,8 @@ describe('automatic session kanban', () => {
     store.set(sessionHasPendingInteractivePromptAtom('leaf'), true);
     store.set(sessionHasPendingInteractivePromptAtom('archived'), true);
     expect(store.get(sessionsByPhaseAtom).get('awaiting-input')?.map(s => s.id)).toEqual(['root']);
-    expect(store.get(sessionsByPhaseAtom).get('complete')?.map(s => s.id)).toEqual(['archived']);
+    expect(store.get(sessionsByPhaseAtom).get('complete')).toEqual([]);
+    expect(store.get(sessionsByPhaseAtom).get('backlog')?.map(s => s.id)).toEqual(['archived']);
   });
 
   it('uses branch and explicit tracker references for PR review and merge, scoped to the workspace', () => {
@@ -142,11 +144,51 @@ describe('automatic session kanban', () => {
     const kanbanOverride = { column: 'validating' as const, status: '[["a","backlog"]]' };
     store.set(sessionRegistryAtom, new Map([['a', { ...session('a'), kanbanOverride }]]));
     expect(store.get(sessionsByPhaseAtom).get('validating')?.map(s => s.id)).toEqual(['a']);
-    const pending = store.set(setSessionBoardColumnAtom, { sessionId: 'a', phase: 'complete' });
+    const pending = store.set(setSessionBoardColumnAtom, { sessionId: 'a', phase: 'implementing' });
     store.set(sessionRegistryAtom, new Map([['a', { ...store.get(sessionRegistryAtom).get('a')!, title: 'Renamed' }]]));
     respond({ success: false, error: 'disk full' });
     await pending;
     expect(store.get(sessionRegistryAtom).get('a')).toMatchObject({ title: 'Renamed', kanbanOverride });
+  });
+
+  it('derives Git stages from dirty files and upstream, then completes only on merge', async () => {
+    const invoke = vi.fn().mockResolvedValue({ success: true });
+    vi.stubGlobal('window', { electronAPI: { invoke } });
+    const store = createStore();
+    const task = { ...session('task', 'complete'), hasStarted: true, workspaceId: '/repo', worktreeId: 'wt' };
+    store.set(sessionRegistryAtom, new Map([['task', task]]));
+    store.set(worktreeRecordsAtom, new Map([['wt', { id: 'wt', name: 'wt', path: '/wt', branch: 'feature', isPinned: false }]]));
+    const status = { ahead: 2, behind: 0, hasUncommittedChanges: true, hasUpstream: false, unpushedCommits: 0, headSha: 'head' };
+    const state = () => store.get(sessionAutomaticBoardStateAtom).get('task');
+    store.set(worktreeGitStatusAtom('wt'), status);
+    expect(state()).toMatchObject({ column: 'git', gitStage: 'ready-for-commit' });
+    store.set(worktreeGitStatusAtom('wt'), { ...status, hasUncommittedChanges: false });
+    expect(state()).toMatchObject({ column: 'git', gitStage: 'ready-for-push' });
+    store.set(worktreeGitStatusAtom('wt'), { ...status, hasUncommittedChanges: false, hasUpstream: true });
+    expect(state()).toMatchObject({ column: 'git', gitStage: 'ready-for-pr' });
+    await store.set(setSessionBoardColumnAtom, { sessionId: 'task', phase: 'complete' });
+    expect(invoke).not.toHaveBeenCalled();
+    expect(store.get(sessionsByPhaseAtom).get('complete')).toEqual([]);
+    const pr = { id: 'pr', workspaceId: '/repo', remote: 'owner/repo', number: 1, headRef: 'feature', headSha: 'head', state: 'open' } as PullRequestRow;
+    store.set(prListAtom, [pr]);
+    expect(state()?.column).toBe('validating');
+    store.set(prListAtom, [{ ...pr, state: 'closed' }]);
+    expect(state()?.column).toBe('git');
+    store.set(prListAtom, [{ ...pr, state: 'merged' }]);
+    expect(state()?.column).toBe('complete');
+    store.set(worktreeGitStatusAtom('wt'), { ...status, hasUncommittedChanges: false, hasUpstream: true, headSha: 'new-work' });
+    expect(state()?.column).toBe('git');
+    store.set(sessionProcessingAtom('task'), true);
+    expect(state()?.column).toBe('implementing');
+  });
+
+  it('ignores persisted Done overrides without merge evidence and blocks parent completion for unfinished children', () => {
+    const store = createStore();
+    store.set(sessionRegistryAtom, new Map([
+      ['root', { ...session('root'), sessionType: 'workstream', kanbanOverride: { column: 'complete', status: '[["child","backlog"],["root","backlog"]]' } }],
+      ['child', session('child', 'complete', 'root')],
+    ]));
+    expect(store.get(sessionsByPhaseAtom).get('complete')).toEqual([]);
   });
 });
 

@@ -30,6 +30,7 @@ import type { TodoItem } from '@nimbalyst/runtime/ui/AgentTranscript/types';
 import { isToolLikeMessage } from '@nimbalyst/runtime/ui/AgentTranscript/utils/messageTypeHelpers';
 import type { AIInputRef } from './AIInput';
 import { SessionAIInput } from './SessionAIInput';
+import { SessionCompletionActions } from './SessionCompletionActions';
 import { PromptQueueList } from './PromptQueueList';
 import { TranscriptEmbeddedFileCard } from './TranscriptEmbeddedFileCard';
 import { getDiffPeekSizeForInteractiveWidgetHost } from './interactiveWidgetHostProxy';
@@ -2744,6 +2745,17 @@ const LocalSessionTranscript = forwardRef<SessionTranscriptRef, SessionTranscrip
       )}
 
       {/* Queue display */}
+      {!collapseTranscript && (
+        <SessionCompletionActions
+          key={sessionId}
+          sessionId={sessionId}
+          workspacePath={workspacePath}
+          worktreePath={sessionWorktreePath}
+          worktreeId={worktreeId}
+          provider={provider}
+          available={!isLoading && !isArchived && !sessionError && !hasPendingInteractivePrompt && queuedPrompts.length === 0 && aiMode !== 'planning' && !transcriptTeammates?.some(teammate => teammate.status === 'running') && !backgroundTasks?.length}
+        />
+      )}
       <PromptQueueList
         queue={queuedPrompts}
         onCancel={handleCancelQueuedPrompt}

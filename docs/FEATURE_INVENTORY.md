@@ -108,7 +108,8 @@ Twelve built-in provider lanes, plus any agent an extension contributes. Every l
 
 ## Session Kanban Board
 
-- Session board follows live status in Backlog / Running / Awaiting Input / Review / Done, including questions, structured input, permissions and commit approvals; grouped cards surface waiting descendants
+- Session board follows live status in Backlog / Running / Awaiting Input / Git status / Review / Done, including questions, structured input, permissions and commit approvals; grouped cards surface waiting descendants
+- Git status groups idle work into Ready for commit / Ready for push / Ready for PR using working-tree changes and tracked upstream counts; open PRs stay in Review and only confirmed merged PRs reach Done, including archived sessions and manual drags. Local commits keep linked tasks open until their PR merges; background polling reconciles merges without opening the PR panel
 - Manual drags persist until operational status changes; cards open live sessions on click and show linked Jira keys/titles, provider, branch and live activity age, with counts and collapsible columns
 - Done session cards and completed tracker tickets show recorded lifetime tokens (including reported cache use), transcript elapsed time, provider-reported USD cost when available, and session counts, with deduplicated descendant totals and explicit missing/partial data; tracker details show the same linked-session totals
 - Agent-assisted cleanup (`/session-cleanup` slash command in the Planning extension) — audits sessions, proposes phase corrections and "mark complete" candidates for approval, and flags old sessions to archive
@@ -190,6 +191,7 @@ Twelve built-in provider lanes, plus any agent an extension contributes. Every l
 - Real-time git status in file tree (modified, added, deleted, untracked)
 - Git operations panel with a Changes list where users select files and commit directly or ask AI to write the message
 - AI-assisted commit message generation
+- After a successful coding turn with uncommitted changes, choose Commit, Commit & Push, or Commit, Push & Open PR from the session composer; requests reuse the session's AI commit proposal flow, with a Later option to dismiss them
 - Interactive git commit proposal widget with individual-hunk selection to commit only the intended lines of a shared file
 - Commit proposals can target another registered worktree of the session's repository; the widget names its branch and path, and these commits always need approval on desktop, even with auto-commit on
 - Commit history view with ahead/behind tracking and links to the AI sessions that produced commits
@@ -393,7 +395,8 @@ Companion app; pairs with a desktop over encrypted sync. Voice mode is not inclu
 - Tracker-item context menus open linked AI sessions or launch a new session or worktree; draft plans with linked commits show a status-mismatch chip
 - Unread indicators — a dot on tracker rows/cards (list, kanban, tag board) when an item is new or was changed by someone else since you last viewed it; clears when you open it; your own edits and views sync across your devices (personal channel), and AI-agent edits count as unread
 - Encrypted sync across team members (server-managed, encrypted at rest per team)
-- Inline `#type` items in markdown (TrackerPlugin)
+- Trackers show explicitly created and imported items; scanning or editing Markdown no longer adds automatic file cards, and previously indexed file projections stay out of tracker lists without deleting their source documents
+- Legacy inline `#type` embeds remain readable in Markdown (TrackerPlugin); convert them to tracked references to create native tracker items
 - Live tracker reference links — `#` in a document references an existing tracker item, inserting a chip that shows the item's current status and title (resolved live, not a snapshot) and links to it; serialized as portable `[NIM-123](nimbalyst://NIM-123)` markdown; the same link renders as a live chip in the AI transcript; one-click "convert to tracked reference" turns a legacy inline embed into a real tracked item plus a reference chip
 - Tracker schema overrides in Trackers settings -- customize a built-in type into `.nimbalyst/trackers`, edit an existing override, reset back to the built-in default, and resync the local database mirror when schema files drift. A personal tracker type can be shared with the team from its right-click menu in the tracker sidebar or the Wiki's Personal Types table, and a notice shows when a project's team types are not syncing
 - External-source importers: import GitHub issues (extension-provided) into the tracker as native bug, task, or feature items with a back-link to the source, a "from GitHub" chip, re-snapshot ("pull latest from source") with conservative merge, and a Source filter; agent tools `tracker_importer_list` / `tracker_importer_search` / `tracker_import` / `tracker_resnapshot` / `tracker_get_by_urn`

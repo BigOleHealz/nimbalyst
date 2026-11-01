@@ -481,6 +481,21 @@ describe('GitWorktreeService.getWorktreeStatus isMerged', () => {
     expect(status.isMerged).toBe(false);
   });
 
+  it('distinguishes unpushed work from commits already on upstream but not on the base', async () => {
+    let status = await service.getWorktreeStatus(featPath, 'main');
+    expect(status.hasUpstream).toBe(false);
+    assertGitSandbox(repo, tmpDir);
+    git(repo, ['remote', 'add', 'origin', repo]);
+    git(repo, ['update-ref', 'refs/remotes/origin/worktree/feat', 'worktree/feat']);
+    git(featPath, ['branch', '--set-upstream-to=origin/worktree/feat']);
+    status = await service.getWorktreeStatus(featPath, 'main');
+    expect(status).toMatchObject({ hasUpstream: true, unpushedCommits: 0, commitsAhead: 1 });
+    commit(featPath, 'another local commit');
+    status = await service.getWorktreeStatus(featPath, 'main');
+    expect(status).toMatchObject({ hasUpstream: true, unpushedCommits: 1, commitsAhead: 2 });
+    expect(status.headSha).toBe(git(featPath, ['rev-parse', 'HEAD']).trim());
+  });
+
   it('does not report a detached worktree merged because origin/HEAD is', async () => {
     // simple-git names a detached HEAD `HEAD`, and every clone has origin/HEAD.
     assertGitSandbox(repo, tmpDir);

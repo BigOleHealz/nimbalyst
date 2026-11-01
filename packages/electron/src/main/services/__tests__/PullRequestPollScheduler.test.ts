@@ -2,7 +2,8 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { getAllWindows } = vi.hoisted(() => ({ getAllWindows: vi.fn() }));
+const { getAllWindows, reconcile } = vi.hoisted(() => ({ getAllWindows: vi.fn(), reconcile: vi.fn() }));
+vi.mock('../PrTrackerLifecycle', () => ({ applyPrMergeToTrackers: reconcile }));
 
 vi.mock('electron', () => ({ BrowserWindow: { getAllWindows } }));
 vi.mock('electron-log/main', () => ({
@@ -49,7 +50,7 @@ describe('PullRequestPollScheduler issue lane', () => {
 
     expect(listPullRequests).toHaveBeenCalledTimes(2);
     expect(listPullRequests).toHaveBeenNthCalledWith(1, '/workspace', 'owner/repo', {
-      state: 'open',
+      state: 'all',
     });
     expect(listIssues).toHaveBeenCalledTimes(2);
     expect(listIssues.mock.calls[0][2]).toMatchObject({ state: 'all' });
@@ -74,6 +75,16 @@ describe('PullRequestPollScheduler issue lane', () => {
       remote: 'owner/repo',
     });
 
+    scheduler.stopAll();
+    vi.useRealTimers();
+  });
+
+  it('reconciles only merged PRs observed by background polling', async () => {
+    listPullRequests.mockResolvedValue([{ number: 1, headRef: 'feature', headSha: 'head', state: 'merged' }, { number: 2, state: 'closed' }, { number: 3, state: 'open' }]);
+    const scheduler = new PullRequestPollScheduler({ listPullRequests, listIssues, getIssuePollCursor, setIssuePollCursor } as never);
+    scheduler.start('/workspace', '/workspace', 'owner/repo');
+    await scheduler.pollNow('/workspace');
+    expect(reconcile).toHaveBeenCalledExactlyOnceWith('/workspace', 'owner/repo', 1, { headRef: 'feature', headSha: 'head', automatic: true });
     scheduler.stopAll();
     vi.useRealTimers();
   });
