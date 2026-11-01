@@ -1,4 +1,5 @@
 import Store from '../../utils/privateSettingsStore';
+import { commitTrackerLinker } from '../../services/CommitTrackerLinker';
 export { handleAskUserQuestion } from './askUserQuestionHandler';
 import { BrowserWindow, ipcMain } from "electron";
 import { AgentMessagesRepository } from "@nimbalyst/runtime/storage/repositories/AgentMessagesRepository";
@@ -407,17 +408,7 @@ export async function handleToolPermission(
   );
 }
 
-/**
- * Record an approved commit against the session's tracker items.
- *
- * A commit the user approved is their sign-off on the work, so when its message
- * closes linked items ("Fixes NIM-123") the session is complete too. Agents are
- * barred from writing `done` or `complete` themselves; this is the one path that
- * has a human's approval behind it, so it writes both rather than leaving
- * finished work parked in `in-review` / `validating` forever.
- *
- * Fire-and-forget: a linking failure must not fail the commit that succeeded.
- */
+/** Record the commit without treating a local commit as delivered work. */
 async function linkCommitToTrackerItems(
   commitHash: string,
   commitMessage: string,
@@ -425,26 +416,7 @@ async function linkCommitToTrackerItems(
   workspacePath: string
 ): Promise<void> {
   try {
-    const { commitTrackerLinker } = await import(
-      "../../services/CommitTrackerLinker"
-    );
-    const { closedItemIds } = await commitTrackerLinker.linkBySession(
-      commitHash,
-      commitMessage,
-      sessionId,
-      workspacePath
-    );
-    if (closedItemIds.length === 0) return;
-
-    const { SessionNamingService } = await import(
-      "../../services/SessionNamingService"
-    );
-    await SessionNamingService.getInstance().applySessionMetadata(sessionId, {
-      phase: "complete",
-    });
-    console.log(
-      `[MCP Server] Commit ${commitHash.slice(0, 7)} closed ${closedItemIds.length} tracker item(s); session marked complete`
-    );
+    await commitTrackerLinker.linkBySession(commitHash, commitMessage, sessionId, workspacePath);
   } catch (err) {
     console.error("[MCP Server] Commit-tracker linking failed:", err);
   }

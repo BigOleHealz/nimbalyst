@@ -5,7 +5,7 @@
  * 1. Session-based: After proposal-widget commits, links to session's tracker items
  * 2. Issue key parsing: Parses NIM-123 from any commit message detected by GitRefWatcher
  * 3. Auto-close: Fixes/Closes/Resolves keywords move the item to whichever status
- *    its own type completes on (see `trackerStatusCategory`)
+ *    its own type completes on (see `trackerStatusCategory`). Tasks wait for a PR merge.
  *
  * The passive GitRefWatcher path is opt-in (`enabled`, per-project overridable),
  * because it reacts to every commit in the repo including ones no agent was part
@@ -207,7 +207,8 @@ export class CommitTrackerLinker {
    * so linking the commit back is the expected, natural behavior.
    *
    * A closing keyword in the approved message ("Fixes NIM-123") also promotes
-   * that item to `done`. An agent may not write `done` itself, so without this
+   * non-task items to their completed status. Tasks stay open until PR merge.
+   * An agent may not write `done` itself, so without this
    * every finished bug stalls in `in-review` even after the user has reviewed
    * the diff and committed it. A bare `NIM-123` still only links.
    *
@@ -264,9 +265,10 @@ export class CommitTrackerLinker {
       );
       if (closingKeys.size === 0) return { closedItemIds: [] };
 
-      const closedItemIds = await this.resolveClosableIds(trackerIds, closingKeys, workspacePath);
-      for (const itemId of closedItemIds) {
-        await this.closeTrackerItem(itemId, commitHash, workspacePath);
+      const candidates = await this.resolveClosableIds(trackerIds, closingKeys, workspacePath);
+      const closedItemIds: string[] = [];
+      for (const itemId of candidates) {
+        if (await this.closeTrackerItem(itemId, commitHash, workspacePath)) closedItemIds.push(itemId);
       }
       return { closedItemIds };
     } catch (error) {
@@ -436,27 +438,29 @@ export class CommitTrackerLinker {
     itemId: string,
     commitHash: string,
     workspacePath: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const db = this.getDb();
-    if (!db) return;
+    if (!db) return false;
 
     const result = await db.query(
       `SELECT type, data FROM tracker_items WHERE id = $1 AND workspace = $2`,
       [itemId, workspacePath]
     );
-    if (result.rows.length === 0) return;
+    if (result.rows.length === 0) return false;
 
     const data = typeof result.rows[0].data === 'string'
       ? JSON.parse(result.rows[0].data)
       : result.rows[0].data || {};
 
     const type = String(result.rows[0].type ?? data.type ?? '');
+    // A task is delivered only when its PR merges; keep linking commits in the meantime.
+    if (type === 'task') return false;
     const statusField = getWorkflowStatusFieldName(type);
     const oldStatus = data[statusField];
 
     // Already terminal -- including cancelled. A commit must not reopen an
     // abandoned item by "closing" it.
-    if (isTerminalStatus(type, oldStatus)) return;
+    if (isTerminalStatus(type, oldStatus)) return false;
 
     const closingStatus = getDoneStatusValue(type);
     if (!closingStatus) {
@@ -467,7 +471,7 @@ export class CommitTrackerLinker {
       logger.main.info(
         `[CommitTrackerLinker] ${itemId} (${type}) has no completed status; leaving it open`,
       );
-      return;
+      return false;
     }
 
     data[statusField] = closingStatus;
@@ -488,6 +492,7 @@ export class CommitTrackerLinker {
     );
 
     logger.main.info(`[CommitTrackerLinker] Auto-closed ${itemId} via commit ${commitHash.slice(0, 7)}`);
+    return true;
   }
 }
 

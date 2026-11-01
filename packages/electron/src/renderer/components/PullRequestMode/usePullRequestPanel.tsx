@@ -61,17 +61,8 @@ export function usePullRequestPanel({
   const setNavigateRequest = useSetAtom(prNavigateRequestAtom);
   const trackerReferences = usePrTrackerReferences(remote);
 
-  // Start/stop the background poller for this workspace's remote. It is the
-  // panel's poller rather than this list's — the same scheduler also refreshes
-  // the issue cache — so it follows the panel, not the visible list.
-  useEffect(() => {
-    if (!remote) return;
-    const service = getPullRequestService();
-    void service.startPolling(workspacePath, workspacePath, remote);
-    return () => {
-      void service.stopPolling(workspacePath);
-    };
-  }, [workspacePath, remote]);
+  // The central PR listeners own polling so merge status stays live on the
+  // Sessions board even when this panel is unmounted.
 
   // Resolve pending navigate-to-PR requests (nimbalyst:navigate-pr) to a list
   // selection. When the PR isn't in the cached list yet, trigger a poll and

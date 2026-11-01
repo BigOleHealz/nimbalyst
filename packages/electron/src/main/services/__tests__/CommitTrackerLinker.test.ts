@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { storeGet, getEffectiveTrackerAutomation, execFile, getCurrentIdentity } = vi.hoisted(() => ({
@@ -145,6 +146,16 @@ describe('CommitTrackerLinker', () => {
       query.mockResolvedValueOnce({ rows: [{ data: {} }] }).mockResolvedValueOnce({ rows: [] });
       return linker;
     }
+
+    it('links a task commit but keeps the task open until its PR is merged', async () => {
+      const query = vi.fn();
+      const linker = linkerWithSession(query);
+      query.mockResolvedValueOnce({ rows: [{ id: 'tracker-1', issue_key: 'nim-42' }] })
+        .mockResolvedValueOnce({ rows: [{ type: 'task', data: { status: 'in-review' } }] });
+      const result = await linker.linkBySession('abcdef0', 'Feature\n\nFixes NIM-42', 'session-1', '/workspace');
+      expect(result.closedItemIds).toEqual([]);
+      expect(query).toHaveBeenCalledTimes(5);
+    });
 
     it('closes a linked item when the approved commit message uses a closing keyword', async () => {
       // The passive GitRefWatcher path is opt-in and off by default; a commit the

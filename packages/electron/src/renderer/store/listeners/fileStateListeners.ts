@@ -640,6 +640,9 @@ interface WorktreeStatusResponse {
     commitsAhead?: number;
     commitsBehind?: number;
     hasUncommittedChanges?: boolean;
+    hasUpstream?: boolean;
+    unpushedCommits?: number;
+    headSha?: string;
   };
 }
 
@@ -654,6 +657,9 @@ async function refreshWorktreeGitStatus(worktreeId: string, worktreePath: string
         ahead: result.status.ahead ?? result.status.commitsAhead ?? 0,
         behind: result.status.behind ?? result.status.commitsBehind ?? 0,
         hasUncommittedChanges: result.status.hasUncommittedChanges ?? false,
+        hasUpstream: result.status.hasUpstream,
+        unpushedCommits: result.status.unpushedCommits,
+        headSha: result.status.headSha,
       });
     }
   } catch (error) {
