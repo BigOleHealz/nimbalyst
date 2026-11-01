@@ -108,7 +108,8 @@ Twelve built-in provider lanes, plus any agent an extension contributes. Every l
 
 ## Session Kanban Board
 
-- Session board follows live status in Backlog / Running / Awaiting Input / Review / Done, including questions, structured input, permissions and commit approvals; grouped cards surface waiting descendants
+- Session board follows live status in Backlog / Running / Awaiting Input / Git status / Review / Done, including questions, structured input, permissions and commit approvals; grouped cards surface waiting descendants
+- Git status groups idle work into Ready for commit / Ready for push / Ready for PR using working-tree changes and tracked upstream counts; open PRs stay in Review and only confirmed merged PRs reach Done, including archived sessions and manual drags. Local commits keep linked tasks open until their PR merges; background polling reconciles merges without opening the PR panel
 - Manual drags persist until operational status changes; cards open live sessions on click and show linked Jira keys/titles, provider, branch and live activity age, with counts and collapsible columns
 - Done session cards and completed tracker tickets show recorded lifetime tokens (including reported cache use), transcript elapsed time, provider-reported USD cost when available, and session counts, with deduplicated descendant totals and explicit missing/partial data; tracker details show the same linked-session totals
 - Agent-assisted cleanup (`/session-cleanup` slash command in the Planning extension) — audits sessions, proposes phase corrections and "mark complete" candidates for approval, and flags old sessions to archive

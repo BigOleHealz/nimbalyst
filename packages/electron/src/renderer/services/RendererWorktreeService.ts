@@ -34,6 +34,10 @@ export interface WorktreeStatus {
    * When undefined, uniqueCommitsAhead equals commitsAhead.
    */
   uniqueCommitsAhead?: number;
+  /** Compared with the tracked upstream, independently of the base branch. */
+  hasUpstream?: boolean;
+  unpushedCommits?: number;
+  headSha?: string;
 }
 
 /**

@@ -2,7 +2,7 @@
  * SessionKanbanBoard - Kanban board view for AI sessions organized by phase.
  *
  * Cards represent standalone sessions, workstreams, or worktrees.
- * Columns follow live status: Backlog, Running, Awaiting Input, Review, Done.
+ * Columns follow live status: Backlog, Running, Awaiting Input, Git status, Review, Done.
  * Manual placement is stored in existing session metadata until status changes.
  *
  * Keyboard navigation:
@@ -42,6 +42,8 @@ import {
   childRunStatesAtom,
   getCardType,
   SESSION_BOARD_COLUMNS,
+  SESSION_GIT_STAGES,
+  sessionAutomaticBoardStateAtom,
   type SessionBoardColumn,
   type SessionPhaseKey,
   type KanbanCardType,
@@ -552,6 +554,10 @@ interface SessionKanbanColumnProps {
 
 function SessionKanbanColumn({ phase, label, color, sessions, onSelect, onArchive, onRename, onDrop, isCollapsed, onToggleCollapse, focusedCardId, selectedIds, peekCardId, onCardClick, onPeekToggle, onDragStart: onDragStartProp, onSelectAll, onHeaderContextMenu }: SessionKanbanColumnProps) {
   const [isDragOver, setIsDragOver] = useState(false);
+  const automatic = useAtomValue(sessionAutomaticBoardStateAtom);
+  const groups = phase === 'git'
+    ? SESSION_GIT_STAGES.map(stage => ({ ...stage, sessions: sessions.filter(s => automatic.get(s.id)?.gitStage === stage.value) }))
+    : [{ value: phase, label: '', sessions }];
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -668,35 +674,42 @@ function SessionKanbanColumn({ phase, label, color, sessions, onSelect, onArchiv
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        {sessions.length === 0 ? (
-          <div className="flex items-center justify-center py-6 text-nim-disabled text-[11px] italic">
-            No sessions
-          </div>
-        ) : (
-          sessions.map(session => (
-            <div
-              key={session.id}
-              draggable
-              onDragStart={(e) => handleDragStart(e, session.id)}
-              className={isComplete ? 'opacity-65' : ''}
-              onClick={(e) => onCardClick(session.id, e)}
-            >
-              <SessionKanbanCard
-                session={session}
-                onSelect={onSelect}
-                onArchive={onArchive}
-                onRename={onRename}
-                phaseColor={color}
-                isDone={phase === 'complete'}
-                isFocused={focusedCardId === session.id}
-                isSelected={selectedIds.has(session.id)}
-                selectedCount={selectedIds.size}
-                showPeekOverride={peekCardId === session.id ? true : undefined}
-                onPeekToggle={() => onPeekToggle(session.id)}
-              />
-            </div>
-          ))
-        )}
+        {groups.map(group => (
+          <section key={group.value} data-git-stage={phase === 'git' ? group.value : undefined} className="session-kanban-stage space-y-1.5">
+            {phase === 'git' && <div className="session-kanban-stage-header flex items-center gap-2 px-1.5 pt-2 text-[11px] font-medium text-nim-muted">
+              <span>{group.label}</span><span className="ml-auto text-nim-faint">{group.sessions.length}</span>
+            </div>}
+            {group.sessions.length === 0 ? (
+              <div className="flex items-center justify-center py-6 text-nim-disabled text-[11px] italic">
+                No sessions
+              </div>
+            ) : (
+              group.sessions.map(session => (
+                <div
+                  key={session.id}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, session.id)}
+                  className={isComplete ? 'opacity-65' : ''}
+                  onClick={(e) => onCardClick(session.id, e)}
+                >
+                  <SessionKanbanCard
+                    session={session}
+                    onSelect={onSelect}
+                    onArchive={onArchive}
+                    onRename={onRename}
+                    phaseColor={color}
+                    isDone={phase === 'complete'}
+                    isFocused={focusedCardId === session.id}
+                    isSelected={selectedIds.has(session.id)}
+                    selectedCount={selectedIds.size}
+                    showPeekOverride={peekCardId === session.id ? true : undefined}
+                    onPeekToggle={() => onPeekToggle(session.id)}
+                  />
+                </div>
+              ))
+            )}
+          </section>
+        ))}
       </div>
     </div>
   );

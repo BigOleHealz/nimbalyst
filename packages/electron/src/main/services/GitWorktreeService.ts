@@ -84,6 +84,10 @@ export interface WorktreeStatus {
    * When undefined, uniqueCommitsAhead equals commitsAhead.
    */
   uniqueCommitsAhead?: number;
+  /** Compared with the tracked upstream, independently of the base branch. */
+  hasUpstream?: boolean;
+  unpushedCommits?: number;
+  headSha?: string;
 }
 
 /**
@@ -427,6 +431,7 @@ export class GitWorktreeService {
       const currentBranch = status.current;
       const hasUncommittedChanges = !status.isClean();
       const modifiedFileCount = status.files.length;
+      const headSha = (await git.revparse(['HEAD'])).trim();
 
       if (!currentBranch) {
         // Detached HEAD -- return basic status without branch comparison
@@ -494,6 +499,9 @@ export class GitWorktreeService {
         commitsBehind,
         isMerged,
         uniqueCommitsAhead,
+        hasUpstream: Boolean(status.tracking),
+        unpushedCommits: status.tracking ? status.ahead : undefined,
+        headSha,
       };
     } catch (error) {
       logger.error('Failed to get worktree status', { error, worktreePath });

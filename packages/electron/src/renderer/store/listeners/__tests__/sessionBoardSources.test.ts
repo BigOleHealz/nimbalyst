@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, expect, it, vi } from 'vitest';
 import { store } from '@nimbalyst/runtime/store';
-import { sessionRegistryAtom } from '../../atoms/sessions';
+import { sessionKanbanActiveAtom, sessionRegistryAtom } from '../../atoms/sessions';
 import { sessionListMetadata } from '../../atoms/sessionListMetadata';
 import { worktreeRecordsAtom } from '../../atoms/worktrees';
 import { activeWorkspacePathAtom } from '../../atoms/openProjects';
@@ -9,11 +9,12 @@ import { prListAtom } from '../../atoms/pullRequests';
 import { initWorktreeListeners } from '../worktreeListeners';
 import { initPullRequestListeners } from '../pullRequestListeners';
 
-const api = vi.hoisted(() => ({ list: vi.fn(), detectRemote: vi.fn(), onListUpdated: vi.fn(() => () => {}), getStatus: vi.fn().mockResolvedValue({ installed: false, authed: false }), onStatusChanged: vi.fn(() => () => {}) }));
+const api = vi.hoisted(() => ({ loadGit: vi.fn().mockResolvedValue(undefined), startPolling: vi.fn().mockResolvedValue(undefined), stopPolling: vi.fn().mockResolvedValue(undefined), list: vi.fn(), detectRemote: vi.fn(), onListUpdated: vi.fn(() => () => {}), getStatus: vi.fn().mockResolvedValue({ installed: false, authed: false }), onStatusChanged: vi.fn(() => () => {}) }));
+vi.mock('../fileStateListeners', () => ({ loadInitialWorktreeState: api.loadGit }));
 vi.mock('../../../services/RendererPullRequestService', () => ({ getPullRequestService: () => api }));
 vi.mock('../../../services/RendererGhCliService', () => ({ getGhCliService: () => api }));
 
-afterEach(() => { store.set(sessionRegistryAtom, new Map()); store.set(worktreeRecordsAtom, new Map()); store.set(activeWorkspacePathAtom, null); store.set(prListAtom, []); vi.unstubAllGlobals(); vi.clearAllMocks(); });
+afterEach(() => { store.set(sessionKanbanActiveAtom, false); store.set(sessionRegistryAtom, new Map()); store.set(worktreeRecordsAtom, new Map()); store.set(activeWorkspacePathAtom, null); store.set(prListAtom, []); vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
 it('resolves session branches in one existing worktree batch without mounting the sidebar', async () => {
   const invoke = vi.fn().mockResolvedValue({ success: true, worktrees: { wt: { id: 'wt', name: 'work', path: '/wt', branch: 'codex/test', isPinned: false } } });
@@ -23,6 +24,9 @@ it('resolves session branches in one existing worktree batch without mounting th
   const stop = initWorktreeListeners();
   await vi.waitFor(() => expect(store.get(worktreeRecordsAtom).get('wt')?.branch).toBe('codex/test'));
   expect(invoke).toHaveBeenCalledExactlyOnceWith('worktree:get-batch', ['wt']);
+  expect(api.loadGit).not.toHaveBeenCalled();
+  store.set(sessionKanbanActiveAtom, true);
+  await vi.waitFor(() => expect(api.loadGit).toHaveBeenCalledExactlyOnceWith('wt', '/wt'));
   stop();
 });
 
@@ -34,6 +38,7 @@ it('loads all PR states for the board and ignores a result from a project the us
   api.list.mockReturnValue(new Promise(done => { resolve = done; }));
   const stop = initPullRequestListeners();
   await vi.waitFor(() => expect(api.list).toHaveBeenCalledWith('/repo', 'owner/repo', { state: 'all' }));
+  expect(api.startPolling).toHaveBeenCalledWith('/repo', '/repo', 'owner/repo');
   store.set(activeWorkspacePathAtom, null);
   resolve([{ id: 'old', workspaceId: '/repo', state: 'merged' }]);
   await Promise.resolve();

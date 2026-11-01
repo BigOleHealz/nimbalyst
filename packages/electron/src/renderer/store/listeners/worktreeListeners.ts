@@ -24,7 +24,8 @@ import {
   setWorktreeRecordAtom,
   type WorktreeRecord,
 } from '../atoms/worktrees';
-import { sessionRegistryAtom } from '../atoms/sessions';
+import { sessionRegistryAtom, sessionKanbanActiveAtom } from '../atoms/sessions';
+import { loadInitialWorktreeState } from './fileStateListeners';
 
 let initialized = false;
 
@@ -39,6 +40,26 @@ export function initWorktreeListeners(): () => void {
   let pinnedVersion = 0;
   let disposed = false;
   const pending = new Set<string>();
+  const loadedGitPaths = new Set<string>();
+  // Resolve Git lazily on the board, with bounded work instead of spawning a
+  // status process for every historical worktree during application startup.
+  const refreshBoardGit = async () => {
+    if (!store.get(sessionKanbanActiveAtom)) return;
+    const ids = new Set([...store.get(sessionRegistryAtom).values()].filter(s => !s.isArchived && s.worktreeId).map(s => s.worktreeId!));
+    const records = [...ids].flatMap(id => {
+      const record = store.get(worktreeRecordsAtom).get(id);
+      if (!record || loadedGitPaths.has(record.path)) return [];
+      loadedGitPaths.add(record.path);
+      return [record];
+    });
+    const worker = async () => {
+      while (!disposed && records.length) {
+        const record = records.shift()!;
+        await loadInitialWorktreeState(record.id, record.path);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(3, records.length) }, worker));
+  };
   const resolveSessionWorktrees = async () => {
     const ids = [...new Set([...store.get(sessionRegistryAtom).values()].flatMap(s => s.worktreeId ? [s.worktreeId] : []))]
       .filter(id => !pending.has(id) && !store.get(worktreeRecordsAtom).get(id)?.branch);
@@ -50,13 +71,16 @@ export function initWorktreeListeners(): () => void {
         for (const record of Object.values(result.worktrees ?? {}) as WorktreeRecord[]) {
           store.set(setWorktreeRecordAtom, record);
         }
+        void refreshBoardGit();
       }
     } catch (error) {
       console.error('[worktreeListeners] Failed to resolve session branches:', error);
     } finally { ids.forEach(id => pending.delete(id)); }
   };
   void resolveSessionWorktrees();
-  cleanups.push(store.sub(sessionRegistryAtom, () => { void resolveSessionWorktrees(); }));
+  void refreshBoardGit();
+  cleanups.push(store.sub(sessionRegistryAtom, () => { void resolveSessionWorktrees(); void refreshBoardGit(); }));
+  cleanups.push(store.sub(sessionKanbanActiveAtom, () => { void refreshBoardGit(); }));
 
   const u1 = window.electronAPI?.on?.(
     'worktree:display-name-updated',
