@@ -1,0 +1,5 @@
+{
+  "git.autoRepositoryDetection": true,
+  "git.detectWorktrees": true,
+  "git.showCursorWorktrees": true
+}

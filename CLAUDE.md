@@ -42,6 +42,7 @@ Guidance for agents working in this repository. Each rule is one line; the linke
 
 ### Parallel sessions
 
+- Every new coding agent/session uses a dedicated Git worktree by default, including delegated agents. Before editing, create a unique `codex/<task>-<unique-id>` branch from the current HEAD under `worktrees/<task>-<unique-id>/` using `git worktree add -b codex/<task>-<unique-id> worktrees/<task>-<unique-id> HEAD`, then work and verify there. Reuse a dedicated worktree already assigned by the IDE/orchestrator or owned by the resumed session; do not nest worktrees. Use the primary checkout or share a worktree only when the user explicitly requests it. Preserve other sessions' uncommitted changes and retain worktrees unless removal is authorized. Cursor discovery is enabled in `.vscode/settings.json`; see [AGENTS.md](./AGENTS.md).
 - Slices own disjoint file sets, including `CHANGELOG.md`, `package.json`, barrels, registries, and `docs/FEATURE_INVENTORY.md`. If two slices need one file, they are one slice. No whole-file `Write` on a file you did not create. See [parallel-sessions](./.claude/rules/parallel-sessions.md).
 
 ### Code conventions
