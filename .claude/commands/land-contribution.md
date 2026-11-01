@@ -43,7 +43,7 @@ An explicit invocation, or approval of the landing handoff from `/review-contrib
 
 ## 3. Validate
 
-Set phase to `validating`. Review `git diff origin/main..HEAD` for scope, accidental reversions, and unresolved blockers. Run focused tests for the changed behavior and the pre-push gate (`pnpm typecheck && pnpm test:prepush`). Read recorded failures (`pnpm run test:last`) instead of rerunning blindly. Report any manual-verification gap explicitly.
+Set phase to `validating`. Review `git diff origin/main..HEAD` for scope, accidental reversions, and unresolved blockers. Run focused tests for the changed behavior and check the PR's CI results. The pre-push hook performs quick integrity checks; full local validation is optional unless needed to investigate a failure (see [PREPUSH_AND_CI.md](../../docs/PREPUSH_AND_CI.md)). Read recorded failures (`pnpm run test:last`) instead of rerunning blindly. Report any manual-verification gap explicitly.
 
 Do not push with unresolved blockers or a failing gate. If the gate fails on something unrelated to the contribution, stop and report it; do not skip the hook.
 

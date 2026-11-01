@@ -15,7 +15,7 @@ Guidance for agents working in this repository. Each rule is one line; the linke
 ### Tests and the gate
 
 - Every runtime behavior change ships with a unit test. For sync, main-process init, IPC, and restart-to-verify bugs the failing test comes first; see [end-to-end-verification](./.claude/rules/end-to-end-verification.md).
-- The gate is `pnpm typecheck && pnpm test:prepush`. The orchestrating session runs it once per batch; slices never run it. The pre-push hook runs it too.
+- Run focused checks for changed behavior locally. The pre-push hook runs quick integrity checks; full builds, typechecks, scanner tests, Sandbox checks, and the unit suite run in CI for PRs and main. Run the full local validation only when requested or needed to investigate a failure; see [PREPUSH_AND_CI.md](./docs/PREPUSH_AND_CI.md).
 - Never run the suite twice to see what failed, and never pipe it through `tail`. Read `pnpm run test:last`.
 - A failing test on main is yours to fix. "Pre-existing" is not a reason to push.
 - Tests catch what a reader cannot see: no presentation-only tests, no asserting on component source text, no injecting CSS and asserting on it, no `expect(getBy*()).toBeTruthy()`.

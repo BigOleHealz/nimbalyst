@@ -1,6 +1,6 @@
 import { packageManager } from './package-manager.mjs';
 
-// Shared by the reporter, pre-push reuse policy, and CI runner. An invocation
+// Shared by the reporter, local full validation, and CI runner. An invocation
 // with extra filters, projects, shards, or retries is never a full-suite result.
 export const fullSuiteArgs = ['--run', '--reporter=dot', '--reporter=./scripts/vitest-run-log-reporter.mjs', '--silent=passed-only'];
 export const fullSuiteInvocation = fullSuiteArgs.join(' ');

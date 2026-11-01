@@ -113,8 +113,8 @@ jobs:
       # docsUiStoreBinding.test.tsx imports the built bundle entry
       # (@nimbalyst/collab-bundle/docs-ui -> dist/docs-ui.js) on purpose: it
       # gates the store binding that only exists once the bundle is built. The
-      # pre-push hook builds it inside typecheck:prepush before vitest; CI has
-      # to build it explicitly or the import cannot resolve. This step also
+      # full local validation builds it inside typecheck:prepush before vitest;
+      # CI builds it explicitly so the import resolves. This step also
       # enforces the bundle size budgets (check-collab-bundle.mjs), which no
       # longer run inside the collab-bundle typecheck. Not cached: the
       # bundle pulls from runtime, collab-client, tracker-core, and protocol,
