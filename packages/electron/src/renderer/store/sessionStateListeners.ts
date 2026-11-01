@@ -52,6 +52,7 @@ import {
 } from './atoms/sessions';
 import { applySessionApprovalSnapshotAtom, clearSessionApprovalsAtom } from './atoms/sessionApproval';
 import { observeSessionKanbanStatus } from './atoms/sessionKanban';
+import { sessionSuccessfulCompletionAtom } from './atoms/sessionCompletionActions';
 import type { SessionApprovalSnapshot } from '../../shared/sessionApproval';
 import { windowFocusedAtom } from './atoms/windowFocus';
 import { workstreamActiveChildAtom, workstreamStateAtom } from './atoms/workstreamState';
@@ -332,10 +333,14 @@ export function initSessionStateListeners(): () => void {
     // had to click Cancel to clear it. arcenik86 reported exactly this
     // on extended-thinking sessions where slow turns increase the chance
     // of the race. See #116.
+    const turnBoundaryTimestamp = typeof event.timestamp === 'number' ? event.timestamp : Date.now();
     const isTerminalEvent =
       type === 'session:completed' ||
       type === 'session:error' ||
       type === 'session:interrupted';
+    if (isTerminalEvent || type === 'session:started' || type === 'session:streaming') {
+      store.set(sessionSuccessfulCompletionAtom(sessionId), type === 'session:completed' ? turnBoundaryTimestamp : null);
+    }
     if (isTerminalEvent) {
       store.set(clearSessionApprovalsAtom, sessionId);
       // A session that has stopped is not editing anything, whether it stopped
@@ -372,7 +377,6 @@ export function initSessionStateListeners(): () => void {
     }
 
     const resolvedWorkspacePath = ownedWorkspacePath;
-    const turnBoundaryTimestamp = typeof event.timestamp === 'number' ? event.timestamp : Date.now();
 
     switch (type) {
       // Session is actively running
@@ -1180,6 +1184,7 @@ export function initSessionStateListeners(): () => void {
     // already terminalized in the transcript. See #1549.
     cleanupAskUserQuestionCancelled = window.electronAPI.on('ai:askUserQuestionCancelled', handleAskUserQuestionResolved);
     cleanupSessionCancelled = window.electronAPI.on('ai:sessionCancelled', (data: { sessionId: string }) => {
+      store.set(sessionSuccessfulCompletionAtom(data.sessionId), null);
       store.set(clearSessionApprovalsAtom, data.sessionId);
       handleAskUserQuestionResolved(data);
     });
