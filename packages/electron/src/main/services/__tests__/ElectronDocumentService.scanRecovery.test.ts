@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Scan-cap recovery (NIM-879).
  *
@@ -54,7 +55,7 @@ afterEach(async () => {
 });
 
 describe('scan recovery (NIM-879)', () => {
-  it('reconciles an explicitly team-shared plan discovered during a cold scan', async () => {
+  it('does not create or publish a tracker item from a cold-discovered file', async () => {
     const relativePath = 'nimbalyst-local/plans/shared-plan.md';
     const fullPath = path.join(tempDir, relativePath);
     await fs.mkdir(path.dirname(fullPath), { recursive: true });
@@ -77,12 +78,7 @@ describe('scan recovery (NIM-879)', () => {
       lastModified: new Date(),
     }]);
 
-    expect(captureSpy).toHaveBeenCalledWith(
-      relativePath,
-      expect.objectContaining({
-        share: { status: 'team', body: 'team' },
-      }),
-    );
+    expect(captureSpy).not.toHaveBeenCalled();
   });
 
   it('projects a nested plan file into the tracker metadata list', async () => {
@@ -130,6 +126,8 @@ describe('scan recovery (NIM-879)', () => {
   it('schedules an extended-budget completion pass when a scan stops early', async () => {
     vi.useFakeTimers();
     service = new ElectronDocumentService(tempDir);
+    const trackerListener = vi.fn();
+    service.watchTrackerItems(trackerListener);
 
     // Simulate a default-budget scan that truncated, then a complete extended pass.
     const budgets: number[] = [];
@@ -153,6 +151,7 @@ describe('scan recovery (NIM-879)', () => {
     expect(budgets).toContain(ElectronDocumentService['EXTENDED_SCAN_TIME_MS']);
     expect((service as any).lastScanStoppedEarly).toBe(false);
     expect((service as any).extendedScanScheduled).toBe(false);
+    expect(trackerListener).not.toHaveBeenCalled();
 
     scanSpy.mockRestore();
     vi.useRealTimers();

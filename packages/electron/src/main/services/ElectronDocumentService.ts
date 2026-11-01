@@ -576,7 +576,7 @@ export class ElectronDocumentService implements DocumentService {
    * default-budget scan stopped early. Re-running with the SAME budget can't
    * progress (the depth-first walk re-covers the same prefix), so the completion
    * pass needs a larger budget. The scan yields the event loop, so it never
-   * freezes the UI. After it finishes, watchers + tracker consumers refresh.
+   * freezes the UI. After it finishes, document metadata watchers refresh.
    */
   private scheduleExtendedScanIfNeeded(): void {
     if (!this.lastScanStoppedEarly || this.extendedScanScheduled) return;
@@ -590,15 +590,6 @@ export class ElectronDocumentService implements DocumentService {
       }
       try {
         await this.refreshDocuments(ElectronDocumentService.EXTENDED_SCAN_TIME_MS, true);
-        // Surface the now-complete tracker set so the Plans/tracker views update.
-        try {
-          const items = await this.listFullDocumentTrackerItemsFromMetadata();
-          if (items.length > 0) {
-            this.trackerItemWatchers.forEach(cb => cb({
-              added: [], updated: items, removed: [], timestamp: new Date(),
-            }));
-          }
-        } catch { /* best-effort UI refresh */ }
       } finally {
         this.extendedScanScheduled = false;
       }
@@ -714,18 +705,8 @@ export class ElectronDocumentService implements DocumentService {
               updated.push(metadata);
             }
 
-            // Capture full-document tracker status transitions from a DIRECT
-            // in-session frontmatter edit (the normal way a plan/decision moves
-            // through the system). During a cold-open scan, also reconcile files
-            // that explicitly request team sharing. Unshared files still skip the
-            // DB entirely, preserving the NIM-875 protection against a per-file
-            // upsert storm while ensuring shared plans cannot remain local until
-            // somebody toggles sharing off and back on (NIM-2092).
-            const coldDiscoveredSharedTracker = !oldDoc && !!data &&
-              isTrackerItemPublished(resolveFullDocumentFrontmatter(data)?.trackerData, true);
-            if ((oldDoc || coldDiscoveredSharedTracker) && data) {
-              await this.captureFrontmatterTrackerTransition(newDoc.path, data);
-            }
+            // File discovery updates document metadata only. Tracker items are
+            // created explicitly through the UI, agent tools, or import.
           } else {
             // Frontmatter didn't change, but file mtime did - update mtime in cache
             this.fileStateCache.set(newDoc.path, {
@@ -734,10 +715,6 @@ export class ElectronDocumentService implements DocumentService {
               hash: hash || undefined
             });
           }
-
-          // Update tracker items cache whenever file content changes (mtime changed)
-          // This only runs for files that actually changed, not all files
-          await this.updateTrackerItemsCache(newDoc.path);
         } catch (error) {
           console.error(`[DocumentService] Failed to extract metadata for ${newDoc.path}:`, error);
         }
@@ -1232,10 +1209,6 @@ export class ElectronDocumentService implements DocumentService {
 
         this.metadataWatchers.forEach(callback => callback(changeEvent));
       }
-
-      // Also update tracker items for markdown files
-      // This ensures inline tracker items (#bug, #task, etc.) are kept in sync
-      await this.updateTrackerItemsCache(relativePath);
     } catch (error) {
       console.error(`[DocumentService] Failed to refresh metadata for ${relativePath}:`, error);
     }
@@ -1379,44 +1352,15 @@ export class ElectronDocumentService implements DocumentService {
       `SELECT * FROM tracker_items WHERE workspace = $1 AND deleted_at IS NULL ORDER BY kanban_sort_order ASC NULLS LAST, last_indexed DESC`,
       [this.workspacePath]
     );
-    await this.assignLocalKeysFrom(result.rows);
-    const dbItems = result.rows.map(row => this.rowToTrackerItem(row));
-    const metadataItems = await this.listFullDocumentTrackerItemsFromMetadata();
-
-    const merged = new Map<string, TrackerItem>();
-    for (const item of metadataItems) {
-      merged.set(item.id, item);
-    }
-    for (const item of dbItems) {
-      const existing = merged.get(item.id);
-      if (existing && item.source === 'frontmatter') {
-        merged.set(item.id, {
-          ...item,
-          title: existing.title,
-          description: existing.description,
-          status: existing.status,
-          priority: existing.priority,
-          owner: existing.owner,
-          module: existing.module,
-          tags: existing.tags,
-          created: existing.created,
-          updated: existing.updated,
-          dueDate: existing.dueDate,
-          progress: existing.progress,
-          lastIndexed: existing.lastIndexed,
-          source: existing.source,
-          sourceRef: existing.sourceRef,
-          customFields: {
-            ...(existing.customFields || {}),
-            ...(item.customFields || {}),
-          },
-        });
-      } else {
-        merged.set(item.id, item);
-      }
-    }
-
-    return Array.from(merged.values());
+    // Retain old file projections in storage so existing links still resolve,
+    // but don't populate the tracker with automatically discovered file cards.
+    // Published/promoted items are native; explicit file imports use `import`.
+    const rows = result.rows.filter(row => {
+      const source = row.source || (row.document_path ? 'inline' : 'native');
+      return source !== 'frontmatter' && source !== 'inline';
+    });
+    await this.assignLocalKeysFrom(rows);
+    return rows.map(row => this.rowToTrackerItem(row));
   }
 
   private async resolveTrackerRowForPublicId(
@@ -2827,7 +2771,7 @@ export class ElectronDocumentService implements DocumentService {
     // Check for duplicate by source_ref
     if (options?.skipDuplicates !== false) {
       const existing = await database.query<any>(
-        `SELECT id FROM tracker_items WHERE workspace = $1 AND source = 'frontmatter' AND source_ref = $2`,
+        `SELECT id FROM tracker_items WHERE workspace = $1 AND source = 'import' AND source_ref = $2`,
         [this.workspacePath, relativePath]
       );
       if (existing.rows.length > 0) {
@@ -2883,10 +2827,7 @@ export class ElectronDocumentService implements DocumentService {
 
     const contentJson = markdownBody ? JSON.stringify(markdownBody) : null;
 
-    // NIM-1559: don't bump `updated` on a no-op re-import. A cold-open scan
-    // re-imports every tracker markdown file; without this guard each one
-    // re-stamps `updated = NOW()` even when nothing changed (and a shared
-    // `fm:` item then re-syncs that bogus timestamp to the whole org). Read
+    // Don't bump `updated` on a no-op explicit re-import. Read
     // the existing projection row and only advance `updated` when a projected
     // field or the body actually changed; otherwise refresh `last_indexed`
     // (the scan timestamp) alone.
@@ -2904,7 +2845,7 @@ export class ElectronDocumentService implements DocumentService {
 
     if (hadRow && !changed) {
       await database.query(
-        `UPDATE tracker_items SET last_indexed = NOW() WHERE id = $1`,
+        `UPDATE tracker_items SET source = 'import', last_indexed = NOW() WHERE id = $1`,
         [id]
       );
     } else {
@@ -2913,9 +2854,9 @@ export class ElectronDocumentService implements DocumentService {
           id, type, data, workspace, document_path, line_number,
           created, updated, last_indexed, sync_status,
           content, archived, source, source_ref
-        ) VALUES ($1, $2, $3, $4, $6, NULL, NOW(), NOW(), NOW(), 'local', $5, FALSE, 'frontmatter', $6)
+        ) VALUES ($1, $2, $3, $4, $6, NULL, NOW(), NOW(), NOW(), 'local', $5, FALSE, 'import', $6)
         ON CONFLICT (id) DO UPDATE SET
-          data = tracker_items.data || $3, content = $5, source = 'frontmatter', source_ref = $6, document_path = $6, updated = NOW(), last_indexed = NOW()`,
+          data = tracker_items.data || $3, content = $5, source = 'import', source_ref = $6, document_path = $6, updated = NOW(), last_indexed = NOW()`,
         [id, trackerType, JSON.stringify(data), this.workspacePath, contentJson, relativePath]
       );
     }
