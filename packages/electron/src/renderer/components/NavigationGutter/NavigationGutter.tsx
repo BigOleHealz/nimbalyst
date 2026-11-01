@@ -97,7 +97,7 @@ interface NavigationGutterProps {
   onExtensionBottomPanelChange?: (panelId: string | null) => void;
 }
 
-// Shared nav-button styling. `active` swaps the filled/primary look.
+// Shared nav-button styling. Active modes use a quiet accent tint.
 /**
  * Org mode is unfinished, so its gutter button is hidden. The mode itself, its
  * shortcut and the menu item still work. Flip this to bring the button back.
@@ -107,7 +107,7 @@ export const ORG_MODE_GUTTER_BUTTON_ENABLED = false;
 const NAV_BTN_BASE =
   'nav-button group relative w-9 h-9 flex items-center justify-center border-none rounded-md cursor-pointer transition-all duration-150 p-0 active:scale-95 focus-visible:outline-2 focus-visible:outline-[var(--nim-primary)] focus-visible:outline-offset-2';
 const navBtnClass = (active: boolean): string =>
-  `${NAV_BTN_BASE} ${active ? 'active bg-nim-primary text-nim-on-primary hover:bg-nim-primary-hover' : 'bg-transparent text-nim-muted hover:bg-nim-tertiary hover:text-nim'}`;
+  `${NAV_BTN_BASE} ${active ? 'active bg-nim-selected text-nim hover:bg-nim-active' : 'bg-transparent text-nim-muted hover:bg-nim-tertiary hover:text-nim'}`;
 
 export const NavigationGutter: React.FC<NavigationGutterProps> = ({
   contentMode,

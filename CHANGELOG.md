@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 <!-- Changes to existing functionality go here -->
-- Refresh the light and dark themes with softer surfaces, clearer text, quieter borders, and rounder controls while preserving the layout.
+- Refresh the light and dark themes with Linear-inspired neutral surfaces, violet accents, finer borders, compact controls, and quieter navigation while preserving the layout.
 - Session cards now follow agent activity through Backlog, Running, Awaiting Input, Review, and Done, with manual placement retained until status changes and linked Jira, branch, and activity details on each card.
 
 ### Fixed

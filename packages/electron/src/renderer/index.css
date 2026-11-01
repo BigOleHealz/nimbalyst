@@ -41,9 +41,7 @@ body {
   overflow: clip;
   margin: 0;
   padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   /* The canvas every surface sits on. Without it the window falls through to
@@ -57,6 +55,53 @@ body {
 #root {
   height: 100vh;
   overflow: hidden;
+}
+
+/* App chrome shares a compact, quiet hierarchy. Keep editor typography and
+   theme-contributed colors under their existing owners. */
+.window-top-bar,
+.navigation-gutter,
+.workspace-sidebar,
+.session-history,
+.session-tab-bar,
+.session-kanban-board,
+.tracker-kanban-board {
+  letter-spacing: -0.01em;
+}
+
+.navigation-gutter .nav-button.active {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nim-primary) 25%, transparent);
+}
+
+.navigation-gutter .nav-button.active::before {
+  content: '';
+  position: absolute;
+  left: -6px;
+  width: 2px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--nim-primary);
+}
+
+.session-history-section-label,
+.session-history .collapsible-group-title,
+.window-top-bar__menu-heading,
+.window-top-bar__create-heading {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.session-history-section-label {
+  color: var(--nim-text-muted);
+  font-weight: 500;
+}
+
+.session-tab {
+  border-radius: 6px;
+}
+
+.session-tab.active {
+  box-shadow: inset 0 0 0 1px var(--nim-border);
 }
 
 /* Menu-bar sessions panel window (`?mode=tray-panel`). The BrowserWindow is
