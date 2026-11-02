@@ -282,6 +282,7 @@ export class CodexSource implements ExternalSessionSource {
       maxReadBytes: 4096,
     });
     const meta = head.entries[0]?.value;
+    if (meta?.nimbalystExport?.version === 1) return null;
     if (
       meta?.type !== "session_meta" ||
       typeof meta.payload?.id !== "string" ||

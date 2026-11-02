@@ -1,16 +1,20 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const h = vi.hoisted(() => ({
-  handlers: new Map<string, Function>(),
+  handlers: new Map<string, (...args: any[]) => unknown>(),
   scan: vi.fn(),
   sync: vi.fn(),
+  export: vi.fn(),
 }));
 vi.mock("../../utils/ipcRegistry", () => ({
-  safeHandle: (key: string, handler: Function) => h.handlers.set(key, handler),
+  safeHandle: (key: string, handler: (...args: any[]) => unknown) => h.handlers.set(key, handler),
   removeHandler: (key: string) => h.handlers.delete(key),
 }));
 vi.mock("../../services/externalSessions/ExternalSessionService", () => ({
   getExternalSessionService: () => ({ scan: h.scan, sync: h.sync }),
+}));
+vi.mock("../../services/externalSessions/desktopSessionSync", () => ({
+  getDesktopSessionSyncService: () => ({ sync: h.export }),
 }));
 vi.mock("../../services/analytics/AnalyticsService", () => ({
   AnalyticsService: { getInstance: () => ({ sendEvent: vi.fn() }) },
@@ -30,6 +34,14 @@ beforeEach(() => {
   initializeClaudeCodeSessionHandlers();
 });
 describe("External session IPC", () => {
+  it('routes outbound sync through main and reports failures', async () => {
+    const handler = h.handlers.get('external-sessions:export-to-desktop');
+    expect(handler).toBeTypeOf('function');
+    h.export.mockResolvedValue({ codex: { synced: 2 }, claude: { unavailable: 2 }, errors: [] });
+    expect(await handler!({})).toMatchObject({ success: true, result: { codex: { synced: 2 } } });
+    h.export.mockRejectedValue(new Error('Disk full'));
+    expect(await handler!({})).toMatchObject({ success: false, error: 'Disk full' });
+  });
   it("routes generic scan and manual sync to the shared service without an opt-in requirement", async () => {
     h.scan.mockResolvedValue([selection]);
     h.sync.mockResolvedValue([

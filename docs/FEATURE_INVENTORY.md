@@ -91,6 +91,7 @@ Twelve built-in provider lanes, plus any agent an extension contributes. Every l
 - Shareable session links (E2E encrypted, 1/7/30 day expiry)
 - Live import of external Claude Code and Codex CLI sessions — opt in with **Follow external agent sessions** under **Settings → Agent Features** (OFF by default); follow sessions in open workspaces and their worktrees into the session list and open transcripts, including later title updates while preserving names set in Nimbalyst
 - Manual import of earlier Claude Code and Codex CLI sessions remains available with live following OFF
+- Local desktop session sync — opt in under **Settings → Agent Features → Sync to local Codex and Claude**, or use **Sync projects and sessions now**. Copies conversation text from all providers into existing local Codex and Claude data with project/worktree paths and session names; idle sessions sync every minute. Codex projects are registered through its native app-server API; Claude Desktop discovers copies through `/resume` in its Code tab. Copies stop updating after a desktop continuation or a source-history rewrite; tool state, attachments, system prompts and private reasoning are not transferred. Missing local data directories are left untouched
 - Session draft persistence (unsent input preserved)
 - Read/unread indicators, with mark-all-read actions for a workstream and the macOS menu bar sessions panel
 - Auto-continue sessions after app restart

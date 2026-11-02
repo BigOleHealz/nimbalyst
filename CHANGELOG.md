@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 <!-- New features go here -->
+- Sync conversation copies from all providers to local Codex and Claude desktop apps, preserving project folders and session names, with automatic updates and a manual sync action.
 - Choose to commit, commit and push, or commit, push and open a pull request after a coding task finishes, with an option to defer.
 - See token usage, elapsed session time, reported cost, and session counts on completed cards and tickets, with clear labels for missing or partial metrics.
 - Create linked subtasks with independent statuses and optional agent sessions, and filter task boards by parent task.

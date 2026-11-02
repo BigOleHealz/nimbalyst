@@ -63,6 +63,7 @@ import { registerClaudeCodeHandlers } from './ipc/ClaudeCodeHandlers';
 import { registerCodexAuthHandlers } from './ipc/CodexAuthHandlers';
 import { initializeClaudeCodeSessionHandlers } from './ipc/ClaudeCodeSessionHandlers';
 import { getExternalSessionService, stopExternalSessionService } from './services/externalSessions/ExternalSessionService';
+import { initializeDesktopSessionSync, stopDesktopSessionSync } from './services/externalSessions/desktopSessionSync';
 import { registerNotificationHandlers } from './ipc/NotificationHandlers';
 import { registerPermissionHandlers } from './ipc/PermissionHandlers';
 import { registerGitStatusHandlers } from './ipc/GitStatusHandlers';
@@ -1742,6 +1743,7 @@ app.whenReady().then(async () => {
     registerCodexAuthHandlers();
     initializeClaudeCodeSessionHandlers();  // Initialize Claude Code session import
     getExternalSessionService().initialize(); // Explicit opt-in only; waits for first usable before watching.
+    initializeDesktopSessionSync();
     registerAnalyticsHandlers();
     registerFeatureUsageHandlers();
     registerNotificationHandlers();
@@ -3279,7 +3281,7 @@ const shutdownForRestart = createRestartShutdown({
         if (sessionSaveInterval) clearInterval(sessionSaveInterval);
         sessionSaveInterval = null;
     },
-    stopExternalSessions: stopExternalSessionService,
+    stopExternalSessions: async () => { await Promise.all([stopExternalSessionService(), stopDesktopSessionSync()]); },
     saveSessionState,
     flushPendingBackups: flushPendingCollabBackups,
     quit: () => {
@@ -3312,6 +3314,7 @@ app.on('before-quit', async (event) => {
     // If auto-updater is updating, don't prevent quit
     if (AutoUpdaterService.isUpdatingApp()) {
         void stopExternalSessionService(); // Revoke immediately, including the updater's early-exit path.
+        void stopDesktopSessionSync();
         console.log('[QUIT] Auto-updater is updating, allowing quit');
         return;
     }
@@ -3384,6 +3387,7 @@ app.on('before-quit', async (event) => {
 
     // Revoke source readers and drain their commits before database shutdown.
     await stopExternalSessionService();
+    await stopDesktopSessionSync();
 
     // Live collaboration backups are debounced. Flush the latest decrypted
     // snapshots before renderer teardown so a quick quit cannot drop them.

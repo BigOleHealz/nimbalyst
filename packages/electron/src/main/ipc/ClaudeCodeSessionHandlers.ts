@@ -6,6 +6,7 @@ import * as path from "path";
 import { logger } from "../utils/logger";
 import { safeHandle, removeHandler } from "../utils/ipcRegistry";
 import { getExternalSessionService } from "../services/externalSessions/ExternalSessionService";
+import { getDesktopSessionSyncService } from "../services/externalSessions/desktopSessionSync";
 import { AnalyticsService } from "../services/analytics/AnalyticsService";
 import type {
   ExternalSessionProviderId,
@@ -75,6 +76,10 @@ async function sync(
 
 /** Both UI generations share source resolution, ownership guards and the durable writer. */
 export function initializeClaudeCodeSessionHandlers() {
+  safeHandle('external-sessions:export-to-desktop', async () => {
+    try { return { success: true, result: await getDesktopSessionSyncService().sync() }; }
+    catch (error) { return { success: false, error: errorText(error) }; }
+  });
   safeHandle(
     "external-sessions:scan",
     async (
@@ -197,6 +202,7 @@ export function initializeClaudeCodeSessionHandlers() {
 }
 export function cleanupClaudeCodeSessionHandlers() {
   for (const channel of [
+    'external-sessions:export-to-desktop',
     "claude-code:scan-sessions",
     "claude-code:sync-sessions",
     "external-sessions:scan",
