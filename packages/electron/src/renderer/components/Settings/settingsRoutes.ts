@@ -2,6 +2,7 @@ export type SettingsScope = 'application' | 'account' | 'project';
 
 export type ApplicationSettingsCategory =
   | 'provider-credentials'
+  | 'linear'
   | 'notifications'
   | 'themes'
   | 'voice-mode'
@@ -139,6 +140,7 @@ const directChatProvidersVisible = ({ showDirectChatProviders }: SettingsAvailab
 const teamsVisible = ({ teamsConfigured }: SettingsAvailabilityContext) => teamsConfigured;
 
 const builtinSettingsRouteDefinitions: readonly Omit<BuiltinSettingsRoute, 'source'>[] = [
+  { id: 'linear', scope: 'application', group: 'Integrations', label: 'Linear', icon: 'cloud_download' },
   { id: 'notifications', scope: 'application', group: 'Application', label: 'Notifications', icon: 'notifications' },
   { id: 'themes', scope: 'application', group: 'Application', label: 'Themes', icon: 'palette' },
   { id: 'voice-mode', scope: 'application', group: 'Application', label: 'Voice Mode', icon: 'mic', isAlpha: true },

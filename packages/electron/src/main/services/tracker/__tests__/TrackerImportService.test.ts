@@ -46,11 +46,11 @@ const external = {
 };
 
 describe('TrackerImportService', () => {
-  it('keeps Jira imports in separate projects distinct while deduplicating within each project', async () => {
+  it.each(['jira', 'linear'])('keeps %s imports in separate projects distinct while deduplicating within each project', async providerId => {
     mockRegistry.findLocalIdByUrn.mockResolvedValue(null);
-    const snapshot = { primaryType: 'task', title: 'APP-1 First', body: 'Details', external: { ...external, providerId: 'jira', externalId: 'APP-1', urn: 'jira://team.atlassian.net/APP-1' } };
+    const snapshot = { primaryType: 'task', title: 'APP-1 First', body: 'Details', external: { ...external, providerId, externalId: 'APP-1', urn: `${providerId}://team/APP-1` } };
     const service = getTrackerImportService();
-    const args = { workspacePath: '/first', providerId: 'jira', externalId: 'APP-1' };
+    const args = { workspacePath: '/first', providerId, externalId: 'APP-1' };
     const first = await service.importSnapshot(args, snapshot);
     const second = await service.importSnapshot({ ...args, workspacePath: '/second' }, snapshot);
     expect(first.id).not.toBe(second.id);
