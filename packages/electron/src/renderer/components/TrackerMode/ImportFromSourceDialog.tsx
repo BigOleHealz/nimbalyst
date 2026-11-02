@@ -55,7 +55,8 @@ export const ImportFromSourceDialog: React.FC<ImportFromSourceDialogProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
-  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [nextCursor, setNextCursor] = useState<string>();
+  const requestRef = useRef(0);
 
   // Load bindings once.
   useEffect(() => {
@@ -81,7 +82,8 @@ export const ImportFromSourceDialog: React.FC<ImportFromSourceDialogProps> = ({
   }, [providerId, workspacePath]);
 
   const loadItems = useCallback(
-    async (binding: string, state: StateFilter, searchText: string) => {
+    async (binding: string, state: StateFilter, searchText: string, cursor?: string) => {
+      const request = ++requestRef.current;
       setLoading(true);
       setError(null);
       try {
@@ -89,38 +91,39 @@ export const ImportFromSourceDialog: React.FC<ImportFromSourceDialogProps> = ({
           workspacePath,
           providerId,
           binding: { id: binding, label: binding },
-          filters: { state, search: searchText || undefined, limit: 50 },
-        })) as { items?: ImporterListEntry[] };
-        setItems(Array.isArray(page?.items) ? page.items : []);
+          filters: { state, search: searchText || undefined, limit: 50, cursor },
+        })) as { items?: ImporterListEntry[]; nextCursor?: string };
+        if (request !== requestRef.current) return;
+        const incoming = Array.isArray(page?.items) ? page.items : [];
+        setItems(previous => cursor ? [...previous, ...incoming.filter(item => !previous.some(existing => existing.externalId === item.externalId))] : incoming);
+        setNextCursor(page.nextCursor === cursor ? undefined : page.nextCursor);
       } catch (e) {
-        setItems([]);
+        if (request !== requestRef.current) return;
+        if (!cursor) setItems([]);
         setError(e instanceof Error ? e.message : String(e));
       } finally {
-        setLoading(false);
+        if (request === requestRef.current) setLoading(false);
       }
     },
     [providerId, workspacePath]
   );
 
-  // Reload items when binding or state changes.
+  // Invalidate in-flight pages immediately; search requests are debounced.
   useEffect(() => {
+    requestRef.current++;
+    setItems([]);
+    setSelected(new Set());
+    setNextCursor(undefined);
     if (!bindingId) return;
-    void loadItems(bindingId, stateFilter, search);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bindingId, stateFilter]);
-
-  // Debounced reload on search.
-  useEffect(() => {
-    if (!bindingId) return;
-    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-    searchDebounceRef.current = setTimeout(() => {
+    setLoading(true);
+    const timer = setTimeout(() => {
       void loadItems(bindingId, stateFilter, search);
-    }, 300);
+    }, search ? 300 : 0);
     return () => {
-      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+      clearTimeout(timer);
+      requestRef.current++;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
+  }, [bindingId, stateFilter, search, loadItems]);
 
   const toggle = useCallback((externalId: string) => {
     setSelected((prev) => {
@@ -147,6 +150,7 @@ export const ImportFromSourceDialog: React.FC<ImportFromSourceDialogProps> = ({
     setError(null);
     let created = 0;
     let failed = 0;
+    let firstFailure: string | null = null;
     for (let i = 0; i < ids.length; i++) {
       try {
         const result = (await window.electronAPI.invoke('tracker:importer:import', {
@@ -159,7 +163,10 @@ export const ImportFromSourceDialog: React.FC<ImportFromSourceDialogProps> = ({
       } catch (e) {
         failed++;
         // Surface the first failure but keep going.
-        if (!error) setError(e instanceof Error ? e.message : String(e));
+        if (!firstFailure) {
+          firstFailure = e instanceof Error ? e.message : String(e);
+          setError(firstFailure);
+        }
       }
       setProgress({ done: i + 1, total: ids.length });
     }
@@ -168,14 +175,14 @@ export const ImportFromSourceDialog: React.FC<ImportFromSourceDialogProps> = ({
     if (failed === 0) {
       onClose();
     }
-  }, [items, selected, providerId, primaryType, workspacePath, onImported, onClose, error]);
+  }, [items, selected, providerId, primaryType, workspacePath, onImported, onClose]);
 
   const typeOptions = useMemo(() => importsAs ?? ['bug', 'task'], [importsAs]);
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40"
-      onClick={onClose}
+      className="import-from-source-dialog fixed inset-0 z-[100] flex items-center justify-center bg-black/40"
+      onClick={() => { if (!importing) onClose(); }}
       data-testid="import-from-source-dialog"
     >
       <div
@@ -190,6 +197,7 @@ export const ImportFromSourceDialog: React.FC<ImportFromSourceDialogProps> = ({
           <button
             className="p-1 rounded hover:bg-nim-tertiary text-nim-muted"
             onClick={onClose}
+            disabled={importing}
             title="Close"
           >
             <MaterialSymbol icon="close" size={18} />
@@ -202,6 +210,8 @@ export const ImportFromSourceDialog: React.FC<ImportFromSourceDialogProps> = ({
             <select
               className="text-xs bg-nim-secondary border border-nim rounded px-2 py-1 text-nim"
               value={bindingId ?? ''}
+              aria-label="Source project"
+              disabled={importing}
               onChange={(e) => setBindingId(e.target.value)}
             >
               {bindings.map((b) => (
@@ -217,6 +227,8 @@ export const ImportFromSourceDialog: React.FC<ImportFromSourceDialogProps> = ({
           <select
             className="text-xs bg-nim-secondary border border-nim rounded px-2 py-1 text-nim"
             value={stateFilter}
+            aria-label="Ticket state"
+            disabled={importing}
             onChange={(e) => setStateFilter(e.target.value as StateFilter)}
           >
             <option value="open">Open</option>
@@ -232,6 +244,7 @@ export const ImportFromSourceDialog: React.FC<ImportFromSourceDialogProps> = ({
             <input
               type="text"
               value={search}
+              disabled={importing}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search..."
               className="w-full pl-7 pr-2 py-1 text-xs bg-nim-secondary border border-nim rounded text-nim placeholder:text-nim-faint focus:outline-none focus:border-[var(--nim-primary)]"
@@ -242,6 +255,7 @@ export const ImportFromSourceDialog: React.FC<ImportFromSourceDialogProps> = ({
             <select
               className="text-xs bg-nim-secondary border border-nim rounded px-2 py-1 text-nim"
               value={primaryType}
+              disabled={importing}
               onChange={(e) => setPrimaryType(e.target.value)}
             >
               {typeOptions.map((t) => (
@@ -260,11 +274,11 @@ export const ImportFromSourceDialog: React.FC<ImportFromSourceDialogProps> = ({
           )}
           {bindings && bindings.length === 0 && !loading && (
             <div className="px-4 py-8 text-center text-sm text-nim-faint">
-              No {providerLabel} repositories found for this workspace.
-              <div className="text-xs mt-1">
+              No {providerLabel} sources found for this workspace.
+              {providerId === 'github-issues' ? <div className="text-xs mt-1">
                 Open a project whose git remote points at GitHub, and sign in with{' '}
                 <span className="font-mono">gh auth login</span>.
-              </div>
+              </div> : <div className="text-xs mt-1">Configure {providerLabel} in Settings and check your access.</div>}
             </div>
           )}
           {loading && (
@@ -276,7 +290,7 @@ export const ImportFromSourceDialog: React.FC<ImportFromSourceDialogProps> = ({
           {items.length > 0 && (
             <>
               <label className="flex items-center gap-2 px-4 py-1.5 border-b border-nim text-xs text-nim-muted sticky top-0 bg-nim">
-                <input type="checkbox" checked={allSelected} onChange={toggleAll} />
+                <input type="checkbox" checked={allSelected} onChange={toggleAll} disabled={importing || loading} />
                 Select all ({items.length})
               </label>
               {items.map((item) => (
@@ -288,6 +302,7 @@ export const ImportFromSourceDialog: React.FC<ImportFromSourceDialogProps> = ({
                     type="checkbox"
                     className="mt-0.5"
                     checked={selected.has(item.externalId)}
+                    disabled={importing || loading}
                     onChange={() => toggle(item.externalId)}
                   />
                   <div className="min-w-0 flex-1">
@@ -300,6 +315,7 @@ export const ImportFromSourceDialog: React.FC<ImportFromSourceDialogProps> = ({
               ))}
             </>
           )}
+          {nextCursor && <button className="m-3 rounded border border-nim px-3 py-1 text-xs text-nim-muted disabled:opacity-50" disabled={loading || importing} onClick={() => { if (bindingId) void loadItems(bindingId, stateFilter, search, nextCursor); }}>Load more</button>}
         </div>
 
         {/* Footer */}
@@ -319,7 +335,7 @@ export const ImportFromSourceDialog: React.FC<ImportFromSourceDialogProps> = ({
           <button
             className="px-3 py-1 text-xs font-medium text-white bg-[var(--nim-primary)] rounded hover:opacity-90 disabled:opacity-50"
             onClick={runImport}
-            disabled={importing || selected.size === 0}
+            disabled={importing || loading || selected.size === 0}
             data-testid="import-from-source-confirm"
           >
             {importing ? 'Importing...' : `Import ${selected.size || ''}`}

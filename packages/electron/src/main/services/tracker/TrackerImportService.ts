@@ -154,9 +154,9 @@ class TrackerImportService {
 
       // Deterministic, URN-derived id so concurrent imports of the same upstream
       // item on different machines converge on one row when sync reconciles them.
-      // Jira sync is per project: the same assigned issue may be imported into
+      // Connector import is per project: the same issue may be imported into
       // multiple projects without colliding on tracker_items' global primary key.
-      const id = importedItemId(providerId === 'jira' ? `${workspacePath}\n${urn}` : urn);
+      const id = importedItemId(providerId === 'jira' || providerId === 'linear' ? `${workspacePath}\n${urn}` : urn);
 
       const result = await handleTrackerCreate(
         {

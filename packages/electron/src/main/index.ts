@@ -222,6 +222,7 @@ import { registerExtensionHandlers, getClaudePluginPaths, initializeExtensionFil
 import { registerExtensionPermissionHandlers } from './ipc/ExtensionPermissionHandlers';
 import { registerTrackerImporterHandlers } from './ipc/TrackerImporterHandlers';
 import { registerJiraHandlers } from './ipc/JiraHandlers';
+import { registerLinearHandlers } from './ipc/LinearHandlers';
 import { installExtensionAgentBridge } from './extensions/extensionAgentBridge';
 import { getAgentWorkflowService } from './services/AgentWorkflowService';
 import { queueMarketplaceInstallRequest, registerExtensionMarketplaceHandlers, runExtensionAutoUpdate } from './ipc/ExtensionMarketplaceHandlers';
@@ -2585,6 +2586,7 @@ app.whenReady().then(async () => {
     registerExtensionPermissionHandlers();
     registerTrackerImporterHandlers();
     registerJiraHandlers();
+    registerLinearHandlers();
     registerExtensionMarketplaceHandlers();
     registerOffscreenEditorHandlers();
 
