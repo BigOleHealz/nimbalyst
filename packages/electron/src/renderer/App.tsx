@@ -2360,6 +2360,7 @@ export default function App() {
         const sessionId = await dispatchCreateNewSession({
           title: `Commit: ${commitFiles.length} ${commitFiles.length === 1 ? 'file' : 'files'}`,
           mode: 'agent',
+          useCurrentCheckout: true,
           launchSource: 'commit_flow',
         });
 

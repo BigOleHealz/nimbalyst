@@ -110,6 +110,8 @@ export interface CreateNewSessionOptions {
   title?: string;
   /** Select the new session in Agent mode. Defaults to true for existing callers. */
   selectSession?: boolean;
+  /** Run in the existing checkout when the operation needs its uncommitted changes. */
+  useCurrentCheckout?: boolean;
   /**
    * Which surface asked for this session, for `create_ai_session` analytics.
    * Optional: a caller that omits it is reported as `unknown` rather than being
@@ -350,8 +352,27 @@ export const branchSessionActionAtom = atom(null, async (get, set, sessionId: st
   }
 });
 
+/** Use the existing worktree service when the selected local folder is a Git repository. */
+export async function createDefaultSessionWorktree(workspacePath: string, sourceFolderPath?: string) {
+  const git = await window.electronAPI.invoke('git:is-repo', sourceFolderPath ?? workspacePath);
+  if (!git?.success || typeof git.isRepo !== 'boolean') {
+    throw new Error(git?.error || 'Could not check whether this project is a Git repository.');
+  }
+  if (!git.isRepo) return undefined;
+
+  const result: WorktreeCreateResult = await window.electronAPI.invoke(
+    'worktree:create',
+    workspacePath,
+    sourceFolderPath ? { sourceFolderPath } : undefined,
+  );
+  if (!result.success || !result.worktree) {
+    throw new Error(result.error || 'Failed to create worktree');
+  }
+  return result.worktree;
+}
+
 /**
- * Create a new (non-worktree) session.
+ * Create a new session, using an isolated checkout for local Git projects.
  *
  * Returns the new session id (or undefined). The legacy string argument is
  * treated as an initial draft; callers that need to reserve a session id or
@@ -385,6 +406,10 @@ export const createNewSessionActionAtom = atom(
 
 
     try {
+      const worktree = !options.useCurrentCheckout && get(worktreesFeatureAvailableAtom)
+        ? await createDefaultSessionWorktree(workspacePath, get(activeFileRepoPathAtom) ?? undefined)
+        : undefined;
+      const worktreeId = worktree?.id;
       const sessionId = options.sessionId ?? crypto.randomUUID();
       const provider = resolveProviderFromModel(model);
       const result = await window.electronAPI.invoke('sessions:create', {
@@ -395,6 +420,7 @@ export const createNewSessionActionAtom = atom(
           title,
           mode: options.mode,
           metadata: options.metadata,
+          worktreeId,
         },
         workspaceId: workspacePath,
         launchSource: options.launchSource,
@@ -403,6 +429,9 @@ export const createNewSessionActionAtom = atom(
         hadPrefilledPrompt: !!options.initialDraft,
       });
 
+      if (worktree && (!result.success || !result.id)) {
+        throw new Error(`The worktree was created at ${worktree.path}, but the session could not start. ${result.error ?? ''}`.trim());
+      }
       if (result.success && result.id) {
         set(addSessionFullAtom, {
           id: result.id,
@@ -417,10 +446,13 @@ export const createNewSessionActionAtom = atom(
           isArchived: false,
           isPinned: false,
           parentSessionId: null,
-          worktreeId: null,
+          worktreeId: worktreeId ?? null,
           childCount: 0,
           uncommittedCount: 0,
         });
+        if (worktreeId) {
+          set(workstreamStateAtom(result.id), { type: 'worktree', worktreeId });
+        }
 
         if (options.initialDraft) {
           set(setSessionDraftInputAtom, {
@@ -434,7 +466,7 @@ export const createNewSessionActionAtom = atom(
         if (options.selectSession !== false) {
           set(setSelectedWorkstreamAtom, {
             workspacePath,
-            selection: { type: 'session', id: result.id },
+            selection: { type: worktreeId ? 'worktree' : 'session', id: result.id },
           });
         }
 
@@ -442,6 +474,7 @@ export const createNewSessionActionAtom = atom(
       }
     } catch (error) {
       console.error('[sessionHistoryActions] Failed to create session:', error);
+      errorNotificationService.showError('Could not start session', error instanceof Error ? error.message : String(error));
     }
     return undefined;
   },

@@ -22,13 +22,14 @@ export async function createTrackerSession(
   model: string | undefined,
   getActiveWorkspace: () => string | null | undefined,
   invoke: (channel: string, ...args: any[]) => Promise<any>,
+  worktreeId?: string,
 ): Promise<string> {
   if (!context.workspacePath || getActiveWorkspace() !== context.workspacePath) {
     throw new Error('The active project changed. Start the session from the original project.');
   }
   const provider = (model ? ModelIdentifier.tryParse(model)?.provider : undefined) || 'claude-code';
   const result = await invoke('sessions:create', {
-    session: { id: crypto.randomUUID(), provider, model, title: 'New Session' },
+    session: { id: crypto.randomUUID(), provider, model, title: 'New Session', ...(worktreeId ? { worktreeId } : {}) },
     workspaceId: context.workspacePath,
   });
   if (!result?.success || !result.id) throw new Error(result?.error || 'Session was not created.');

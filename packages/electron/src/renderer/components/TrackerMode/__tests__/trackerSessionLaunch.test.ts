@@ -182,6 +182,18 @@ describe('Jira context in both launch modes', () => {
       ['ai:saveDraftInput', 'new-session', 'Full Jira evidence', '/repo'],
     ]);
   });
+  it('creates and links the tracker session in the supplied worktree', async () => {
+    const item = jira();
+    const context = await prepareTrackerLaunchContext(item.id, item, async () => ({ draftInput: 'Full context' }));
+    const invoke = vi.fn(async () => ({ success: true, id: 'new-session' }));
+
+    await expect(createTrackerSession(context, undefined, () => '/repo', invoke, 'wt-1')).resolves.toBe('new-session');
+    expect(invoke).toHaveBeenCalledWith('sessions:create', {
+      workspaceId: '/repo',
+      session: expect.objectContaining({ worktreeId: 'wt-1' }),
+    });
+    expect(invoke).toHaveBeenCalledWith('tracker:link-session', { trackerId: item.id, sessionId: 'new-session' });
+  });
   it('cannot create a normal session after a project switch during context preparation', async () => {
     const context = await prepareTrackerLaunchContext('feature_1624', jira(), async () => ({ draftInput: 'Full context' }));
     const invoke = vi.fn();

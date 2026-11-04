@@ -102,6 +102,7 @@ import { SOURCE_FILTER_FIELD, sourceFilterField, splitSourceClause, withSourceCl
 import { TrackerNewMenu } from './TrackerNewMenu';
 import { useGitRepoProbe } from '../../hooks/useGitRepoProbe';
 import {
+  createDefaultSessionWorktree,
   createNewWorktreeSessionActionAtom,
 } from '../../store/actions/sessionHistoryActions';
 import { setTrackerFavoriteAtom } from '../../store/atoms/trackerPersonalState';
@@ -462,21 +463,25 @@ export const TrackerMainView: React.FC<TrackerMainViewProps> = ({
     }
     try {
       const trackerContext = await prepareTrackerLaunchContext(trackerItemId, trackerItem, (channel, args) => window.electronAPI.invoke(channel, args));
+      const launchWorkspace = trackerContext.workspacePath;
+      const worktree = isWorktreesFeatureAvailable && launchWorkspace && launchWorkspace === store.get(activeWorkspacePathAtom)
+        ? await createDefaultSessionWorktree(launchWorkspace, store.get(activeFileRepoPathAtom) ?? undefined)
+        : undefined;
       const sessionId = await createTrackerSession(trackerContext, defaultModel,
-        () => store.get(activeWorkspacePathAtom), (channel, ...args) => window.electronAPI.invoke(channel, ...args));
+        () => store.get(activeWorkspacePathAtom), (channel, ...args) => window.electronAPI.invoke(channel, ...args), worktree?.id);
 
       // Refresh session list to pick up the new session, then navigate
       await refreshSessionList();
       setSelectedWorkstream({
         workspacePath: workspacePath || '',
-        selection: { type: 'session', id: sessionId },
+        selection: { type: worktree ? 'worktree' : 'session', id: sessionId },
       });
       setWindowMode('agent');
     } catch (err) {
       console.error('[TrackerMainView] Failed to launch session:', err);
       errorNotificationService.showError('Session not started', (err as Error).message);
     }
-  }, [workspacePath, refreshSessionList, setSelectedWorkstream, setWindowMode, defaultModel]);
+  }, [workspacePath, refreshSessionList, setSelectedWorkstream, setWindowMode, defaultModel, isWorktreesFeatureAvailable]);
 
   /** Launch a new isolated worktree session linked to a tracker item. */
   const handleLaunchWorktree = useCallback((trackerItemId: string) => {

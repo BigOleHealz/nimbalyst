@@ -162,7 +162,7 @@ Twelve built-in provider lanes, plus any agent an extension contributes. Every l
 
 ## Git Worktrees
 
-- Create isolated worktrees for AI coding sessions (Cmd+Alt+W)
+- Create isolated worktrees for AI coding sessions (Cmd+Alt+W). With Git Worktrees enabled, new local sessions and tracker launches in Git repositories create a worktree from the current branch by default. Commit with AI uses the checkout containing the selected changes.
 - Multiple sessions per worktree
 - Merge worktree into base branch
 - Rebase onto base branch
