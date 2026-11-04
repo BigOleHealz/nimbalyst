@@ -51,7 +51,7 @@ describe('buildTrackerLaunchContext', () => {
         '',
         'Update this tracker item\'s status when done using tracker_update with id "NIM-1624".',
       ].join('\n'),
-      worktreeName: 'nim-1624-launch-a-worktree-from-a-tracker',
+      worktreeName: 'launch-a-worktree-from-a-tracker-feature_1624',
     });
   });
 
@@ -79,7 +79,7 @@ describe('buildTrackerLaunchContext', () => {
     expect(context.trackerLinkId).toBe('file:nimbalyst-local/plans/branching.md');
     expect(context.draftInput).toContain('implement tracker item plan-branching: Branching Plan');
     expect(context.draftInput).toContain('Source: @nimbalyst-local/plans/branching.md');
-    expect(context.worktreeName).toBe('plan-branching-branching-plan');
+    expect(context.worktreeName).toBe('branching-plan-plan-branching');
   });
 });
 
@@ -191,14 +191,31 @@ describe('Jira context in both launch modes', () => {
 });
 
 describe('deriveTrackerWorktreeName', () => {
+  it('defaults to the lowercase ticket title followed by its stable tracker id', () => {
+    expect(deriveTrackerWorktreeName('tsk_mvv2bro7k9rwsi', 'Jira to Dev Account'))
+      .toBe('jira-to-dev-account-tsk_mvv2bro7k9rwsi');
+  });
+
+  it('uses the id alone when the title has no usable characters or matches the id', () => {
+    expect(deriveTrackerWorktreeName('NIM-1624', '?!')).toBe('nim-1624');
+    expect(deriveTrackerWorktreeName('NIM-1624', 'NIM-1624')).toBe('nim-1624');
+  });
+
   it('produces a bounded branch-safe slug', () => {
     const name = deriveTrackerWorktreeName(
       'NIM-1624',
       'Launch worktree: preserve SAME tracker context?! with a deliberately long title',
     );
 
-    expect(name).toMatch(/^nim-1624-[a-z0-9-]+$/);
+    expect(name).toMatch(/^[a-z0-9-]+-nim-1624$/);
     expect(name.length).toBeLessThanOrEqual(64);
     expect(name).not.toMatch(/-$/);
+  });
+
+  it('reserves room for the complete tracker id when shortening a long title', () => {
+    const id = 'tsk_mvv2bro7k9rwsi';
+    const name = deriveTrackerWorktreeName(id, 'Long ticket title '.repeat(20));
+    expect(name).toHaveLength(64);
+    expect(name).toMatch(/^[a-z0-9-]+-tsk_mvv2bro7k9rwsi$/);
   });
 });

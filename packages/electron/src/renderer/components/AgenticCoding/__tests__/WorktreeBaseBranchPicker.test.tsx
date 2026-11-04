@@ -4,6 +4,7 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { WorktreeBaseBranchPicker } from '../WorktreeBaseBranchPicker';
+import { buildTrackerLaunchContext } from '../../TrackerMode/trackerSessionLaunch';
 
 const BRANCHES = [
   'main',
@@ -43,6 +44,31 @@ describe('WorktreeBaseBranchPicker branch search', () => {
   });
 
   afterEach(cleanup);
+
+  it.each([undefined, 'my-custom-worktree'])('submits the ticket default or user override (%s)', async (override) => {
+    const initialName = buildTrackerLaunchContext('tsk_mvv2bro7k9rwsi', {
+      id: 'tsk_mvv2bro7k9rwsi',
+      primaryType: 'task',
+      typeTags: ['task'],
+      source: 'native',
+      archived: false,
+      syncStatus: 'local',
+      fields: { title: 'Jira to Dev Account' },
+      system: { workspace: '/workspace', createdAt: '', updatedAt: '' },
+    }).worktreeName;
+    const onCreate = vi.fn().mockResolvedValue(undefined);
+    render(<WorktreeBaseBranchPicker isOpen repoPath="/workspace" initialName={initialName} onCreate={onCreate} onCancel={vi.fn()} />);
+    await screen.findByTestId('worktree-base-branch-item-main');
+
+    expect((screen.getByTestId('worktree-name-input') as HTMLInputElement).value)
+      .toBe('jira-to-dev-account-tsk_mvv2bro7k9rwsi');
+    if (override) fireEvent.change(screen.getByTestId('worktree-name-input'), { target: { value: override } });
+    fireEvent.click(screen.getByTestId('worktree-base-branch-create'));
+
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith({
+      baseBranch: 'main', name: override ?? 'jira-to-dev-account-tsk_mvv2bro7k9rwsi',
+    }));
+  });
 
   it('filters local and remote branches in the same pass', async () => {
     renderPicker();
