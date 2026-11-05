@@ -3,6 +3,7 @@ import { CalendarApiError, CalendarClient } from './CalendarClient';
 import { CalendarOAuth, validateCalendarClient } from './CalendarOAuth';
 import { CalendarStore, type CalendarAccount, type CalendarStorage } from './CalendarStore';
 import type { CalendarConnectOptions, CalendarImportRange, CalendarImportsSnapshot } from '../../../shared/calendarImports';
+import { calendarAutoRefreshRange } from '../../../shared/calendarImports';
 
 export function validateCalendarRange(input: CalendarImportRange): CalendarImportRange {
   const start = typeof input?.start === 'string' ? Date.parse(input.start) : NaN;
@@ -26,8 +27,8 @@ export class CalendarImportService {
   snapshot(): CalendarImportsSnapshot {
     const data = this.storage.read();
     return {
-      connections: data.accounts.map(({ id, provider, label, calendars, selectedCalendarIds, events, importedAt, range }) => ({
-        id, provider, label, calendars, selectedCalendarIds, events, importedAt, range,
+      connections: data.accounts.map(({ id, provider, label, calendars, selectedCalendarIds, events, importedAt, range, autoRefresh, syncError }) => ({
+        id, provider, label, calendars, selectedCalendarIds, events, importedAt, range, autoRefresh: autoRefresh ?? true, syncError,
       })),
       clients: Object.fromEntries(Object.entries(data.clients).map(([provider, client]) => [provider, { clientId: client.clientId, hasClientSecret: Boolean(client.clientSecret) }])),
     };
@@ -63,6 +64,7 @@ export class CalendarImportService {
         ...config, ...tokens, id, label: profile.label, calendars,
         selectedCalendarIds: existing?.selectedCalendarIds.filter(key => calendars.some(calendar => calendar.id === key)) ?? calendars.filter(calendar => calendar.primary).map(calendar => calendar.id),
         events: existing?.events ?? [], importedAt: existing?.importedAt, range: existing?.range,
+        autoRefresh: existing?.autoRefresh ?? true,
       };
       data.accounts = [...data.accounts.filter(item => item.id !== id), account];
       data.clients[config.provider] = { clientId: config.clientId, clientSecret: config.clientSecret };
@@ -110,24 +112,53 @@ export class CalendarImportService {
     });
   }
 
-  async importEvents(id: string, selectedIds: string[], inputRange: CalendarImportRange): Promise<CalendarImportsSnapshot> {
-    const range = validateCalendarRange(inputRange);
+  async importEvents(id: string, selectedIds: string[], inputRange?: CalendarImportRange): Promise<CalendarImportsSnapshot> {
+    const range = inputRange === undefined ? calendarAutoRefreshRange() : validateCalendarRange(inputRange);
     if (!Array.isArray(selectedIds) || !selectedIds.length || selectedIds.length > 50 || selectedIds.some(value => typeof value !== 'string' || !value)) {
       throw new Error('Choose between one and 50 calendars to import.');
     }
     const calendarIds = [...new Set(selectedIds)];
     return this.exclusive(async () => {
       const account = this.account(id);
-      const calendars = await this.authenticated(account, token => this.client.calendars(account.provider, token));
-      if (calendarIds.some(key => !calendars.some(calendar => calendar.id === key))) throw new Error('A selected calendar is no longer available. Reload calendars and choose again.');
-      const events: CalendarAccount['events'] = [];
-      for (const calendarId of calendarIds) {
-        events.push(...await this.authenticated(account, token => this.client.events(account.provider, token, calendarId, range)));
-        if (events.length > 20_000) throw new Error('Choose fewer calendars or a shorter date range.');
+      await this.importAccount(account, calendarIds, range);
+      return this.snapshot();
+    });
+  }
+
+  private async importAccount(account: CalendarAccount, calendarIds: string[], range: CalendarImportRange): Promise<void> {
+    const calendars = await this.authenticated(account, token => this.client.calendars(account.provider, token));
+    if (calendarIds.some(key => !calendars.some(calendar => calendar.id === key))) throw new Error('A selected calendar is no longer available. Reload calendars and choose again.');
+    const events: CalendarAccount['events'] = [];
+    for (const calendarId of calendarIds) {
+      events.push(...await this.authenticated(account, token => this.client.events(account.provider, token, calendarId, range)));
+      if (events.length > 20_000) throw new Error('Choose fewer calendars or a shorter date range.');
+    }
+    // Commit only a complete snapshot; cancellation and moved events disappear together.
+    this.saveAccount({ ...account, calendars, events, selectedCalendarIds: calendarIds, range, importedAt: new Date().toISOString(), syncError: undefined });
+  }
+
+  async setAutoRefresh(id: string, enabled: boolean): Promise<CalendarImportsSnapshot> {
+    if (typeof enabled !== 'boolean') throw new Error('Automatic refresh requires a boolean value.');
+    return this.exclusive(async () => {
+      this.saveAccount({ ...this.account(id), autoRefresh: enabled, syncError: undefined });
+      return this.snapshot();
+    });
+  }
+
+  /** Skip occupied cycles rather than racing manual imports or token rotation. */
+  async refreshAutomatically(now = new Date()): Promise<CalendarImportsSnapshot | undefined> {
+    if (this.busy) return undefined;
+    return this.exclusive(async () => {
+      const range = calendarAutoRefreshRange(now);
+      const accounts = this.storage.read().accounts.filter(account => account.autoRefresh !== false && account.selectedCalendarIds.length);
+      for (const account of accounts) {
+        try {
+          await this.importAccount(account, account.selectedCalendarIds, range);
+        } catch {
+          // Keep the last successful events and any refresh-token rotation. Never broadcast provider response details.
+          this.saveAccount({ ...this.account(account.id), syncError: 'Automatic refresh failed. Check your connection or reconnect this account. Your last successful agenda is unchanged.' });
+        }
       }
-      // Replace this account's snapshot only after every page and calendar succeeded.
-      // This also removes canceled or moved events on a repeat import.
-      this.saveAccount({ ...account, calendars, events, selectedCalendarIds: calendarIds, range, importedAt: new Date().toISOString() });
       return this.snapshot();
     });
   }

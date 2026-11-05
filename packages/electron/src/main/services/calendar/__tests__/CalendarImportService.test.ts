@@ -97,3 +97,54 @@ it('canceling while account metadata loads prevents a late connection from being
   await expect(pending).rejects.toThrow('canceled');
   expect(data.accounts).toHaveLength(1);
 });
+
+it('automatically refreshes existing Google and Microsoft selections with a rolling local-day range', async () => {
+  data.accounts.push({ ...data.accounts[0], id: 'microsoft-account', provider: 'microsoft' });
+  await service.refreshAutomatically(new Date(2026, 10, 5, 14));
+  const rolling = { start: new Date(2026, 9, 29).toISOString(), end: new Date(2027, 1, 4).toISOString() };
+  expect(client.events).toHaveBeenCalledTimes(2);
+  expect(data.accounts.map(account => account.range)).toEqual([rolling, rolling]);
+  await service.refreshAutomatically(new Date(2026, 10, 6, 14));
+  expect(data.accounts[0].range?.start).toBe(new Date(2026, 9, 30).toISOString());
+});
+
+it('skips paused and unselected accounts and persists the automatic refresh preference', async () => {
+  await service.setAutoRefresh('account', false);
+  await service.refreshAutomatically();
+  expect(client.events).not.toHaveBeenCalled();
+  expect(service.snapshot().connections[0].autoRefresh).toBe(false);
+  await service.setAutoRefresh('account', true);
+  data.accounts[0].selectedCalendarIds = [];
+  await service.refreshAutomatically();
+  expect(client.events).not.toHaveBeenCalled();
+  await expect(service.setAutoRefresh('account', 'yes' as any)).rejects.toThrow('boolean');
+});
+
+it('keeps a failed account snapshot, reports a safe error, and continues refreshing other accounts', async () => {
+  data.accounts.push({ ...data.accounts[0], id: 'other-account' });
+  client.events.mockRejectedValueOnce(new Error('provider failure with secret detail')).mockResolvedValueOnce([]);
+  await service.refreshAutomatically();
+  expect(data.accounts[0].events).toEqual([event]);
+  expect(service.snapshot().connections[0].syncError).toContain('Automatic refresh failed');
+  expect(JSON.stringify(service.snapshot())).not.toContain('secret detail');
+  expect(data.accounts[1].events).toEqual([]);
+  await service.refreshAutomatically();
+  expect(service.snapshot().connections[0].syncError).toBeUndefined();
+});
+
+it('does not start a background refresh while a manual import owns the service', async () => {
+  let finish!: (events: typeof event[]) => void;
+  client.events.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  const manual = service.importEvents('account', ['work'], range);
+  await vi.waitFor(() => expect(client.events).toHaveBeenCalledTimes(1));
+  expect(await service.refreshAutomatically()).toBeUndefined();
+  expect(client.events).toHaveBeenCalledTimes(1);
+  finish([event]);
+  await manual;
+});
+
+it('uses the rolling range for a manual refresh without an explicit custom range', async () => {
+  await service.importEvents('account', ['work']);
+  expect(data.accounts[0].range).toBeDefined();
+  expect(client.events).toHaveBeenCalledWith('google', 'access', 'work', data.accounts[0].range);
+});

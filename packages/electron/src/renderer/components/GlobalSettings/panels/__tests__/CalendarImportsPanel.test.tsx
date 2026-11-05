@@ -1,7 +1,9 @@
 import React from 'react';
 import '@testing-library/jest-dom/vitest';
 import { beforeEach, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { getDefaultStore } from 'jotai';
+import { calendarImportsAtom } from '../../../../store/atoms/calendarImports';
 import { CalendarImportsPanel } from '../CalendarImportsPanel';
 import { calendarImportRange } from '../calendarAgenda';
 import type { CalendarImportsSnapshot } from '../../../../../shared/calendarImports';
@@ -13,6 +15,8 @@ const snapshot: CalendarImportsSnapshot = { clients: {}, connections: [
 const invoke = vi.fn();
 beforeEach(() => {
   vi.clearAllMocks();
+  getDefaultStore().set(calendarImportsAtom, { connections: [], clients: {} });
+  snapshot.connections.forEach(account => { account.autoRefresh = false; });
   Object.defineProperty(window, 'electronAPI', { configurable: true, value: { invoke } });
   invoke.mockResolvedValue(structuredClone(snapshot));
 });
@@ -52,4 +56,29 @@ it('keeps the last successful agenda visible when a new import fails', async () 
   await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Provider unavailable'));
   expect(screen.getByText('Google standup')).toBeVisible();
   expect(screen.getByText('Microsoft holiday')).toBeVisible();
+});
+
+it('uses the rolling range and persists the per-account automatic refresh preference', async () => {
+  const automatic = structuredClone(snapshot);
+  automatic.connections.forEach(account => { account.autoRefresh = true; });
+  invoke.mockResolvedValue(automatic);
+  render(<CalendarImportsPanel />);
+  await screen.findByText('Google standup');
+  expect(screen.queryByLabelText('From')).not.toBeInTheDocument();
+  fireEvent.click(screen.getAllByRole('button', { name: 'Refresh now' })[0]);
+  await waitFor(() => expect(invoke).toHaveBeenCalledWith('calendar-imports:import', { accountId: 'google', calendarIds: ['work'], range: undefined }));
+  await waitFor(() => expect(screen.getByLabelText('Automatic refresh for me@gmail.test')).toBeEnabled());
+  fireEvent.click(screen.getByLabelText('Automatic refresh for me@gmail.test'));
+  await waitFor(() => expect(invoke).toHaveBeenCalledWith('calendar-imports:auto-refresh', { accountId: 'google', enabled: false }));
+});
+
+it('updates the visible agenda from a background snapshot without remounting settings', async () => {
+  render(<CalendarImportsPanel />);
+  await screen.findByText('Google standup');
+  const changed = structuredClone(snapshot);
+  changed.connections[0].events = [];
+  changed.connections[1].events[0].title = 'Changed meeting';
+  await act(async () => { getDefaultStore().set(calendarImportsAtom, changed); });
+  expect(screen.queryByText('Google standup')).not.toBeInTheDocument();
+  expect(screen.getByText('Changed meeting')).toBeVisible();
 });
