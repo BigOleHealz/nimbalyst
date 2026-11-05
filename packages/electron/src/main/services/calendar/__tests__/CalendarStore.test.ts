@@ -1,0 +1,35 @@
+// @vitest-environment node
+import { afterEach, expect, it, vi } from 'vitest';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+const h = vi.hoisted(() => ({ directory: '', available: true }));
+vi.mock('electron', () => ({ app: { getPath: () => h.directory, isReady: () => true }, safeStorage: {
+  encryptString: (text: string) => Buffer.from('encrypted:' + Buffer.from(text).toString('base64')),
+  decryptString: (bytes: Buffer) => { if (!bytes.toString().startsWith('encrypted:')) throw new Error('unreadable'); return Buffer.from(bytes.toString().slice(10), 'base64').toString(); },
+} }));
+vi.mock('../../credentials/providerCredentials', () => ({ isProviderEncryptionAvailable: () => h.available }));
+import { CalendarStore } from '../CalendarStore';
+
+afterEach(() => { if (h.directory) rmSync(h.directory, { recursive: true, force: true }); h.available = true; });
+
+it('writes encrypted snapshots and refuses to overwrite an unreadable account store', () => {
+  h.directory = mkdtempSync(join(tmpdir(), 'calendar-store-'));
+  const store = new CalendarStore();
+  const data = { version: 1 as const, clients: { google: { clientId: 'client', clientSecret: 'private-secret' } }, accounts: [] };
+  store.write(data);
+  const file = join(h.directory, 'calendar-imports/accounts.bin');
+  expect(readFileSync(file, 'utf8')).not.toContain('private-secret');
+  expect(store.read()).toEqual(data);
+  writeFileSync(file, 'corrupted original');
+  expect(() => store.read()).toThrow('could not be read');
+  expect(readFileSync(file, 'utf8')).toBe('corrupted original');
+});
+
+it('fails closed when secure storage is unavailable', () => {
+  h.directory = mkdtempSync(join(tmpdir(), 'calendar-store-'));
+  h.available = false;
+  expect(() => new CalendarStore().read()).toThrow('secure storage');
+  expect(() => new CalendarStore().write({ version: 1, clients: {}, accounts: [] })).toThrow('secure storage');
+});
