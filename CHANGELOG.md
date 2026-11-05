@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 <!-- New features go here -->
+- Plan tasks with color-coded scheduled dates and deadlines in a calendar, with desktop reminders at startup and daily at 5 AM and 8 AM.
 - Import Linear projects into separate workspaces and tickets into existing trackers, with secure credentials, source links, duplicate protection, and retryable partial imports.
 - Sync conversation copies from all providers to local Codex and Claude desktop apps, preserving project folders and session names, with automatic updates and a manual sync action.
 - Choose to commit, commit and push, or commit, push and open a pull request after a coding task finishes, with an option to defer.

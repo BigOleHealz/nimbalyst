@@ -65,6 +65,8 @@ import { initializeClaudeCodeSessionHandlers } from './ipc/ClaudeCodeSessionHand
 import { getExternalSessionService, stopExternalSessionService } from './services/externalSessions/ExternalSessionService';
 import { initializeDesktopSessionSync, stopDesktopSessionSync } from './services/externalSessions/desktopSessionSync';
 import { registerNotificationHandlers } from './ipc/NotificationHandlers';
+import { registerTaskReminderHandlers } from './ipc/TaskReminderHandlers';
+import { startTaskReminders } from './services/taskReminderRuntime';
 import { registerPermissionHandlers } from './ipc/PermissionHandlers';
 import { registerGitStatusHandlers } from './ipc/GitStatusHandlers';
 import { registerGitHandlers } from './ipc/GitHandlers';
@@ -1748,6 +1750,7 @@ app.whenReady().then(async () => {
     registerAnalyticsHandlers();
     registerFeatureUsageHandlers();
     registerNotificationHandlers();
+    registerTaskReminderHandlers();
     registerClaudeUsageHandlers();
     claudeUsageService.initialize();
     registerCodexUsageHandlers();
@@ -3132,6 +3135,8 @@ app.whenReady().then(async () => {
     // Every window launch intends to open has been requested. Nimbalyst comes
     // to the front once, as soon as the last of them has painted.
     finishStartupWindowCreation();
+    // The first reminder check needs the restored workspaces' task services.
+    app.once('will-quit', startTaskReminders());
 
     // Community popup fallback for passive users:
     // show on launch 5+ if success-moment trigger (3 tool sessions) has not fired.

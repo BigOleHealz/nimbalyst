@@ -301,3 +301,4 @@ export type {
   LabelRegistry,
   LabelRole,
 } from '@nimbalyst/tracker-schema';
+export { TrackerCalendarView } from './TrackerCalendarView';

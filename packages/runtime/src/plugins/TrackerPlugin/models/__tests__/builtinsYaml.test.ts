@@ -59,6 +59,12 @@ const INVARIANTS: Record<string, {
 const EVIDENCE_KINDS = ['source', 'capture', 'citation'] as const;
 
 describe('bundled builtin tracker YAML', () => {
+  it('exposes separate task scheduling and deadline dates through the standard field editors', () => {
+    const task = parseBuiltinTrackers().find(model => model.type === 'task')!;
+    expect(task.fields.find(field => field.name === 'scheduledDate')).toMatchObject({ type: 'date' });
+    expect(task.fields.find(field => field.name === 'dueDate')).toMatchObject({ type: 'date' });
+    expect(task.roles?.dueDate).toBe('dueDate');
+  });
   it('gives tasks a single parent and inverse subtasks using the existing relationship contract', () => {
     const task = parseBuiltinTrackers().find(model => model.type === 'task')!;
     const parent = task.fields.find(field => field.name === 'parentTask')!;

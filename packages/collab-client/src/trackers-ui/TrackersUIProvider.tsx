@@ -47,7 +47,7 @@ export interface TrackerUICapabilities {
 /** Opt-in. Only a host that actually holds a personal JWT may pass this. */
 export const DESKTOP_TRACKER_UI_CAPABILITIES: TrackerUICapabilities = {
   personalState: true,
-  renderableViewModes: new Set<TrackerViewMode>(['list', 'table', 'kanban', 'timeline', 'radar', 'tag-board', 'inbox']),
+  renderableViewModes: new Set<TrackerViewMode>(['list', 'table', 'kanban', 'calendar', 'timeline', 'radar', 'tag-board', 'inbox']),
 };
 /** The default, everywhere: no provider and no `capabilities` prop both land here. */
 export const BROWSER_TRACKER_UI_CAPABILITIES: TrackerUICapabilities = {
