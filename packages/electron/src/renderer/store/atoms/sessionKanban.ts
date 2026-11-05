@@ -178,8 +178,8 @@ export const sessionsByPhaseAtom = atom((get) => {
   }
 
   for (const [_id, meta] of registry) {
-    // Only show root sessions (not children of workstreams)
-    if (meta.parentSessionId) continue;
+    // Only show active root sessions (not children of workstreams).
+    if (meta.isArchived || meta.parentSessionId) continue;
 
     const state = automatic.get(meta.id)!;
     const override = meta.kanbanOverride;
@@ -236,7 +236,7 @@ export const sessionKanbanTagsAtom = atom((get) => {
   const tagCounts = new Map<string, number>();
 
   for (const [_id, meta] of registry) {
-    if (meta.parentSessionId) continue;
+    if (meta.isArchived || meta.parentSessionId) continue;
     if (meta.tags) {
       for (const tag of meta.tags) {
         tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
