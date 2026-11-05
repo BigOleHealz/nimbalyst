@@ -26,6 +26,9 @@ export type VoiceListenState = 'off' | 'listening' | 'sleeping';
  */
 export const voiceListenStateAtom = atom<VoiceListenState>('off');
 
+/** Global shortcut command; consumed by the persistent VoiceModeButton. */
+export const voiceToggleRequestAtom = atom(0);
+
 // =========================================================================
 // Pending Voice Command (existing)
 // =========================================================================

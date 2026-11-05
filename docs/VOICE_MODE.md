@@ -378,6 +378,10 @@ Because AEC is imperfect on open speakers, both platforms route every VAD `speec
 
 ## Settings
 
+### Global keyboard shortcut
+
+When **Show Voice Mode Button** is enabled, **Control+Shift+V** on macOS (**Control+Alt+Shift+V** on Windows/Linux, preserving Paste as Text) starts Voice Mode for the selected session in the last-used project window, wakes a sleeping conversation, or stops a listening conversation. The shortcut also works with another app focused and does not bring Nimbalyst to the foreground. If voice is already running, the shortcut goes to the window that owns that conversation, regardless of which project was used most recently. A session must be selected before starting, and the usual microphone permission and API-key requirements apply. Disabling Voice Mode or quitting releases the shortcut. Settings reports a failed shortcut registration; release a conflicting shortcut in the other app, then disable and re-enable Voice Mode to retry.
+
 Voice mode settings are stored in `nimbalyst-settings` electron-store (not `ai-settings`) under the `voiceMode` key.
 
 | Setting | Type | Default | Purpose |

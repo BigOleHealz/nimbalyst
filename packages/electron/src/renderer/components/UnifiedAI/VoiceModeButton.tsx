@@ -10,6 +10,8 @@ import React, { useState, useEffect } from 'react';
 import { useAtomValue } from 'jotai';
 import { MaterialSymbol } from '@nimbalyst/runtime/ui/icons/MaterialSymbol';
 import { VoiceStartupTiming } from '../../../shared/voiceStartupTiming';
+import { KeyboardShortcuts, getShortcutDisplay } from '../../../shared/KeyboardShortcuts';
+import { voiceToggleRequestAtom } from '../../store/atoms/voiceModeState';
 import { prepareVoiceReadyChime } from '../../utils/voiceReadyChime';
 import { AudioCapture } from '../../utils/audioCapture';
 import { AudioPlayback } from '../../utils/audioPlayback';
@@ -17,7 +19,7 @@ import { voiceModeEnabledAtom } from '../../store/atoms/appSettings';
 import { activeSessionIdAtom } from '../../store/atoms/sessions';
 import { type VoiceTokenUsage, voiceTokenUsageAtom, voiceListenStateAtom, voiceErrorAtom, voiceReconnectingAtom, registerVoiceAudioCallback, registerVoiceInterruptCallback, registerVoiceSubmitPromptCallback, registerVoiceAgentTaskCompleteCallback, registerVoiceStoppedCallback, registerVoiceResponseDoneCallback, registerVoiceAudioActiveQuery } from '../../store/atoms/voiceModeState';
 import { setVoiceActiveSession, clearVoiceActiveSession, persistAndClearVoiceSession, onLinkedSessionChanged, wakeVoiceListening, notifyVoiceAudioPlaybackDrained, sendVoiceMessage } from '../../store/listeners/voiceModeListeners';
-import { openSettingsCommandAtom } from '../../store';
+import { openSettingsCommandAtom } from '../../store/atoms/settingsNavigation';
 import { buildVoiceUsageDisplay, voiceUsageToneVar } from './voiceUsageDisplay';
 import { HelpTooltip } from '../../help';
 import { store } from '@nimbalyst/runtime/store';
@@ -248,6 +250,9 @@ export function VoiceModeButton({ workspacePath }: VoiceModeButtonProps) {
   const voiceModeEnabled = useAtomValue(voiceModeEnabledAtom);
   const activeSessionId = useAtomValue(activeSessionIdAtom);
   const listenState = useAtomValue(voiceListenStateAtom);
+  const toggleRequest = useAtomValue(voiceToggleRequestAtom);
+  const lastToggleRequest = React.useRef(toggleRequest);
+  const toggleInFlight = React.useRef(false);
 
   const [isVoiceActive, setIsVoiceActive] = useState(activeVoiceSessionId !== null);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -286,54 +291,22 @@ export function VoiceModeButton({ workspacePath }: VoiceModeButtonProps) {
     }
   }, [listenState]);
 
-  const handleToggleVoice = async () => {
-    setError(null);
+  const handleToggleVoice = React.useCallback(async () => {
+    if (!voiceModeEnabled || toggleInFlight.current || (!activeVoiceSessionId && !activeSessionId)) return;
+    toggleInFlight.current = true;
+    try {
+      setError(null);
 
-    // If sleeping, wake up instead of stopping
-    if (isVoiceActive && listenState === 'sleeping') {
-      wakeVoiceListening();
-      return;
-    }
-
-    if (isVoiceActive) {
-      // Stop voice mode
-      const sessionId = activeVoiceSessionId;
-      try {
-        if (globalAudioCapture) {
-          globalAudioCapture.stop();
-          globalAudioCapture = null;
-        }
-        if (globalAudioPlayback) {
-          globalAudioPlayback.destroy();
-          globalAudioPlayback = null;
-        }
-
-        const result = await window.electronAPI.invoke('voice-mode:test-disconnect', workspacePath || null, sessionId || '') as {
-          success: boolean;
-          tokenUsage?: VoiceTokenUsage;
-        };
-
-        if (sessionId) {
-          await persistAndClearVoiceSession(sessionId, result.tokenUsage);
-        }
-
-        activeVoiceSessionId = null;
-        setIsVoiceActive(false);
-      } catch (err) {
-        console.error('[VoiceModeButton] Failed to stop voice mode:', err);
+      // If sleeping, wake up instead of stopping
+      if (isVoiceActive && listenState === 'sleeping') {
+        wakeVoiceListening();
+        return;
       }
-    } else {
-      // Start voice mode for the active session
-      const sessionId = activeSessionId;
-      if (!sessionId) return;
 
-      setIsConnecting(true);
-      const timing = new VoiceStartupTiming('renderer');
-      const readyChime = prepareVoiceReadyChime();
-      try {
-        // If another session is active, stop it first
-        if (activeVoiceSessionId !== null && activeVoiceSessionId !== sessionId) {
-          const previousSessionId = activeVoiceSessionId;
+      if (isVoiceActive) {
+        // Stop voice mode
+        const sessionId = activeVoiceSessionId;
+        try {
           if (globalAudioCapture) {
             globalAudioCapture.stop();
             globalAudioCapture = null;
@@ -342,73 +315,117 @@ export function VoiceModeButton({ workspacePath }: VoiceModeButtonProps) {
             globalAudioPlayback.destroy();
             globalAudioPlayback = null;
           }
-          await window.electronAPI.invoke('voice-mode:test-disconnect', workspacePath || null, previousSessionId);
-          activeVoiceSessionId = null;
-          clearVoiceActiveSession();
-        }
 
-        const result = await window.electronAPI.invoke('voice-mode:test-connection', workspacePath || null, sessionId, timing.id);
-        timing.mark('connection-ipc');
-        if (!result.success) {
+          const result = await window.electronAPI.invoke('voice-mode:test-disconnect', workspacePath || null, sessionId || '') as {
+            success: boolean;
+            tokenUsage?: VoiceTokenUsage;
+          };
+
+          if (sessionId) {
+            await persistAndClearVoiceSession(sessionId, result.tokenUsage);
+          }
+
+          activeVoiceSessionId = null;
+          setIsVoiceActive(false);
+        } catch (err) {
+          console.error('[VoiceModeButton] Failed to stop voice mode:', err);
+        }
+      } else {
+        // Start voice mode for the active session
+        const sessionId = activeSessionId;
+        if (!sessionId) return;
+
+        setIsConnecting(true);
+        const timing = new VoiceStartupTiming('renderer');
+        const readyChime = prepareVoiceReadyChime();
+        try {
+          // If another session is active, stop it first
+          if (activeVoiceSessionId !== null && activeVoiceSessionId !== sessionId) {
+            const previousSessionId = activeVoiceSessionId;
+            if (globalAudioCapture) {
+              globalAudioCapture.stop();
+              globalAudioCapture = null;
+            }
+            if (globalAudioPlayback) {
+              globalAudioPlayback.destroy();
+              globalAudioPlayback = null;
+            }
+            await window.electronAPI.invoke('voice-mode:test-disconnect', workspacePath || null, previousSessionId);
+            activeVoiceSessionId = null;
+            clearVoiceActiveSession();
+          }
+
+          const result = await window.electronAPI.invoke('voice-mode:test-connection', workspacePath || null, sessionId, timing.id);
+          timing.mark('connection-ipc');
+          if (!result.success) {
+            readyChime.dispose();
+            timing.finish('failed');
+            setError({ type: 'connection_failed', message: result.message || 'Failed to connect to voice service' });
+            setIsConnecting(false);
+            return;
+          }
+
+          globalAudioPlayback = new AudioPlayback();
+          // When the assistant's audio queue drains in the user's speakers,
+          // notify the listener so it can start the 15s listen window from
+          // *audible* end-of-turn rather than server end-of-turn.
+          globalAudioPlayback.setOnDrained(() => {
+            notifyVoiceAudioPlaybackDrained();
+          });
+          // Report audible playback state to main: only the renderer knows when
+          // the assistant is actually audible (playback outlives response.done),
+          // and main's barge-in policy uses it to classify echo-suspect VAD
+          // trips and gate server responses while the agent speaks.
+          globalAudioPlayback.setOnActiveChanged((active) => {
+            sendVoiceMessage('voice-mode:playback-active', { active });
+          });
+          globalAudioCapture = new AudioCapture();
+          await globalAudioCapture.start((pcm16Base64) => {
+            // Use activeVoiceSessionId (module-level, updated on session switch)
+            // instead of the closure sessionId which would go stale.
+            // Gate on listen state: don't send audio when sleeping.
+            if (activeVoiceSessionId && store.get(voiceListenStateAtom) === 'listening') {
+              window.electronAPI.invoke('voice-mode:send-audio', workspacePath || null, activeVoiceSessionId, pcm16Base64);
+            }
+          }, timing);
+
+          activeVoiceSessionId = sessionId;
+          setVoiceActiveSession(sessionId, workspacePath);
+          setIsVoiceActive(true);
+          timing.mark('listening-ready');
+          void readyChime.play().then(played => {
+            timing.mark(played ? 'ready-chime-played' : 'ready-chime-unavailable');
+            timing.finish('ready');
+          });
+        } catch (err) {
           readyChime.dispose();
           timing.finish('failed');
-          setError({ type: 'connection_failed', message: result.message || 'Failed to connect to voice service' });
-          setIsConnecting(false);
-          return;
-        }
-
-        globalAudioPlayback = new AudioPlayback();
-        // When the assistant's audio queue drains in the user's speakers,
-        // notify the listener so it can start the 15s listen window from
-        // *audible* end-of-turn rather than server end-of-turn.
-        globalAudioPlayback.setOnDrained(() => {
-          notifyVoiceAudioPlaybackDrained();
-        });
-        // Report audible playback state to main: only the renderer knows when
-        // the assistant is actually audible (playback outlives response.done),
-        // and main's barge-in policy uses it to classify echo-suspect VAD
-        // trips and gate server responses while the agent speaks.
-        globalAudioPlayback.setOnActiveChanged((active) => {
-          sendVoiceMessage('voice-mode:playback-active', { active });
-        });
-        globalAudioCapture = new AudioCapture();
-        await globalAudioCapture.start((pcm16Base64) => {
-          // Use activeVoiceSessionId (module-level, updated on session switch)
-          // instead of the closure sessionId which would go stale.
-          // Gate on listen state: don't send audio when sleeping.
-          if (activeVoiceSessionId && store.get(voiceListenStateAtom) === 'listening') {
-            window.electronAPI.invoke('voice-mode:send-audio', workspacePath || null, activeVoiceSessionId, pcm16Base64);
+          console.error('[VoiceModeButton] Failed to start voice mode:', err);
+          setError({ type: 'connection_failed', message: err instanceof Error ? err.message : 'Failed to start voice mode' });
+          if (globalAudioCapture) {
+            globalAudioCapture.stop();
+            globalAudioCapture = null;
           }
-        }, timing);
-
-        activeVoiceSessionId = sessionId;
-        setVoiceActiveSession(sessionId, workspacePath);
-        setIsVoiceActive(true);
-        timing.mark('listening-ready');
-        void readyChime.play().then(played => {
-          timing.mark(played ? 'ready-chime-played' : 'ready-chime-unavailable');
-          timing.finish('ready');
-        });
-      } catch (err) {
-        readyChime.dispose();
-        timing.finish('failed');
-        console.error('[VoiceModeButton] Failed to start voice mode:', err);
-        setError({ type: 'connection_failed', message: err instanceof Error ? err.message : 'Failed to start voice mode' });
-        if (globalAudioCapture) {
-          globalAudioCapture.stop();
-          globalAudioCapture = null;
+          if (globalAudioPlayback) {
+            globalAudioPlayback.destroy();
+            globalAudioPlayback = null;
+          }
+          activeVoiceSessionId = null;
+          clearVoiceActiveSession();
+        } finally {
+          setIsConnecting(false);
         }
-        if (globalAudioPlayback) {
-          globalAudioPlayback.destroy();
-          globalAudioPlayback = null;
-        }
-        activeVoiceSessionId = null;
-        clearVoiceActiveSession();
-      } finally {
-        setIsConnecting(false);
       }
+    } finally {
+      toggleInFlight.current = false;
     }
-  };
+  }, [voiceModeEnabled, activeSessionId, isVoiceActive, listenState, workspacePath]);
+
+  useEffect(() => {
+    if (toggleRequest === lastToggleRequest.current) return;
+    lastToggleRequest.current = toggleRequest;
+    void handleToggleVoice();
+  }, [toggleRequest, handleToggleVoice]);
 
   const handleOpenVoiceModeSettings = () => {
     store.set(openSettingsCommandAtom, {
@@ -498,6 +515,7 @@ export function VoiceModeButton({ workspacePath }: VoiceModeButtonProps) {
                     : 'bg-transparent text-nim-muted hover:bg-nim-tertiary hover:text-nim'
           }`}
           aria-label={getButtonTitle()}
+          title={`${getButtonTitle()} (${getShortcutDisplay(KeyboardShortcuts.voice.toggle)}, global)`}
         >
           <MaterialSymbol
             icon={getButtonIcon()}

@@ -4,6 +4,10 @@
  */
 
 export const KeyboardShortcuts = {
+  voice: {
+    // Ctrl+Shift+V is Paste as Text on Windows/Linux; keep that binding free.
+    toggle: process.platform === 'darwin' ? 'Ctrl+Shift+V' : 'Ctrl+Alt+Shift+V',
+  },
   // File Menu
   file: {
     newFile: 'Cmd+N',

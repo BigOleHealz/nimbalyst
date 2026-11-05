@@ -11,7 +11,7 @@
  */
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { Provider, createStore } from 'jotai';
 
 import { selectedOrgIdAtom } from '../../../store/atoms/orgScope';
@@ -19,8 +19,10 @@ import { EMPTY_TEAM_INBOX_SNAPSHOT, teamInboxSnapshotAtom } from '../../../store
 import { activeExtensionPanelAtom } from '../../../store/atoms/extensionPanels';
 import { windowModeAtom, setWindowModeAtom } from '../../../store/atoms/windowMode';
 import { activeWorkspacePathAtom } from '../../../store/atoms/openProjects';
+import { gutterCustomizationAtom } from '../../../store/atoms/appSettings';
 
 const projectOrg = vi.hoisted(() => ({ current: null as { orgId: string; name: string } | null }));
+const voiceController = vi.hoisted(() => ({ mounted: vi.fn(), disposed: vi.fn() }));
 const extensionButtons = vi.hoisted(() => ({ current: [] as Array<{ id: string; label: string; icon: string; placement: 'sidebar'; isAlpha: boolean }> }));
 
 vi.mock('../../../hooks/useProjectOrg', () => ({
@@ -46,7 +48,13 @@ vi.mock('../../ExtensionDevIndicator', () => ({ ExtensionDevIndicator: () => nul
 vi.mock('../../ClaudeUsageIndicator', () => ({ ClaudeUsageIndicator: () => null }));
 vi.mock('../../CodexUsageIndicator', () => ({ CodexUsageIndicator: () => null }));
 vi.mock('../../GeminiUsageIndicator', () => ({ GeminiUsageIndicator: () => null }));
-vi.mock('../../UnifiedAI/VoiceModeButton', () => ({ VoiceModeButton: () => null }));
+vi.mock('../../UnifiedAI/VoiceModeButton', () => ({ VoiceModeButton: () => {
+  React.useEffect(() => {
+    voiceController.mounted();
+    return voiceController.disposed;
+  }, []);
+  return null;
+} }));
 
 import { NavigationGutter, ORG_MODE_GUTTER_BUTTON_ENABLED } from '../NavigationGutter';
 
@@ -70,6 +78,19 @@ function renderGutter(store = createStore(), onContentModeChange = vi.fn()) {
 }
 
 describe('Org mode gutter item', () => {
+  it('keeps the voice controller mounted when its gutter icon is hidden or shown', () => {
+    voiceController.mounted.mockClear();
+    voiceController.disposed.mockClear();
+    const store = createStore();
+    renderGutter(store);
+    act(() => store.set(gutterCustomizationAtom, state => ({ ...state, hiddenItems: ['voice-mode'] })));
+    expect(voiceController.mounted).toHaveBeenCalledOnce();
+    expect(voiceController.disposed).not.toHaveBeenCalled();
+    act(() => store.set(gutterCustomizationAtom, state => ({ ...state, hiddenItems: [] })));
+    expect(voiceController.mounted).toHaveBeenCalledOnce();
+    expect(voiceController.disposed).not.toHaveBeenCalled();
+  });
+
   it('keeps a deliberately opened sidebar panel after navigating from Agent to Files', () => {
     const store = createStore();
     store.set(windowModeAtom, 'agent');

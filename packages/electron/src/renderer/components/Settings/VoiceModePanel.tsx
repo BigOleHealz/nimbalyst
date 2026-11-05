@@ -6,6 +6,7 @@
  */
 
 import React from 'react';
+import { KeyboardShortcuts, getShortcutDisplay } from '../../../shared/KeyboardShortcuts';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { MaterialSymbol } from '@nimbalyst/runtime/ui/icons/MaterialSymbol';
 import { ModelIdentifier } from '@nimbalyst/runtime/ai/server/types';
@@ -109,8 +110,17 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
   // in never has the mic permission concept surfaced.
   const [micStatus, setMicStatus] = React.useState<MicAccessStatus | null>(null);
   const [micPlatform, setMicPlatform] = React.useState<NodeJS.Platform | null>(null);
+  const [shortcutError, setShortcutError] = React.useState<string | null>(null);
 
   const checkMicStatus = React.useCallback(async () => {
+    try {
+      const shortcut = await window.electronAPI?.invoke('voice-mode:get-shortcut-status') as
+        | { registered: boolean; error: string | null }
+        | undefined;
+      setShortcutError(shortcut?.error ?? null);
+    } catch {
+      setShortcutError(null);
+    }
     try {
       const result = await window.electronAPI?.invoke('voice-mode:get-mic-status') as
         | { status: MicAccessStatus; platform: NodeJS.Platform }
@@ -322,11 +332,16 @@ export const VoiceModePanel: React.FC<VoiceModePanelProps> = ({
             <div className="setting-text flex flex-col gap-0.5">
               <span className="setting-name text-sm font-medium text-[var(--nim-text)]">Show Voice Mode Button</span>
               <span className="setting-description text-xs text-[var(--nim-text-muted)]">
-                Display the microphone button in the AI input area
+                Display the microphone button and enable the global {getShortcutDisplay(KeyboardShortcuts.voice.toggle)} shortcut. Start, wake, or stop voice from any app using the active voice conversation or last-used Nimbalyst project. Select a session before starting.
               </span>
             </div>
           </label>
         </div>
+        {enabled && shortcutError && (
+          <p role="status" className="voice-mode-shortcut-warning mt-2 text-xs text-[var(--nim-warning)]">
+            {shortcutError}
+          </p>
+        )}
       </div>
 
       {enabled && hasOpenAIKey && micStatus && micStatus !== 'granted' && (
