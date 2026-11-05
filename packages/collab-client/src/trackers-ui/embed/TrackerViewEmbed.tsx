@@ -19,6 +19,7 @@ import { useTrackerDataSelector } from '../useTrackerData';
 import { useTrackerViewRows } from '../useTrackerViewRows';
 import { resolveViewMode } from '../resolveViewMode';
 import { TrackerTimelineView } from '../TrackerTimelineView';
+import { TrackerCalendarView } from '../TrackerCalendarView';
 import { TrackerListView } from '../TrackerListView';
 import { TrackerBoardSurface } from '../board/TrackerBoardSurface';
 import { TrackerGridSurface, type TrackerGridDerivedColumn, type TrackerGridUpdateEntry } from '../grid/TrackerGridSurface';
@@ -244,6 +245,9 @@ function LoadedViewEmbed({
 
   let body: ReactNode;
   switch (mode) {
+    case 'calendar':
+      body = <TrackerCalendarView items={rows} onItemSelect={openItem} />;
+      break;
     case 'table': {
       const grid = (groupRows: TrackerRecord[]) => (
         <TrackerGridSurface

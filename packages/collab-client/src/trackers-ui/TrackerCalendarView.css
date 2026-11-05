@@ -1,0 +1,23 @@
+.task-calendar-view { container-type: inline-size; container-name: task-calendar; }
+.task-calendar-control { padding: 2px 8px; border: 1px solid var(--nim-border); border-radius: 4px; }
+.task-calendar-control:hover, .task-calendar-date:hover { background: var(--nim-bg-hover); }
+.task-calendar-legend-on::before, .task-calendar-legend-by::before { content: ''; display: inline-block; width: 9px; height: 9px; margin-right: 4px; border-radius: 2px; }
+.task-calendar-legend-on::before { background: var(--nim-info); }
+.task-calendar-legend-by::before { background: var(--nim-warning); }
+.task-calendar-weekdays, .task-calendar-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.task-calendar-weekdays { background: var(--nim-bg-secondary); font-size: 11px; text-align: center; padding: 6px 0; }
+.task-calendar-day { min-width: 0; min-height: 110px; padding: 4px; border-right: 1px solid var(--nim-border); border-bottom: 1px solid var(--nim-border); }
+.task-calendar-day.is-outside { background: var(--nim-bg-secondary); }
+.task-calendar-day.is-selected { box-shadow: inset 0 0 0 2px var(--nim-primary); }
+.task-calendar-date { border-radius: 4px; font-size: 12px; padding: 2px 6px; }
+.task-calendar-date[aria-current="date"] { background: var(--nim-primary); color: var(--nim-on-primary); font-weight: 700; }
+.task-calendar-entry { display: block; width: 100%; margin-top: 3px; padding: 3px 5px; border-left: 3px solid; background: var(--nim-bg-secondary); border-radius: 3px; font-size: 11px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-calendar-entry-on { border-color: var(--nim-info); background: color-mix(in srgb, var(--nim-info) 10%, var(--nim-bg)); }
+.task-calendar-entry-by { border-color: var(--nim-warning); background: color-mix(in srgb, var(--nim-warning) 12%, var(--nim-bg)); }
+.task-calendar-entry:hover { background: var(--nim-bg-hover); }
+.task-calendar-entry.is-selected { outline: 1px solid var(--nim-primary); }
+.task-calendar-agenda .task-calendar-entry { white-space: normal; overflow-wrap: anywhere; padding: 6px 8px; }
+@container task-calendar (max-width: 540px) {
+  .task-calendar-day { min-height: 70px; padding: 2px; }
+  .task-calendar-day .task-calendar-entry { padding: 2px; font-size: 10px; }
+}

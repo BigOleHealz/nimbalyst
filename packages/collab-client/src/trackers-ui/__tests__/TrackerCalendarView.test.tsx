@@ -1,0 +1,36 @@
+import React from 'react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, expect, it, vi } from 'vitest';
+import type { TrackerRecord } from '@nimbalyst/tracker-core';
+import { TrackerCalendarView } from '../TrackerCalendarView';
+const task = (id: string, fields: Record<string, unknown> = {}): TrackerRecord => ({ id, primaryType: 'task', typeTags: ['task'], fields: { title: id, ...fields }, archived: false, source: 'native', syncStatus: 'local', system: { workspace: '/project', createdAt: '', updatedAt: '' } });
+afterEach(cleanup);
+const items = [task('Appointment', { scheduledDate: '2026-11-05' }), task('Deadline', { dueDate: '2026-11-05' }), task('Earlier deadline', { dueDate: '2026-11-04' }), task('Earlier appointment', { scheduledDate: '2026-11-04' }), task('Unscheduled')];
+it('jumps to a date, opens tasks, and includes earlier deadlines without including past appointments', () => {
+  const onItemSelect = vi.fn();
+  const { container } = render(<TrackerCalendarView items={items} onItemSelect={onItemSelect} />);
+  fireEvent.change(screen.getByLabelText('Go to date'), { target: { value: '2026-11-05' } });
+  expect(screen.getByRole('heading', { name: 'November 2026' })).toBeDefined();
+  const agenda = within(container.querySelector('.task-calendar-agenda')! as HTMLElement);
+  expect(agenda.getByRole('button', { name: /ON 2026-11-05.*Appointment/ })).toBeDefined();
+  fireEvent.click(agenda.getByRole('button', { name: /BY 2026-11-05.*Deadline/ }));
+  expect(onItemSelect).toHaveBeenCalledWith('Deadline');
+  expect(agenda.queryByRole('button', { name: /Earlier deadline/ })).toBeNull();
+  fireEvent.click(screen.getByLabelText('Include deadlines due before this day'));
+  expect(agenda.getByRole('button', { name: /Earlier deadline/ })).toBeDefined();
+  expect(agenda.queryByRole('button', { name: /Earlier appointment/ })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '1 task with no date' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Unscheduled' }));
+  expect(onItemSelect).toHaveBeenLastCalledWith('Unscheduled');
+});
+it('navigates across years and keeps both dates for the same task visible', () => {
+  const { container } = render(<TrackerCalendarView items={[task('Prepare', { scheduledDate: '2026-12-01', dueDate: '2026-12-01' })]} />);
+  fireEvent.change(screen.getByLabelText('Go to date'), { target: { value: '2026-12-01' } });
+  const agenda = within(container.querySelector('.task-calendar-agenda')! as HTMLElement);
+  expect(agenda.getAllByRole('button', { name: /Prepare/ })).toHaveLength(2);
+  fireEvent.click(screen.getByRole('button', { name: 'Next month' }));
+  expect(screen.getByRole('heading', { name: 'January 2027' })).toBeDefined();
+  expect((screen.getByLabelText('Go to date') as HTMLInputElement).value).toBe('2027-01-01');
+  fireEvent.click(screen.getByRole('button', { name: 'Previous month' }));
+  expect((screen.getByLabelText('Go to date') as HTMLInputElement).value).toBe('2026-12-01');
+});

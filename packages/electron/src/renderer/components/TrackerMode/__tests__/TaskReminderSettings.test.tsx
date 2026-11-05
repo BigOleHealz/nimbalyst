@@ -1,0 +1,42 @@
+import React from 'react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, expect, it, vi } from 'vitest';
+import { TaskReminderSettings } from '../TaskReminderSettings';
+afterEach(cleanup);
+it('loads, changes and saves workspace-scoped reminders and surfaces failures', async () => {
+  const invoke = vi.fn(async (channel: string) => {
+    if (channel === 'task-reminders:get') return { enabled: true, times: ['05:00', '08:00'], notifyOnStartup: true };
+    if (channel === 'notifications:get-enabled') return false;
+    return { success: true };
+  });
+  Object.defineProperty(window, 'electronAPI', { configurable: true, value: { invoke } });
+  render(<TaskReminderSettings workspacePath="/work" />);
+  await screen.findByLabelText('Daily reminder time 1');
+  expect((screen.getByLabelText('Daily reminder time 1') as HTMLInputElement).value).toBe('05:00');
+  expect((screen.getByLabelText('Daily reminder time 2') as HTMLInputElement).value).toBe('08:00');
+  expect((screen.getByLabelText('Notify when app starts') as HTMLInputElement).checked).toBe(true);
+  fireEvent.change(screen.getByLabelText('Daily reminder time 2'), { target: { value: '08:30' } });
+  fireEvent.click(screen.getByLabelText('Task reminders'));
+  fireEvent.click(screen.getByLabelText('Notify when app starts'));
+  fireEvent.click(screen.getByRole('button', { name: 'Save reminders' }));
+  await screen.findByRole('status');
+  expect(invoke).toHaveBeenCalledWith('task-reminders:set', '/work', { enabled: false, times: ['05:00', '08:30'], notifyOnStartup: false });
+  fireEvent.click(screen.getByRole('button', { name: 'Enable desktop notifications' }));
+  await waitFor(() => expect(invoke).toHaveBeenCalledWith('notifications:set-enabled', true));
+  await waitFor(() => expect(invoke).toHaveBeenCalledWith('notifications:show-test'));
+  invoke.mockRejectedValueOnce(new Error('disk full'));
+  fireEvent.click(screen.getByRole('button', { name: 'Save reminders' }));
+  expect((await screen.findByRole('alert')).textContent).toBe('Unable to save reminder settings.');
+});
+it('adds and removes daily times without changing the startup preference', async () => {
+  const invoke = vi.fn(async (channel: string) => channel === 'task-reminders:get' ? { enabled: true, times: ['05:00', '08:00'], notifyOnStartup: true } : true);
+  Object.defineProperty(window, 'electronAPI', { configurable: true, value: { invoke } });
+  render(<TaskReminderSettings workspacePath="/work" />);
+  await screen.findByLabelText('Daily reminder time 2');
+  fireEvent.click(screen.getByRole('button', { name: 'Remove reminder time 2' }));
+  expect(screen.queryByLabelText('Daily reminder time 2')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Add time' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save reminders' }));
+  await screen.findByRole('status');
+  expect(invoke).toHaveBeenCalledWith('task-reminders:set', '/work', { enabled: true, times: ['05:00', '12:00'], notifyOnStartup: true });
+});

@@ -800,6 +800,18 @@
         "displayInline": true
       },
       {
+        "name": "scheduledDate",
+        "type": "date",
+        "required": false,
+        "displayInline": true
+      },
+      {
+        "name": "dueDate",
+        "type": "date",
+        "required": false,
+        "displayInline": true
+      },
+      {
         "name": "parentTask",
         "type": "relationship",
         "required": false,
@@ -888,7 +900,8 @@
       "workflowStatus": "status",
       "priority": "priority",
       "assignee": "owner",
-      "tags": "tags"
+      "tags": "tags",
+      "dueDate": "dueDate"
     },
     "sharing": "team",
     "draftByDefault": false

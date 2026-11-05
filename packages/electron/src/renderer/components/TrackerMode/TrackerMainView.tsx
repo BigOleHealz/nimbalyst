@@ -47,6 +47,7 @@ import {
   TrackerViewHeaderControls,
   TrackerRadarView,
   TrackerTimelineView,
+  TrackerCalendarView,
   TrackerViewTitle,
   useTrackerViewRows,
   type TrackerFilterField,
@@ -123,6 +124,7 @@ import { confirmTrackerItemDelete } from './confirmTrackerItemDelete';
 import { orgPresenceAtomFamily } from '../../store/atoms/teamInbox';
 import { gitStatusAtom } from '../../store/atoms/gitOperations';
 import type { TeamMemberOption } from '@nimbalyst/runtime/plugins/TrackerPlugin/components/TrackerFieldEditor';
+import { TaskReminderSettings } from './TaskReminderSettings';
 
 export type ViewMode = TrackerViewMode;
 
@@ -1317,6 +1319,11 @@ export const TrackerMainView: React.FC<TrackerMainViewProps> = ({
               onItemSelect={handleItemSelect}
               onOpenDocument={handleOpenItemAsDocument}
             />
+          ) : viewMode === 'calendar' ? (
+            <div className="tracker-calendar-container flex h-full min-h-0 flex-col">
+              {workspacePath && <TaskReminderSettings key={workspacePath} workspacePath={workspacePath} />}
+              <div className="min-h-0 flex-1"><TrackerCalendarView items={viewFilteredItems} selectedItemId={selectedItemId} onItemSelect={handleItemSelect} /></div>
+            </div>
           ) : viewMode === 'timeline' ? (
             <TrackerTimelineView
               items={viewFilteredItems}

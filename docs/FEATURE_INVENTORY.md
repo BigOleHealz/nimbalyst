@@ -375,7 +375,8 @@ Companion app; pairs with a desktop over encrypted sync. Voice mode is not inclu
 
 ## Tracker System
 
-- Tracker mode (Cmd+T) with list, table, grid, kanban, tag-board, timeline, and inbox views
+- Tracker mode (Cmd+T) with list, table, grid, kanban, calendar, tag-board, timeline, and inbox views
+- **Task calendar and daily reminders** -- Calendar view in Trackers shows tasks on their Scheduled Date (ON, blue/info) and Due Date (BY, amber/warning), with month navigation, date jump, a selected-day agenda, an option to include earlier deadlines, and an undated-task list. A task can have both dates; existing due dates remain deadlines. Desktop reminders summarize active scheduled, due, and overdue workspace tasks on each app launch and at configurable daily local times (5 AM and 8 AM by default). Startup reminders wait for restored workspace task services and retry if tasks have not loaded or delivery is suppressed. Each daily time reminds independently, with delivery remembered across restarts; a late launch or wake combines elapsed times into one current summary. Nimbalyst must be running with the workspace open and desktop notifications enabled; this does not schedule phone push or reminders while the desktop app is quit.
 - Tasks have a single parentTask and inverse subtasks relationships, independent child status and optional session links; agents reuse or create subtasks for meaningful decomposition, and Task and All list/kanban views support persisted parent-task filters
 - Board lanes and timeline grouping by milestone, goal, or another field, with drag-and-drop and bulk assignment
 - Full-document tracker view with collaborative body editing, inline comments, editable field chips, AI chat, and shareable reopen links
