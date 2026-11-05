@@ -36,6 +36,15 @@ const extensionRoutes: ExtensionSettingsRoute[] = [
 ];
 
 describe('settings route registry', () => {
+  it('exposes one Calendar imports route for every provider', () => {
+    const routes = getSettingsRoutesForScope('application', {
+      developerMode: false, showDirectChatProviders: false, teamsConfigured: false,
+    });
+    expect(routes.filter(route => /calendar|exchange|outlook/i.test(route.label))).toEqual([
+      expect.objectContaining({ id: 'calendar-imports', label: 'Calendar imports', group: 'Integrations' }),
+    ]);
+  });
+
   it('declares every route in exactly one scope', () => {
     const seen = new Map<string, string>();
     for (const scope of ['application', 'account', 'project'] as const) {

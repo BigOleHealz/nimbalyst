@@ -225,6 +225,7 @@ import { registerExtensionPermissionHandlers } from './ipc/ExtensionPermissionHa
 import { registerTrackerImporterHandlers } from './ipc/TrackerImporterHandlers';
 import { registerJiraHandlers } from './ipc/JiraHandlers';
 import { registerLinearHandlers } from './ipc/LinearHandlers';
+import { registerCalendarImportHandlers } from './ipc/CalendarImportHandlers';
 import { installExtensionAgentBridge } from './extensions/extensionAgentBridge';
 import { getAgentWorkflowService } from './services/AgentWorkflowService';
 import { queueMarketplaceInstallRequest, registerExtensionMarketplaceHandlers, runExtensionAutoUpdate } from './ipc/ExtensionMarketplaceHandlers';
@@ -2590,6 +2591,7 @@ app.whenReady().then(async () => {
     registerTrackerImporterHandlers();
     registerJiraHandlers();
     registerLinearHandlers();
+    registerCalendarImportHandlers();
     registerExtensionMarketplaceHandlers();
     registerOffscreenEditorHandlers();
 
