@@ -136,6 +136,12 @@ export function KeyboardShortcutsDialog({ isOpen, onClose }: KeyboardShortcutsDi
   // Application shortcuts come from shared/KeyboardShortcuts.ts; canvas shortcuts come from the runtime keymap.
   const generalShortcuts: ShortcutGroup[] = [
     {
+      title: 'Voice Mode',
+      shortcuts: [
+        { label: 'Start / Wake / Stop Voice Mode (global; Voice Mode enabled)', shortcut: KeyboardShortcuts.voice.toggle },
+      ],
+    },
+    {
       title: 'File',
       shortcuts: [
         { label: 'New File / New Session', shortcut: KeyboardShortcuts.file.newFile }, // shared/KeyboardShortcuts.ts:9 - Cmd+N

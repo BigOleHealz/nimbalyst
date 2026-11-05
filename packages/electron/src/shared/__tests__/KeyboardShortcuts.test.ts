@@ -108,6 +108,14 @@ describe('toggleExpandedTab binding', () => {
 });
 
 describe('getElectronAccelerator', () => {
+  it('keeps global voice on physical Control and distinct from Paste as Text', () => {
+    const voice = getElectronAccelerator(KeyboardShortcuts.voice.toggle);
+    expect(voice).toMatch(/^Ctrl\+/);
+    expect(voice).not.toContain('Cmd');
+    const paste = getElectronAccelerator(KeyboardShortcuts.edit.pasteAsText)
+      .replace('CmdOrCtrl', process.platform === 'darwin' ? 'Cmd' : 'Ctrl');
+    expect(voice).not.toBe(paste);
+  });
   it('rewrites Cmd to CmdOrCtrl so Electron handles platform mapping', () => {
     expect(getElectronAccelerator('Cmd+S')).toBe('CmdOrCtrl+S');
     expect(getElectronAccelerator('Cmd+Shift+L')).toBe('CmdOrCtrl+Shift+L');

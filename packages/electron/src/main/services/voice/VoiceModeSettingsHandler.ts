@@ -2,7 +2,8 @@
  * IPC handlers for Voice Mode settings
  */
 
-import { BrowserWindow, systemPreferences } from 'electron';
+import { app, BrowserWindow, globalShortcut, systemPreferences } from 'electron';
+import { createVoiceGlobalShortcut } from './voiceGlobalShortcut';
 import { systemShell } from '../../utils/systemShell';
 import Store from '../../utils/privateSettingsStore';
 import { safeHandle } from '../../utils/ipcRegistry';
@@ -103,13 +104,26 @@ export function realtimeModelForEngine(
   return engine === 'realtime' ? (model ?? 'gpt-realtime-2') : undefined;
 }
 
-export function initVoiceModeSettingsHandler() {
+export function initVoiceModeSettingsHandler(getShortcutTarget: () => BrowserWindow | null) {
   // Voice mode settings are stored in nimbalyst-settings (app settings)
   // NOT ai-settings (AI provider API keys)
   const settingsStore = new Store<Record<string, unknown>>({
     name: 'nimbalyst-settings',
     watch: true,
   });
+
+  const shortcut = createVoiceGlobalShortcut(globalShortcut, getShortcutTarget);
+  const updateShortcut = () => {
+    const settings = settingsStore.get('voiceMode') as VoiceModeSettings | undefined;
+    shortcut.setEnabled(settings?.enabled === true);
+  };
+  updateShortcut();
+  const stopWatching = settingsStore.onDidChange('voiceMode', updateShortcut);
+  app.once('will-quit', () => {
+    stopWatching();
+    shortcut.dispose();
+  });
+  safeHandle('voice-mode:get-shortcut-status', () => shortcut.getStatus());
 
   /**
    * Get voice mode settings
@@ -172,6 +186,7 @@ export function initVoiceModeSettingsHandler() {
   safeHandle('voice-mode:set-settings', async (_event, settings: VoiceModeSettings) => {
     try {
       settingsStore.set('voiceMode', settings);
+      updateShortcut();
 
       // Broadcast to all windows so Jotai atoms stay in sync
       BrowserWindow.getAllWindows().forEach(window => {

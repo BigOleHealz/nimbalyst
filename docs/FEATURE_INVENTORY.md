@@ -243,6 +243,7 @@ Twelve built-in provider lanes, plus any agent an extension contributes. Every l
 
 ## Voice Mode
 
+- Global keyboard shortcut starts, wakes, or stops desktop Voice Mode from another app (Control+Shift+V on macOS; Control+Alt+Shift+V on Windows/Linux); targets the active voice conversation or last-used project window, and releases the shortcut when Voice Mode is disabled
 - Desktop voice control with GPT Live and GPT Realtime engines; model and voice selection in Voice Mode settings
 - Selectable model and reasoning effort in settings
 - Live transcription streaming

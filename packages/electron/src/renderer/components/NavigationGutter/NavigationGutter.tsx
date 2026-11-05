@@ -547,14 +547,16 @@ export const NavigationGutter: React.FC<NavigationGutterProps> = ({
     }
   }, [hiddenItems, canHide, toggleHidden]);
 
-  // Render one section: available items, in saved order, minus hidden ones.
+  // Voice owns the global shortcut and audio lifecycle even when its icon is hidden.
+  // Other hidden items can be unmounted normally.
   // Each item is wrapped so a right-click targets it in the context menu.
   const renderSection = (items: GutterItem[], section: GutterSection): React.ReactNode => {
     const ordered = sortBySavedOrder(items, sectionOrder[section]);
-    const visible = ordered.filter((it) => !hiddenItems.includes(it.id));
+    const visible = ordered.filter((it) => it.id === 'voice-mode' || !hiddenItems.includes(it.id));
     return visible.map((it) => (
       <div
         key={it.id}
+        hidden={it.id === 'voice-mode' && hiddenItems.includes(it.id)}
         data-gutter-item={it.id}
         onContextMenu={(e) => openContextMenu(e, it.id)}
       >

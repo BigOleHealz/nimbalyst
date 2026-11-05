@@ -23,6 +23,7 @@ import {
   voiceDbSessionIdAtom,
   voiceLastReportedFileAtom,
   voiceListenStateAtom,
+  voiceToggleRequestAtom,
   voiceErrorAtom,
   voiceReconnectingAtom,
   voiceModePreviewAudioAtom,
@@ -817,6 +818,10 @@ export function initVoiceModeListeners(): () => void {
   voiceTranscriptRefresh.dispose();
   voiceTranscriptRefresh = createVoiceTranscriptRefresh();
   const cleanups: Array<() => void> = [voiceTranscriptRefresh.dispose];
+
+  cleanups.push(window.electronAPI.on('voice-mode:toggle-requested', () => {
+    store.set(voiceToggleRequestAtom, value => value + 1);
+  }));
 
   // Helper: check whether voice is active. Voice is a singleton so we don't
   // need to compare session IDs -- just check that *any* voice session is running.

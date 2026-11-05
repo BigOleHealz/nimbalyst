@@ -107,6 +107,16 @@ const fire = (channel: string, payload: unknown): void => {
   listeners.get(channel)?.(payload);
 };
 
+it('delivers global shortcut commands through the voice atom and disposes its IPC listener', async () => {
+  const { store, voice, dispose } = await boot();
+  const before = store.get(voice.voiceToggleRequestAtom);
+  fire('voice-mode:toggle-requested', undefined);
+  expect(store.get(voice.voiceToggleRequestAtom)).toBe(before + 1);
+  dispose();
+  fire('voice-mode:toggle-requested', undefined);
+  expect(store.get(voice.voiceToggleRequestAtom)).toBe(before + 1);
+});
+
 /** Let an async IPC handler (voice-mode:stopped persists first) finish. */
 const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 

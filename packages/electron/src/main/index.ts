@@ -209,7 +209,7 @@ import { notificationService } from './services/NotificationService';
 // SuperLoopProgressService import removed - server disabled (leaking into non-super-loop sessions)
 import { registerMockupHandlers } from './ipc/MockupHandlers';
 import { registerOffscreenEditorHandlers } from './ipc/OffscreenEditorHandlers';
-import { initVoiceModeService } from './services/voice/VoiceModeService';
+import { getActiveVoiceWindow, initVoiceModeService } from './services/voice/VoiceModeService';
 import { initVoiceModeSettingsHandler } from './services/voice/VoiceModeSettingsHandler';
 import { registerWalkthroughHandlers } from './ipc/WalkthroughHandlers';
 import { registerDataModelHandlers } from './ipc/DataModelHandlers';
@@ -2696,7 +2696,7 @@ app.whenReady().then(async () => {
       return { success: true };
     });
     initVoiceModeService();
-    initVoiceModeSettingsHandler();
+    initVoiceModeSettingsHandler(() => getActiveVoiceWindow() ?? getMostRecentlyFocusedWorkspaceWindow());
     registerWalkthroughHandlers();
 
     // Start MCP SSE server

@@ -527,6 +527,12 @@ export function getActiveVoiceSessionId(): string | null {
   return activeVoiceSession?.sessionId ?? null;
 }
 
+/** Route global voice controls to the renderer that owns capture and playback. */
+export function getActiveVoiceWindow(): BrowserWindow | null {
+  const window = activeVoiceSession?.window;
+  return window && !window.isDestroyed() ? window : null;
+}
+
 /**
  * Send a message to the active voice agent to be spoken aloud
  * Returns true if the message was sent successfully, false if:
