@@ -28,6 +28,19 @@ export interface CalendarImportRange {
   end: string;
 }
 
+export const CALENDAR_AUTO_REFRESH_MS = 5 * 60_000;
+
+/** Local midnight boundaries preserve whole calendar days across DST changes. */
+export function calendarAutoRefreshRange(now = new Date()): CalendarImportRange {
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - 7);
+  const end = new Date(now);
+  end.setHours(0, 0, 0, 0);
+  end.setDate(end.getDate() + 91);
+  return { start: start.toISOString(), end: end.toISOString() };
+}
+
 export interface CalendarConnection {
   id: string;
   provider: CalendarProvider;
@@ -36,6 +49,8 @@ export interface CalendarConnection {
   selectedCalendarIds: string[];
   importedAt?: string;
   range?: CalendarImportRange;
+  autoRefresh?: boolean;
+  syncError?: string;
   events: ImportedCalendarEvent[];
 }
 

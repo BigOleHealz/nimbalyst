@@ -10,7 +10,7 @@ vi.mock('electron', () => ({ app: { getPath: () => h.directory, isReady: () => t
   decryptString: (bytes: Buffer) => { if (!bytes.toString().startsWith('encrypted:')) throw new Error('unreadable'); return Buffer.from(bytes.toString().slice(10), 'base64').toString(); },
 } }));
 vi.mock('../../credentials/providerCredentials', () => ({ isProviderEncryptionAvailable: () => h.available }));
-import { CalendarStore } from '../CalendarStore';
+import { CalendarStore, type CalendarData } from '../CalendarStore';
 
 afterEach(() => { if (h.directory) rmSync(h.directory, { recursive: true, force: true }); h.available = true; });
 
@@ -32,4 +32,14 @@ it('fails closed when secure storage is unavailable', () => {
   h.available = false;
   expect(() => new CalendarStore().read()).toThrow('secure storage');
   expect(() => new CalendarStore().write({ version: 1, clients: {}, accounts: [] })).toThrow('secure storage');
+});
+
+it('preserves automatic refresh preferences and failure status across encrypted reloads', () => {
+  h.directory = mkdtempSync(join(tmpdir(), 'calendar-store-'));
+  const data: CalendarData = { version: 1, clients: {}, accounts: [{
+    id: 'account', provider: 'google', label: 'me@example.test', clientId: 'client', accessToken: 'access', refreshToken: 'refresh', expiresAt: 1,
+    calendars: [], selectedCalendarIds: [], events: [], autoRefresh: false, syncError: 'Reconnect this account.',
+  }] };
+  new CalendarStore().write(data);
+  expect(new CalendarStore().read()).toEqual(data);
 });

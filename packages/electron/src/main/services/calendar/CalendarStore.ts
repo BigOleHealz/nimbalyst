@@ -20,6 +20,7 @@ const dataSchema = z.object({
     calendars: z.array(z.object({ id: z.string(), name: z.string(), primary: z.boolean() })),
     selectedCalendarIds: z.array(z.string()), events: z.array(eventSchema),
     importedAt: z.string().optional(), range: z.object({ start: z.string(), end: z.string() }).optional(),
+    autoRefresh: z.boolean().optional(), syncError: z.string().optional(),
   })),
 });
 

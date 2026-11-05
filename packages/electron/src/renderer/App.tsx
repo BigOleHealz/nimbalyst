@@ -150,6 +150,7 @@ import { initSyncListeners } from './store/listeners/syncListeners';
 import { DatabaseMaintenanceNotice } from './components/DatabaseMaintenanceNotice';
 import { initDbMigrationListeners } from './store/listeners/dbMigrationListeners';
 import { initOpenAICodexAuthListeners } from './store/listeners/openAICodexAuthListeners';
+import { initCalendarImportListeners } from './store/listeners/calendarImportListeners';
 import { initThemeListener } from './store/listeners/themeListeners';
 import { initWindowMenuListener } from './store/listeners/windowMenuListeners';
 import { initProjectAppearanceListener } from './store/listeners/projectAppearanceListeners';
@@ -445,6 +446,7 @@ export default function App() {
     const cleanupSync = initSyncListeners();
     const cleanupDbMigration = initDbMigrationListeners();
     const cleanupOpenAICodexAuth = initOpenAICodexAuthListeners();
+    const cleanupCalendarImports = initCalendarImportListeners();
     const cleanupTheme = initThemeListener();
     const cleanupThemeFallback = initThemeFallbackListener();
     const cleanupTrackerSync = initTrackerSyncListeners();
@@ -499,6 +501,7 @@ export default function App() {
       cleanupSync?.();
       cleanupDbMigration?.();
       cleanupOpenAICodexAuth?.();
+      cleanupCalendarImports();
       cleanupTheme?.();
       cleanupThemeFallback?.();
       cleanupTrackerSync?.();

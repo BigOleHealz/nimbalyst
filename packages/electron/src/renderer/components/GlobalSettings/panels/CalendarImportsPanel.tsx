@@ -1,7 +1,10 @@
 import React, { useEffect, useState } from 'react';
+import { useAtom } from 'jotai';
+import { calendarImportsAtom } from '../../../store/atoms/calendarImports';
 import {
   CALENDAR_PROVIDERS,
   type CalendarConnectOptions,
+  type CalendarConnection,
   type CalendarImportsSnapshot,
   type CalendarProvider,
 } from '../../../../shared/calendarImports';
@@ -12,7 +15,7 @@ const inputClass = 'rounded border border-nim bg-nim-secondary px-3 py-2 text-sm
 const providerName = (id: CalendarProvider) => CALENDAR_PROVIDERS.find(item => item.id === id)?.name ?? id;
 
 export function CalendarImportsPanel(): React.JSX.Element {
-  const [snapshot, setSnapshot] = useState<CalendarImportsSnapshot>({ connections: [], clients: {} });
+  const [snapshot, setSnapshot] = useAtom(calendarImportsAtom);
   const [provider, setProvider] = useState<CalendarProvider>('google');
   const [clients, setClients] = useState<Partial<Record<CalendarProvider, { clientId: string; clientSecret?: string }>>>({});
   const [selection, setSelection] = useState<Record<string, string[]>>({});
@@ -25,10 +28,13 @@ export function CalendarImportsPanel(): React.JSX.Element {
 
   const applySnapshot = (next: CalendarImportsSnapshot) => {
     setSnapshot(next);
-    setSelection(previous => Object.fromEntries(next.connections.map(account => [account.id,
+  };
+
+  useEffect(() => {
+    setSelection(previous => Object.fromEntries(snapshot.connections.map(account => [account.id,
       (previous[account.id] ?? account.selectedCalendarIds).filter(id => account.calendars.some(calendar => calendar.id === id)),
     ])));
-  };
+  }, [snapshot.connections]);
 
   useEffect(() => {
     let canceled = false;
@@ -49,6 +55,7 @@ export function CalendarImportsPanel(): React.JSX.Element {
 
   const client = clients[provider] ?? { clientId: snapshot.clients[provider]?.clientId ?? '' };
   const setClient = (changes: { clientId?: string; clientSecret?: string }) => setClients(previous => ({ ...previous, [provider]: { ...client, ...changes } }));
+  const chosenCalendars = (account: CalendarConnection) => selection[account.id] ?? account.selectedCalendarIds;
   const connect = async () => {
     setConnecting(true);
     const options: CalendarConnectOptions = { provider, ...client };
@@ -68,6 +75,7 @@ export function CalendarImportsPanel(): React.JSX.Element {
     <header className="calendar-imports-header space-y-2">
       <h2 className="text-lg font-semibold">Calendar imports</h2>
       <p className="text-sm text-nim-muted">Connect calendar accounts, choose calendars, and import their events into one agenda. Refresh an import to pick up changed or canceled events.</p>
+      <p className="text-sm text-nim-muted">Automatic refresh runs every 5 minutes while Nimbalyst is open, on startup, and after wake or reconnect. It includes 7 days back through 90 days ahead.</p>
       <p className="text-xs text-nim-muted">Calendar access is read-only. Connections and imported events are encrypted on this computer. Each import replaces that account’s previous agenda snapshot for the selected calendars and dates.</p>
     </header>
 
@@ -100,29 +108,32 @@ export function CalendarImportsPanel(): React.JSX.Element {
 
     <section className="calendar-import-controls space-y-3" aria-label="Connected calendars">
       <h3 className="font-medium">Connected accounts</h3>
-      <div className="flex flex-wrap gap-3">
+      {snapshot.connections.some(account => account.autoRefresh === false) && <div className="flex flex-wrap gap-3">
         <label className="space-y-1 text-sm"><span className="block">From</span><input className={inputClass} type="date" disabled={busy} value={from} onChange={event => setFrom(event.target.value)} /></label>
         <label className="space-y-1 text-sm"><span className="block">Through</span><input className={inputClass} type="date" disabled={busy} value={through} onChange={event => setThrough(event.target.value)} /></label>
-      </div>
-      <p className="text-xs text-nim-muted">Choose up to one year per import. Recurring meetings are imported as individual occurrences.</p>
+      </div>}
+      <p className="text-xs text-nim-muted">Pause automatic refresh for an account to import a custom date range of up to one year. Recurring meetings are imported as individual occurrences.</p>
       {snapshot.connections.length === 0 && <p className="text-sm text-nim-muted">Add an account above to choose calendars.</p>}
       {snapshot.connections.map(account => <details key={account.id} className="calendar-account-card space-y-3 rounded border border-nim p-4" open={!account.importedAt}>
-        <summary className="cursor-pointer text-sm"><span className="font-medium">{account.label}</span><span className="ml-2 text-nim-muted">{providerName(account.provider)} · {account.events.length} {account.events.length === 1 ? 'event' : 'events'}</span></summary>
+        <summary className="cursor-pointer text-sm"><span className="font-medium">{account.label}</span><span className="ml-2 text-nim-muted">{providerName(account.provider)} · {account.events.length} {account.events.length === 1 ? 'event' : 'events'}</span>{account.syncError && <span className="ml-2 text-nim-error">Refresh failed</span>}</summary>
+        <label className="flex gap-2 text-sm"><input type="checkbox" disabled={busy} checked={account.autoRefresh !== false} onChange={event => void run(() => window.electronAPI.invoke('calendar-imports:auto-refresh', { accountId: account.id, enabled: event.target.checked }), 'Automatic refresh preference saved.')} />Automatic refresh for {account.label}</label>
+        {account.autoRefresh !== false && <p className="text-xs text-nim-muted">Every 5 minutes · startup and wake · 7 days back through 90 days ahead. Apply calendar selections with Refresh now.</p>}
         <fieldset disabled={busy} className="space-y-2"><legend className="mb-2 text-sm">Calendars for {account.label}</legend>
           {account.calendars.map(calendar => <label className="flex gap-2 text-sm" key={calendar.id}>
-            <input type="checkbox" checked={(selection[account.id] ?? []).includes(calendar.id)} onChange={event => {
+            <input type="checkbox" checked={chosenCalendars(account).includes(calendar.id)} onChange={event => {
               const checked = event.target.checked;
-              setSelection(previous => ({ ...previous, [account.id]: checked ? [...(previous[account.id] ?? []), calendar.id] : (previous[account.id] ?? []).filter(id => id !== calendar.id) }));
+              setSelection(previous => ({ ...previous, [account.id]: checked ? [...(previous[account.id] ?? account.selectedCalendarIds), calendar.id] : (previous[account.id] ?? account.selectedCalendarIds).filter(id => id !== calendar.id) }));
             }} />{calendar.name}{calendar.primary ? ' (primary)' : ''}
           </label>)}
           {!account.calendars.length && <p className="text-sm text-nim-muted">No readable calendars found.</p>}
         </fieldset>
         <div className="flex flex-wrap gap-2">
-          <button className={buttonClass} disabled={busy || !(selection[account.id]?.length) || !from || !through} onClick={() => void run(() => window.electronAPI.invoke('calendar-imports:import', { accountId: account.id, calendarIds: selection[account.id], range: calendarImportRange(from, through) }), `Imported events for ${account.label}.`)}>{account.importedAt ? 'Refresh import' : 'Import events'}</button>
+          <button className={buttonClass} disabled={busy || !chosenCalendars(account).length || (account.autoRefresh === false && (!from || !through))} onClick={() => void run(() => window.electronAPI.invoke('calendar-imports:import', { accountId: account.id, calendarIds: chosenCalendars(account), range: account.autoRefresh === false ? calendarImportRange(from, through) : undefined }), `Imported events for ${account.label}.`)}>{account.autoRefresh !== false ? 'Refresh now' : account.importedAt ? 'Refresh import' : 'Import events'}</button>
           <button className={buttonClass} disabled={busy} onClick={() => void run(() => window.electronAPI.invoke('calendar-imports:calendars', account.id), 'Calendar list updated.')}>Reload calendars</button>
           <button className={buttonClass} disabled={busy} onClick={() => void run(() => window.electronAPI.invoke('calendar-imports:disconnect', account.id), 'Account disconnected and its imported events removed from this agenda.')}>Disconnect</button>
         </div>
         {account.importedAt && <p className="text-xs text-nim-muted">{account.events.length} {account.events.length === 1 ? 'event' : 'events'} · Last imported {new Date(account.importedAt).toLocaleString()}{account.range ? ` · ${new Date(account.range.start).toLocaleDateString()}–${new Date(new Date(account.range.end).getTime() - 1).toLocaleDateString()}` : ''}</p>}
+        {account.syncError && <p className="text-sm text-nim-error" role="alert">{account.syncError}</p>}
       </details>)}
     </section>
 
