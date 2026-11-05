@@ -102,7 +102,7 @@ describe('automatic session kanban', () => {
     stop();
   });
 
-  it('rolls up questions and does not treat archived sessions as merged', () => {
+  it('rolls up questions and excludes archived sessions from the board', () => {
     const store = createStore();
     store.set(sessionRegistryAtom, new Map([
       ['root', session('root')], ['child', session('child', undefined, 'root')],
@@ -112,7 +112,7 @@ describe('automatic session kanban', () => {
     store.set(sessionHasPendingInteractivePromptAtom('archived'), true);
     expect(store.get(sessionsByPhaseAtom).get('awaiting-input')?.map(s => s.id)).toEqual(['root']);
     expect(store.get(sessionsByPhaseAtom).get('complete')).toEqual([]);
-    expect(store.get(sessionsByPhaseAtom).get('backlog')?.map(s => s.id)).toEqual(['archived']);
+    expect(store.get(sessionsByPhaseAtom).get('backlog')).toEqual([]);
   });
 
   it('uses branch and explicit tracker references for PR review and merge, scoped to the workspace', () => {

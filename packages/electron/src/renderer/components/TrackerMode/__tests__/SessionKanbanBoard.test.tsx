@@ -4,14 +4,14 @@ import { Provider, createStore } from 'jotai';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { SessionMeta } from '@nimbalyst/runtime/ai/adapters/sessionStore';
 import { SessionKanbanBoard } from '../SessionKanbanBoard';
-import { sessionRegistryAtom, sessionProcessingAtom, sessionHasPendingInteractivePromptAtom, sessionStoreAtom, sessionListWorkspaceAtom, refreshSessionListAtom, trackerSessionMetricsActiveAtom } from '../../../store/atoms/sessions';
+import { sessionRegistryAtom, sessionProcessingAtom, sessionHasPendingInteractivePromptAtom, sessionStoreAtom, sessionListWorkspaceAtom, refreshSessionListAtom, trackerSessionMetricsActiveAtom, updateSessionStoreAtom } from '../../../store/atoms/sessions';
 import { trackerItemsMapAtom } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerDataAtoms';
 import { trackerCompletionMetricsAtom } from '../../../store/atoms/completionMetrics';
 import { TrackerCompletionMetrics } from '../CompletionMetrics';
 import { worktreeRecordsAtom } from '../../../store/atoms/worktrees';
 import { worktreeGitStatusAtom } from '../../../store/atoms/sessionFiles';
 import { prListAtom } from '../../../store/atoms/pullRequests';
-import { observeSessionKanbanStatus } from '../../../store/atoms/sessionKanban';
+import { observeSessionKanbanStatus, sessionKanbanTagsAtom, sessionKanbanTotalCountAtom } from '../../../store/atoms/sessionKanban';
 
 vi.mock('posthog-js/react', () => ({ usePostHog: () => undefined }));
 vi.mock('../../AgenticCoding/SessionContextMenu', () => ({ SessionContextMenu: () => null }));
@@ -74,10 +74,10 @@ it('shows recorded metrics only in Done, includes descendants once and responds 
   const root: SessionMeta = {
     id: 'metrics-root', title: 'Resolved ticket', provider: 'openai-codex', workspaceId: '/repo', sessionType: 'workstream',
     worktreeId: null, parentSessionId: null, childCount: 1, uncommittedCount: 0,
-    createdAt: 1, updatedAt: 900000, messageCount: 0, isArchived: true, isPinned: false,
+    createdAt: 1, updatedAt: 900000, messageCount: 0, isArchived: false, isPinned: false,
   };
   const child: SessionMeta = { ...root, id: 'metrics-child', parentSessionId: root.id, childCount: 0,
-    sessionType: 'session', hasStarted: true,
+    sessionType: 'session', hasStarted: true, isArchived: true,
     completionMetrics: { totalTokens: 12500, startedAt: 1000, endedAt: 151000, costUSD: 0.25 },
   };
   root.worktreeId = 'metrics-wt';
@@ -100,6 +100,8 @@ it('shows recorded metrics only in Done, includes descendants once and responds 
     tokenUsage: { inputTokens: 20000, outputTokens: 5000, totalTokens: 25000 },
   }));
   expect(within(card).getByText('25K tokens').textContent).toBe('25K tokens');
+  act(() => store.set(updateSessionStoreAtom, { sessionId: root.id, updates: { isArchived: true } }));
+  expect(screen.queryAllByTestId('session-kanban-card')).toHaveLength(0);
   act(() => {
     store.set(sessionRegistryAtom, new Map([[root.id, { ...root, isArchived: false }], [child.id, { ...child, isArchived: false }]]));
     store.set(sessionProcessingAtom(root.id), true);
@@ -163,4 +165,27 @@ it('renders all three Git sub-rows and moves a card as upstream status changes',
   expect(within(row('ready-for-push')).getByText('Git task').textContent).toBe('Git task');
   act(() => store.set(worktreeGitStatusAtom('wt'), { ...status, hasUncommittedChanges: false }));
   expect(within(row('ready-for-pr')).getByText('Git task').textContent).toBe('Git task');
+});
+
+
+it('removes archived cards and counts immediately and restores them on unarchive', () => {
+  const store = createStore();
+  const active: SessionMeta = {
+    id: 'archive-card', title: 'Archive this session', provider: 'openai-codex', workspaceId: '/repo', sessionType: 'session',
+    worktreeId: null, parentSessionId: null, childCount: 0, uncommittedCount: 0,
+    createdAt: 1, updatedAt: 1, messageCount: 1, isArchived: false, isPinned: false, tags: ['archive-test'],
+  };
+  store.set(sessionRegistryAtom, new Map([[active.id, active]]));
+  render(<Provider store={store}><SessionKanbanBoard /></Provider>);
+  expect(screen.getAllByTestId('session-kanban-card').map(card => card.dataset.sessionId)).toEqual([active.id]);
+  expect(store.get(sessionKanbanTotalCountAtom)).toBe(1);
+  act(() => store.set(updateSessionStoreAtom, { sessionId: active.id, updates: { isArchived: true } }));
+  expect(screen.queryAllByTestId('session-kanban-card')).toHaveLength(0);
+  expect(store.get(sessionKanbanTotalCountAtom)).toBe(0);
+  expect(store.get(sessionKanbanTagsAtom)).toEqual([]);
+  expect(store.get(sessionRegistryAtom).get(active.id)?.isArchived).toBe(true);
+  act(() => store.set(updateSessionStoreAtom, { sessionId: active.id, updates: { isArchived: false } }));
+  expect(screen.getAllByTestId('session-kanban-card').map(card => card.dataset.sessionId)).toEqual([active.id]);
+  expect(store.get(sessionKanbanTotalCountAtom)).toBe(1);
+  expect(store.get(sessionKanbanTagsAtom)).toEqual([{ name: 'archive-test', count: 1 }]);
 });
