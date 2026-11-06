@@ -93,7 +93,7 @@ describe('Org mode gutter item', () => {
 
   it('opens the calendar directly from the gutter without requiring a team or Git remote', () => {
     const onContentModeChange = renderGutter();
-    fireEvent.click(screen.getByRole('button', { name: /^Calendar$/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Agenda \(/ }));
     expect(onContentModeChange).toHaveBeenCalledWith('calendar');
   });
 

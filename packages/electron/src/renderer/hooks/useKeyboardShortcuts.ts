@@ -71,6 +71,7 @@ interface KeyboardShortcutsOptions {
  * - Cmd+Y: Open history dialog (Files mode only)
  * - Cmd+T: Switch to Tracker mode (or toggle its sidebar if already in Tracker mode)
  * - Cmd+Alt+P: Open the Tracker Planner from any workspace mode
+ * - Cmd+Alt+A: Open the Agenda from any workspace mode
  * - Cmd+Alt+M: Switch to Org mode (or toggle its sidebar if already in Org mode)
  * - Cmd+Alt+W: Open the new-worktree dialog
  * - Ctrl+`: Toggle Terminal panel
@@ -196,6 +197,16 @@ export function useKeyboardShortcuts({
     const handleKeyDown = (e: KeyboardEvent): void => {
       // On macOS, app shortcuts use Command (metaKey). On Windows/Linux, they use Ctrl.
       const isAppModifier = isMac ? e.metaKey : e.ctrlKey;
+
+      // Option+A produces å on macOS; use the physical key to keep it reachable.
+      if (workspaceMode && isAppModifier && e.altKey && !e.shiftKey
+        && (e.code === 'KeyA' || e.key.toLowerCase() === 'a')) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (isFullscreenPanelActive) exitFullscreenPanel();
+        setActiveMode('calendar');
+        return;
+      }
 
       // Option+P produces π on macOS; match the physical key as well.
       if (workspaceMode && isAppModifier && e.altKey && !e.shiftKey

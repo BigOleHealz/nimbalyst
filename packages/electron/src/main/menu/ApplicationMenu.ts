@@ -767,6 +767,16 @@ export async function createApplicationMenu() {
                     }
                 },
                 {
+                    label: 'Agenda',
+                    accelerator: orgWindowFocused ? undefined : KeyboardShortcuts.view.agendaMode,
+                    click: () => {
+                        const focused = getFocusedWindow();
+                        if (focused && !isAboutWindow(focused)) {
+                            focused.webContents.send('set-content-mode', 'calendar');
+                        }
+                    }
+                },
+                {
                     label: 'Planner',
                     accelerator: orgWindowFocused ? undefined : KeyboardShortcuts.view.trackerPlanner,
                     click: () => {
