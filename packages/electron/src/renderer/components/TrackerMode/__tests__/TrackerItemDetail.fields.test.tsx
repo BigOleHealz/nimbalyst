@@ -142,6 +142,39 @@ function renderPage({ collabScope = { scopeKey: '/ws' } as unknown } = {}) {
 }
 
 describe('TrackerItemDetail metadata region', () => {
+  it.each([undefined, null, 42, ''])('opens and closes an external ticket with invalid source URN %s', async (urn) => {
+    const onClose = vi.fn();
+    store.set(replaceAllTrackerItemsAtom, [{
+      ...ITEM,
+      system: {
+        ...ITEM.system,
+        origin: {
+          kind: 'external',
+          external: { providerId: 'linear', externalId: 'issue-123', urn, url: 'https://linear.app/example/issue/ENG-42' },
+        },
+      },
+    } as unknown as TrackerRecord]);
+    await act(async () => renderDetail({ onClose }));
+    expect(screen.getByTestId('tracker-source-chip').textContent).toContain('issue-123');
+    fireEvent.click(screen.getByTitle('Close (Esc)'));
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it('disables refresh for an installed importer when the ticket has no source URN', async () => {
+    (window.electronAPI.invoke as ReturnType<typeof vi.fn>).mockImplementation(async (channel: string) => (
+      channel === 'tracker:importer:list' ? [{ id: 'linear', displayName: 'Linear', icon: 'cloud_download' }] : undefined
+    ));
+    store.set(replaceAllTrackerItemsAtom, [{
+      ...ITEM,
+      system: { ...ITEM.system, origin: { kind: 'external', external: { providerId: 'linear', externalId: 'issue-123' } } },
+    } as unknown as TrackerRecord]);
+    renderDetail({ workspacePath: '/ws' });
+    const refresh = await screen.findByTestId('tracker-source-resnapshot');
+    expect((refresh as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(refresh);
+    expect(window.electronAPI.invoke).not.toHaveBeenCalledWith('tracker:importer:resnapshot', expect.anything());
+  });
+
   it('renders the schema fields as chips, with tags kept as an open row', () => {
     renderDetail();
 
