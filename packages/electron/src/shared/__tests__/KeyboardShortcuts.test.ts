@@ -108,6 +108,13 @@ describe('toggleExpandedTab binding', () => {
 });
 
 describe('getElectronAccelerator', () => {
+  it('keeps the Agenda shortcut distinct from all other app bindings', () => {
+    const agenda = KeyboardShortcuts.view.agendaMode;
+    const all = Object.values(KeyboardShortcuts).flatMap(group => Object.values(group));
+    expect(all.filter(shortcut => shortcut === agenda)).toHaveLength(1);
+    expect(getShortcutDisplay(agenda, true)).toBe('⌘⌥A');
+    expect(getElectronAccelerator(agenda)).toBe('CmdOrCtrl+Alt+A');
+  });
   it('keeps the Planner shortcut distinct from all other app bindings', () => {
     const planner = KeyboardShortcuts.view.trackerPlanner;
     const all = Object.values(KeyboardShortcuts).flatMap(group => Object.values(group));

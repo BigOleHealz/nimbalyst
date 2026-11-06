@@ -388,7 +388,7 @@ export const NavigationGutter: React.FC<NavigationGutterProps> = ({
     {
       id: 'calendar', section: 'modes', icon: 'calendar_month', label: 'Calendar', hideable: true,
       render: () => renderModeButton({
-        icon: 'calendar_month', label: 'Calendar', contentMode: 'calendar', testId: 'calendar-mode-button',
+        icon: 'calendar_month', label: `Agenda (${getShortcutDisplay(KeyboardShortcuts.view.agendaMode)})`, contentMode: 'calendar', testId: 'calendar-mode-button',
       }),
     },
     ...(hasPrRemote ? [{
