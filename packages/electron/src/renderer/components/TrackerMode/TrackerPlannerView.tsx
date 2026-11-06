@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import type { TrackerRecord } from '@nimbalyst/runtime/core/TrackerRecord';
 import { getRecordStatus, getRecordTitle } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
 import { buildTrackerPlan, planHierarchy, type PlanRow } from './trackerPlan';
+import { TrackerDagView } from './TrackerDagView';
 import './TrackerPlannerView.css';
 
 interface Props {
@@ -16,14 +17,15 @@ const DAY = 86400000;
 const dateLabel = (date: string) => new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
 export function TrackerPlannerView({ items, allItems, selectedItemId, onItemSelect }: Props) {
-  const [mode, setMode] = useState<'queue' | 'timeline'>('queue');
+  const [mode, setMode] = useState<'dag' | 'queue' | 'timeline'>('dag');
   const [readyOnly, setReadyOnly] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [zoom, setZoom] = useState(7);
   const plan = useMemo(() => buildTrackerPlan(allItems), [allItems]);
   const visibleIds = useMemo(() => new Set(items.map(item => item.id)), [items]);
-  const visible = plan.filter(row => visibleIds.has(row.item.id));
-  const filtered = visible.filter(row => !readyOnly || row.ready);
+  const visible = useMemo(() => plan.filter(row => visibleIds.has(row.item.id)), [plan, visibleIds]);
+  const filtered = useMemo(() => visible.filter(row => !readyOnly || row.ready), [visible, readyOnly]);
+  const graphIds = useMemo(() => new Set(filtered.map(row => row.item.id)), [filtered]);
   const rows = mode === 'timeline' ? planHierarchy(filtered, collapsed) : filtered;
   const corpus = useMemo(() => new Map(allItems.map(item => [item.id, item])), [allItems]);
   const today = new Date();
@@ -79,6 +81,7 @@ export function TrackerPlannerView({ items, allItems, selectedItemId, onItemSele
   return <section className="tracker-planner-view" aria-label="Ticket planner">
     <div className="tracker-planner-controls">
       <div role="tablist" aria-label="Planner visualization">
+        <button type="button" role="tab" aria-selected={mode === 'dag'} onClick={() => setMode('dag')}>Dependency graph</button>
         <button type="button" role="tab" aria-selected={mode === 'queue'} onClick={() => setMode('queue')}>Suggested order</button>
         <button type="button" role="tab" aria-selected={mode === 'timeline'} onClick={() => setMode('timeline')}>Hierarchy timeline</button>
       </div>
@@ -86,8 +89,9 @@ export function TrackerPlannerView({ items, allItems, selectedItemId, onItemSele
       {mode === 'timeline' && <label>Scale <select aria-label="Timeline scale" value={zoom} onChange={event => setZoom(Number(event.target.value))}><option value={1}>Days</option><option value={7}>Weeks</option><option value={30}>30 days</option></select></label>}
       <span className="tracker-planner-summary">{visible.length} open · {visible.filter(row => row.ready).length} ready · {visible.filter(row => row.held).length} on hold</span>
     </div>
-    <p className="tracker-planner-guide select-text">Subtasks and dependencies first; earlier deadlines next, then priority. “Needed by” comes from a parent or dependent. Dates are unchanged. Timeline bars use recorded start dates; markers show deadlines.</p>
+    <p className="tracker-planner-guide select-text">{mode === 'dag' ? 'Follow arrows from prerequisites to the work they unlock. Subtasks precede parent closeout; earlier deadlines order independent paths. Select a node to inspect its ticket in the right sidebar.' : 'Subtasks and dependencies first; earlier deadlines next, then priority. “Needed by” comes from a parent or dependent. Dates are unchanged. Timeline bars use recorded start dates; markers show deadlines.'}</p>
     {rows.length === 0 ? <div className="tracker-planner-empty select-text">{readyOnly ? 'No tickets are ready in this view. Turn off the ready filter to inspect their prerequisites.' : 'No open tickets match the current Tracker filters.'}</div>
+      : mode === 'dag' ? <div className="tracker-planner-dag-panel" role="tabpanel" aria-label="Dependency graph"><TrackerDagView plan={plan} visibleIds={graphIds} selectedItemId={selectedItemId} onItemSelect={onItemSelect} /></div>
       : <div className="tracker-planner-scroll" role="tabpanel" aria-label={mode === 'queue' ? 'Suggested order' : 'Hierarchy timeline'}>
         {mode === 'timeline' && <div className="tracker-planner-axis" style={{ minWidth: width + 340 }}><div className="tracker-planner-axis-label">Ticket hierarchy</div><div className="tracker-planner-axis-dates" style={{ width }}>{Array.from({ length: slots }, (_, index) => <span key={index} style={{ left: `${index / slots * 100}%` }}>{new Date(first + index * step * DAY).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' })}</span>)}</div></div>}
         {rows.map((row, index) => <div key={row.item.id} className={`tracker-planner-row ${mode === 'timeline' ? 'tracker-planner-timeline-row' : ''} ${selectedItemId === row.item.id ? 'tracker-planner-selected' : ''}`} style={mode === 'timeline' ? { minWidth: width + 340 } : undefined}>

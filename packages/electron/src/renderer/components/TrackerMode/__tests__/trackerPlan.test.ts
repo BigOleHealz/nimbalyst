@@ -3,6 +3,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import type { TrackerRecord } from '@nimbalyst/runtime/core/TrackerRecord';
 import { loadBuiltinTrackers } from '@nimbalyst/runtime/plugins/TrackerPlugin/models/ModelLoader';
 import { buildTrackerPlan, planDate, planHierarchy } from '../trackerPlan';
+import { buildTicketDag, connectedTicketIds, ticketDagStatus } from '../trackerDag';
+import { globalRegistry } from '@nimbalyst/tracker-schema';
 
 beforeAll(() => loadBuiltinTrackers());
 const ref = (itemId: string) => ({ itemId, trackerType: 'task' });
@@ -85,5 +87,66 @@ describe('ticket planning', () => {
     expect(planDate('2026-11-05T00:00:00Z')).toBe('2026-11-05');
     expect(planDate('2026-02-30')).toBeNull();
     expect(planDate('')).toBeNull();
+  });
+});
+
+describe('ticket execution DAG', () => {
+  it('directs dependencies and child closeout from earlier to later stages', () => {
+    const plan = buildTrackerPlan([
+      record('parent', { dueDate: '2026-11-12' }),
+      record('child', { parentTask: ref('parent'), dependsOn: [ref('setup')] }),
+      record('setup'),
+    ]);
+    const dag = buildTicketDag(plan, new Set(['parent', 'child', 'setup']));
+    expect(dag.edges).toEqual(expect.arrayContaining([
+      expect.objectContaining({ source: 'setup', target: 'child', kind: 'dependency' }),
+      expect.objectContaining({ source: 'child', target: 'parent', kind: 'subtask' }),
+    ]));
+    const nodes = new Map(dag.nodes.map(node => [node.id, node]));
+    for (const edge of dag.edges) {
+      expect(nodes.get(edge.source)!.stage).toBeLessThan(nodes.get(edge.target)!.stage);
+      expect(nodes.get(edge.source)!.x).toBeLessThan(nodes.get(edge.target)!.x);
+    }
+  });
+
+  it('retains full-graph stages and hidden-prerequisite explanations under filters', () => {
+    const plan = buildTrackerPlan([record('first'), record('second', { dependsOn: [ref('first')] }), record('third', { dependsOn: [ref('second')] })]);
+    const dag = buildTicketDag(plan, new Set(['third']));
+    expect(dag.nodes).toHaveLength(1);
+    expect(dag.nodes[0]).toMatchObject({ id: 'third', stage: 2, outsidePrerequisiteCount: 1, row: { ready: false } });
+    expect(dag.edges).toEqual([]);
+  });
+
+  it('keeps branching work parallel without overlapping nodes and traces only the selected path', () => {
+    const plan = buildTrackerPlan([
+      record('start'), record('left', { dependsOn: [ref('start')] }),
+      record('right', { dependsOn: [ref('start')] }), record('end', { dependsOn: [ref('left'), ref('right')] }), record('independent'),
+    ]);
+    const dag = buildTicketDag(plan, new Set(plan.map(row => row.item.id)));
+    const left = dag.nodes.find(node => node.id === 'left')!;
+    const right = dag.nodes.find(node => node.id === 'right')!;
+    expect(left.stage).toBe(right.stage);
+    expect(left.y).not.toBe(right.y);
+    expect(connectedTicketIds(dag, 'left')).toEqual(new Set(['start', 'left', 'end']));
+    expect(new Set(dag.nodes.map(node => `${node.x}:${node.y}`)).size).toBe(dag.nodes.length);
+  });
+
+  it('exposes real cycles while omitting cyclic arrows and preserving downstream order', () => {
+    const plan = buildTrackerPlan([record('a', { dependsOn: [ref('b')] }), record('b', { dependsOn: [ref('a')] }), record('after', { dependsOn: [ref('b')] }), record('free')]);
+    const dag = buildTicketDag(plan, new Set(plan.map(row => row.item.id)));
+    expect(dag.cycleEdges).toHaveLength(2);
+    expect(dag.nodes.filter(node => node.inCycle).map(node => node.id).sort()).toEqual(['a', 'b']);
+    expect(dag.edges).toEqual([expect.objectContaining({ source: 'b', target: 'after' })]);
+    expect(dag.nodes.find(node => node.id === 'after')!.stage).toBeGreaterThan(dag.nodes.find(node => node.id === 'b')!.stage);
+  });
+
+  it('uses configured workflow status labels and colors, including renamed status fields', () => {
+    const model = globalRegistry.get('task')!;
+    const type = 'dag-status-fixture';
+    globalRegistry.register({ ...model, type, roles: { ...model.roles, workflowStatus: 'phase' }, fields: model.fields.map(field => field.name === 'status' ? { ...field, name: 'phase', options: [{ value: 'in-progress', label: 'Building', color: '#123456', category: 'started' }] } : field) });
+    const custom = { ...record('custom', { phase: 'in-progress' }), primaryType: type };
+    expect(ticketDagStatus(custom)).toEqual({ value: 'in-progress', label: 'Building', color: '#123456' });
+    expect(ticketDagStatus(record('review', { status: 'in-review' })).label).toBe('In Review');
+    expect(ticketDagStatus(record('done', { status: 'done' })).label).toBe('Done');
   });
 });

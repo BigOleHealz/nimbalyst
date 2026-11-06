@@ -8,6 +8,7 @@
 .tracker-planner-summary { margin-left: auto; color: var(--nim-text-muted); }
 .tracker-planner-guide { padding: 8px 12px; font-size: 11px; color: var(--nim-text-muted); border-bottom: 1px solid var(--nim-border); }
 .tracker-planner-scroll { flex: 1; overflow: auto; min-height: 0; }
+.tracker-planner-dag-panel { display: flex; flex: 1; min-height: 0; overflow: hidden; }
 .tracker-planner-row { border-bottom: 1px solid var(--nim-border); }
 .tracker-planner-row:hover { background: var(--nim-bg-hover); }
 .tracker-planner-selected { background: var(--nim-bg-selected); }
