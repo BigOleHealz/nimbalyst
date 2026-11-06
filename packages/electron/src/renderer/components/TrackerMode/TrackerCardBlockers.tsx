@@ -29,7 +29,7 @@ export function TrackerCardBlockers({
     >
       {blockers.length > 0 && (
         <>
-          <div className="font-semibold text-[var(--nim-warning)]">
+          <div className="font-semibold text-[var(--nim-error)]">
             Blocked by
           </div>
           <ul className="m-0 mt-1 flex list-none flex-col gap-1 p-0">
@@ -61,7 +61,7 @@ export function TrackerCardBlockers({
         </>
       )}
       {readiness.inCycle && (
-        <p className="m-0 mt-1 text-[var(--nim-warning)]">
+        <p className="m-0 mt-1 text-[var(--nim-error)]">
           Dependency cycle: change a dependency to unblock this work.
         </p>
       )}

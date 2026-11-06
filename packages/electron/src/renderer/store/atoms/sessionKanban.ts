@@ -12,6 +12,8 @@ import type { SessionMeta } from '@nimbalyst/runtime/ai/adapters/sessionStore';
 import { sessionAwaitingApprovalAtom } from './sessionApproval';
 import { trackerItemsMapAtom } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerDataAtoms';
 import { getRecordPrReferences } from '@nimbalyst/runtime/plugins/TrackerPlugin/prReferences';
+import { computeReadiness } from '@nimbalyst/runtime/plugins/TrackerPlugin/models/trackerReadiness';
+import { getRecordStatus } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
 import { prListAtom } from './pullRequests';
 import { worktreeRecordsAtom } from './worktrees';
 import { worktreeGitStatusAtom, sessionGitStatusAtom } from './sessionFiles';
@@ -46,6 +48,7 @@ export type KanbanCardType = 'session' | 'workstream' | 'worktree';
 export interface ChildRunStateSummary {
   running: number;
   waiting: number;
+  blocked: number;
   review: number;
   idle: number;
   done: number;
@@ -66,6 +69,7 @@ export const SESSION_PHASE_COLUMNS: { value: SessionPhase; label: string; color:
 
 export const SESSION_BOARD_COLUMNS: { value: SessionBoardColumn; label: string; color: string }[] = [
   { value: 'backlog', label: 'Backlog', color: 'var(--nim-text-muted)' },
+  { value: 'blocked', label: 'Blocked', color: 'var(--nim-error)' },
   { value: 'implementing', label: 'Running', color: 'var(--nim-primary)' },
   { value: 'awaiting-input', label: 'Awaiting Input', color: 'var(--nim-warning)' },
   { value: 'git', label: 'Git status', color: 'var(--nim-primary)' },
@@ -89,9 +93,38 @@ export function getCardType(meta: SessionMeta | undefined): KanbanCardType {
 
 const sessionHasActivityAtom = atomFamily((id: string) => atom(get => get(sessionLastActivityAtom(id)) > 0));
 
+/** Use the full ticket corpus so hidden prerequisites still hold linked work. */
+const trackerBlockedSessionsAtom = atom(get => {
+  const records = get(trackerItemsMapAtom);
+  const registry = get(sessionRegistryAtom);
+  const readiness = computeReadiness([...records.values()], getRecordStatus);
+  const blockedItems = new Set([...records.values()].filter(item => {
+    const state = readiness.get(item.id);
+    return !item.archived && state?.state !== 'closed'
+      && (state?.state === 'blocked' || state?.inCycle || getRecordStatus(item).toLowerCase() === 'blocked');
+  }).map(item => item.id));
+  const blocked = new Set<string>();
+  const matchesWorkspace = (sessionId: string, itemId: string) => {
+    const session = registry.get(sessionId);
+    const item = records.get(itemId);
+    return session && item && (!item.system.workspace || item.system.workspace === session.workspaceId);
+  };
+  for (const session of registry.values()) {
+    if (session.linkedTrackerItemIds?.some(id => blockedItems.has(id) && matchesWorkspace(session.id, id))) blocked.add(session.id);
+  }
+  // Either end of a durable link may arrive first during hydration/sync.
+  for (const id of blockedItems) {
+    for (const sessionId of records.get(id)?.system.linkedSessions ?? []) {
+      if (matchesWorkspace(sessionId, id)) blocked.add(sessionId);
+    }
+  }
+  return blocked;
+});
+
 function ownState(get: Getter, meta: SessionMeta): { column: SessionBoardColumn; gitStage?: SessionGitStage } {
   if (!meta.isArchived && (get(sessionAwaitingApprovalAtom(meta.id)) || get(sessionHasPendingInteractivePromptAtom(meta.id)))) return { column: 'awaiting-input' };
   if (!meta.isArchived && get(sessionProcessingAtom(meta.id))) return { column: 'implementing' };
+  if (!meta.isArchived && get(trackerBlockedSessionsAtom).has(meta.id)) return { column: 'blocked' };
 
   const workspaceGit = meta.workspaceId === get(activeWorkspacePathAtom) ? get(gitStatusAtom) : null;
   const worktreeGit = meta.worktreeId ? get(worktreeGitStatusAtom(meta.worktreeId)) : null;
@@ -127,7 +160,7 @@ export const sessionAutomaticBoardStateAtom = atom(get => {
   const registry = get(sessionRegistryAtom);
   const own = new Map([...registry].map(([id, meta]) => [id, ownState(get, meta)]));
   const result = new Map<string, { column: SessionBoardColumn; status: string; gitStage?: SessionGitStage }>();
-  const priority = ['awaiting-input', 'implementing', 'git', 'validating', 'backlog', 'complete'];
+  const priority = ['awaiting-input', 'implementing', 'blocked', 'git', 'validating', 'backlog', 'complete'];
   for (const [id, meta] of registry) {
     if (meta.parentSessionId) continue;
     const states = sessionArchiveSubtreeIds(registry, [id]).map(childId => ({ id: childId, ...own.get(childId)! }));
@@ -186,6 +219,7 @@ export const sessionsByPhaseAtom = atom((get) => {
     const phase = override && override.status === state.status && VALID_COLUMNS.has(override.column)
       && (override.column !== 'complete' || state.column === 'complete')
       && (override.column !== 'git' || state.column === 'git')
+      && (state.column !== 'blocked' || override.column === 'blocked')
       ? override.column : state.column;
 
     // Skip complete if filter says hide
@@ -258,7 +292,7 @@ export const childRunStatesAtom = atomFamily((sessionId: string) =>
   atom((get): ChildRunStateSummary => {
     const registry = get(sessionRegistryAtom);
     const summary: ChildRunStateSummary = {
-      running: 0, waiting: 0, review: 0, idle: 0, done: 0, total: 0,
+      running: 0, waiting: 0, blocked: 0, review: 0, idle: 0, done: 0, total: 0,
     };
 
     for (const [_id, meta] of registry) {
@@ -278,6 +312,8 @@ export const childRunStatesAtom = atomFamily((sessionId: string) =>
         summary.waiting++;
       } else if (!meta.isArchived && isProcessing) {
         summary.running++;
+      } else if (ownState(get, meta).column === 'blocked') {
+        summary.blocked++;
       } else if (ownState(get, meta).column === 'complete') {
         summary.done++;
       } else if (['validating', 'git'].includes(ownState(get, meta).column)) {
@@ -303,6 +339,7 @@ export const setSessionBoardColumnAtom = atom(null, async (get, set, { sessionId
   const state = get(sessionAutomaticBoardStateAtom).get(sessionId);
   if (!meta || !state) return;
   if ((phase === 'complete' || phase === 'git') && state.column !== phase) return;
+  if (state.column === 'blocked' && phase !== 'blocked') return;
   const kanbanOverride = phase ? { column: phase, status: state.status } : undefined;
   set(sessionRegistryAtom, new Map(get(sessionRegistryAtom)).set(sessionId, { ...meta, kanbanOverride }));
   try {

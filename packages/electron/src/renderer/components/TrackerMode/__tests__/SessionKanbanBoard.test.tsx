@@ -1,7 +1,9 @@
 import React from 'react';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { Provider, createStore } from 'jotai';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, expect, it, vi } from 'vitest';
+import type { TrackerRecord } from '@nimbalyst/runtime/core/TrackerRecord';
+import { loadBuiltinTrackers } from '@nimbalyst/runtime/plugins/TrackerPlugin/models/ModelLoader';
 import type { SessionMeta } from '@nimbalyst/runtime/ai/adapters/sessionStore';
 import { SessionKanbanBoard } from '../SessionKanbanBoard';
 import { sessionRegistryAtom, sessionProcessingAtom, sessionHasPendingInteractivePromptAtom, sessionStoreAtom, sessionListWorkspaceAtom, refreshSessionListAtom, trackerSessionMetricsActiveAtom, updateSessionStoreAtom } from '../../../store/atoms/sessions';
@@ -11,7 +13,7 @@ import { TrackerCompletionMetrics } from '../CompletionMetrics';
 import { worktreeRecordsAtom } from '../../../store/atoms/worktrees';
 import { worktreeGitStatusAtom } from '../../../store/atoms/sessionFiles';
 import { prListAtom } from '../../../store/atoms/pullRequests';
-import { observeSessionKanbanStatus, sessionKanbanTagsAtom, sessionKanbanTotalCountAtom } from '../../../store/atoms/sessionKanban';
+import { observeSessionKanbanStatus, sessionKanbanTagsAtom, sessionKanbanTotalCountAtom, setSessionBoardColumnAtom } from '../../../store/atoms/sessionKanban';
 
 vi.mock('posthog-js/react', () => ({ usePostHog: () => undefined }));
 vi.mock('../../AgenticCoding/SessionContextMenu', () => ({ SessionContextMenu: () => null }));
@@ -21,6 +23,100 @@ vi.mock('../../AgentMode/ArchiveWorktreeDialog', () => ({ ArchiveWorktreeDialog:
 vi.mock('../../../hooks/useArchiveWorktreeDialog', () => ({ useArchiveWorktreeDialog: () => ({ dialogState: null }) }));
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+beforeAll(() => loadBuiltinTrackers());
+
+const blockedTestSession = (id: string, overrides: Partial<SessionMeta> = {}): SessionMeta => ({
+  id, title: id, provider: 'openai-codex', workspaceId: '/repo', sessionType: 'session',
+  worktreeId: null, parentSessionId: null, childCount: 0, uncommittedCount: 0,
+  createdAt: 1, updatedAt: 1, messageCount: 1, hasStarted: true, isArchived: false, isPinned: false,
+  ...overrides,
+});
+const dependencyTicket = (id: string, fields: Record<string, unknown> = {}, linkedSessions: string[] = []): TrackerRecord => ({
+  id, primaryType: 'task', typeTags: ['task'], source: 'native', archived: false, syncStatus: 'local',
+  system: { workspace: '/repo', createdAt: '2026-11-05', updatedAt: '2026-11-05', linkedSessions },
+  fields: { title: id, status: 'to-do', ...fields },
+} as TrackerRecord);
+
+it('keeps linked work blocked until every dependency clears, then restores its Git lane without changing ticket status', async () => {
+  const store = createStore();
+  const session = blockedTestSession('waiting-work', { linkedTrackerItemIds: ['dependent'], uncommittedCount: 1 });
+  const dependent = dependencyTicket('dependent', { status: 'in-progress', dependsOn: [{ itemId: 'first' }, { itemId: 'second' }] });
+  const update = (first: string, second: string) => store.set(trackerItemsMapAtom, new Map([
+    dependent, dependencyTicket('first', { status: first }), dependencyTicket('second', { status: second }),
+  ].map(item => [item.id, item])));
+  update('to-do', 'to-do');
+  store.set(sessionRegistryAtom, new Map([[session.id, session]]));
+  const view = render(<Provider store={store}><SessionKanbanBoard /></Provider>);
+  const cards = (column: string) => within(view.container.querySelector(`[data-phase="${column}"]`)! as HTMLElement)
+    .queryAllByTestId('session-kanban-card').map(card => card.dataset.sessionId);
+  expect(cards('blocked')).toEqual([session.id]);
+  expect(screen.getByText('blocked').textContent).toContain('blocked');
+  await act(async () => { await store.set(setSessionBoardColumnAtom, { sessionId: session.id, phase: 'validating' }); });
+  expect(cards('blocked')).toEqual([session.id]);
+  act(() => update('done', 'to-do'));
+  expect(cards('blocked')).toEqual([session.id]);
+  act(() => update('done', 'done'));
+  expect(cards('blocked')).toEqual([]);
+  expect(cards('git')).toEqual([session.id]);
+  act(() => update('to-do', 'done'));
+  expect(cards('blocked')).toEqual([session.id]);
+  act(() => store.set(sessionProcessingAtom(session.id), true));
+  expect(cards('implementing')).toEqual([session.id]);
+  act(() => store.set(sessionHasPendingInteractivePromptAtom(session.id), true));
+  expect(cards('awaiting-input')).toEqual([session.id]);
+  expect(dependent.fields.status).toBe('in-progress');
+});
+
+it('surfaces a blocked child through its workstream using reverse ticket links and clears it when the ticket closes', () => {
+  const store = createStore();
+  const parent = blockedTestSession('workstream', { sessionType: 'workstream', childCount: 1 });
+  const child = blockedTestSession('blocked-child', { parentSessionId: parent.id });
+  const blocker = dependencyTicket('prerequisite');
+  const ticket = dependencyTicket('child-ticket', { dependsOn: [{ itemId: blocker.id }] }, [child.id]);
+  store.set(sessionRegistryAtom, new Map([parent, child].map(session => [session.id, session])));
+  store.set(trackerItemsMapAtom, new Map([blocker, ticket].map(item => [item.id, item])));
+  const view = render(<Provider store={store}><SessionKanbanBoard /></Provider>);
+  const lane = (name: string) => view.container.querySelector(`[data-phase="${name}"]`)! as HTMLElement;
+  expect(within(lane('blocked')).getAllByTestId('session-kanban-card').map(card => card.dataset.sessionId)).toEqual([parent.id]);
+  expect(within(lane('blocked')).getByText('1 blocked').textContent).toBe('1 blocked');
+  act(() => store.set(trackerItemsMapAtom, new Map([blocker, { ...ticket, fields: { ...ticket.fields, status: 'done' } }].map(item => [item.id, item]))));
+  expect(within(lane('blocked')).queryAllByTestId('session-kanban-card')).toHaveLength(0);
+  expect(within(lane('validating')).getAllByTestId('session-kanban-card')).toHaveLength(1);
+});
+
+it('allows a manual Blocked placement until the session operational state changes', async () => {
+  const invoke = vi.fn().mockResolvedValue({ success: true });
+  vi.stubGlobal('window', Object.assign(window, { electronAPI: { invoke } }));
+  const store = createStore();
+  const session = blockedTestSession('manual-block');
+  store.set(sessionRegistryAtom, new Map([[session.id, session]]));
+  const stop = observeSessionKanbanStatus(store);
+  const view = render(<Provider store={store}><SessionKanbanBoard /></Provider>);
+  await act(async () => { await store.set(setSessionBoardColumnAtom, { sessionId: session.id, phase: 'blocked' }); });
+  const blocked = view.container.querySelector('[data-phase="blocked"]')! as HTMLElement;
+  expect(within(blocked).getAllByTestId('session-kanban-card')).toHaveLength(1);
+  expect(invoke).toHaveBeenCalledWith('sessions:update-session-metadata', session.id, {
+    kanbanOverride: expect.objectContaining({ column: 'blocked' }),
+  });
+  act(() => store.set(sessionProcessingAtom(session.id), true));
+  expect(within(blocked).queryAllByTestId('session-kanban-card')).toHaveLength(0);
+  expect(store.get(sessionRegistryAtom).get(session.id)?.kanbanOverride).toBeUndefined();
+  stop();
+});
+
+it('recognizes a linked manual Blocked status without blocking archived or foreign-workspace tickets', () => {
+  const store = createStore();
+  const sessions = ['manual-status', 'archived-ticket', 'other-workspace'].map(id => blockedTestSession(id, { linkedTrackerItemIds: [id] }));
+  const manual = dependencyTicket('manual-status', { status: 'blocked' });
+  const archived = { ...dependencyTicket('archived-ticket', { status: 'blocked' }), archived: true };
+  const foreign = dependencyTicket('other-workspace', { status: 'blocked' });
+  foreign.system.workspace = '/another-project';
+  store.set(sessionRegistryAtom, new Map(sessions.map(session => [session.id, session])));
+  store.set(trackerItemsMapAtom, new Map([manual, archived, foreign].map(item => [item.id, item])));
+  const view = render(<Provider store={store}><SessionKanbanBoard /></Provider>);
+  const blocked = view.container.querySelector('[data-phase="blocked"]')! as HTMLElement;
+  expect(within(blocked).getAllByTestId('session-kanban-card').map(card => card.dataset.sessionId)).toEqual(['manual-status']);
+});
 
 it('routes a clicked card and moves three sessions and counts through a question, resume, finish and manual drag', async () => {
   Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() });

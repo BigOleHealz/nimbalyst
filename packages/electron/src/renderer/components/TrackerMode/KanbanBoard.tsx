@@ -449,7 +449,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
     <div className="flex-1 flex gap-3 p-3 overflow-x-auto overflow-y-hidden min-h-0">
       {columns.map((col) => {
         const colItems = itemsByColumn[col.key] || [];
-        const color = col.dependency ? 'var(--nim-warning)' : (col.value && STATUS_COLORS[col.value]) || NEUTRAL_SWATCH;
+        const color = col.dependency ? 'var(--nim-error)' : (col.value && STATUS_COLORS[col.value]) || NEUTRAL_SWATCH;
 
         return (
           <div
