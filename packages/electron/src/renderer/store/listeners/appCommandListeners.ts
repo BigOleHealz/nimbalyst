@@ -24,6 +24,7 @@ import {
   newBrowserTabRequestAtom,
   sessionLaunchPopupRequestAtom,
   trackerQuickCreateRequestAtom,
+  trackerPlannerRequestAtom,
   navigationGoBackRequestAtom,
   navigationGoForwardRequestAtom,
   newMockupRequestAtom,
@@ -87,6 +88,11 @@ export function initAppCommandListeners(): () => void {
     store.set(trackerQuickCreateRequestAtom, (v) => v + 1);
   });
   if (typeof uTrackerQuickCreate === 'function') cleanups.push(uTrackerQuickCreate);
+
+  const uTrackerPlanner = window.electronAPI?.on?.('tracker-planner-open', () => {
+    store.set(trackerPlannerRequestAtom, (v) => v + 1);
+  });
+  if (typeof uTrackerPlanner === 'function') cleanups.push(uTrackerPlanner);
 
   const u2 = window.electronAPI?.on?.('toggle-ai-chat-panel', () => {
     store.set(toggleAIChatPanelRequestAtom, (v) => v + 1);

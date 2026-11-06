@@ -9,6 +9,7 @@ import { store } from '@nimbalyst/runtime/store';
 import {
   initTrackerPanelLayout,
   openTrackerItemAsDocumentAtom,
+  openTrackerPlannerAtom,
   setTrackerDocumentChatSessionAtom,
   setTrackerItemViewAtom,
   setTrackerModeLayoutAtom,
@@ -34,6 +35,18 @@ async function loadWith(trackerModeLayout: Record<string, unknown>): Promise<voi
 }
 
 describe('tracker document-view layout state', () => {
+  it('defaults the Planner closed in old state and restores its workspace preference', async () => {
+    await loadWith({});
+    expect(store.get(trackerModeLayoutAtom).plannerOpen).toBe(false);
+    await loadWith({ plannerOpen: true });
+    expect(store.get(trackerModeLayoutAtom).plannerOpen).toBe(true);
+    store.set(openTrackerItemAsDocumentAtom, 'ticket');
+    store.set(openTrackerPlannerAtom);
+    expect(store.get(trackerModeDocumentItemIdAtom)).toBeNull();
+    expect(store.get(trackerModeLayoutAtom).plannerOpen).toBe(true);
+    await loadWith({ plannerOpen: 'true' });
+    expect(store.get(trackerModeLayoutAtom).plannerOpen).toBe(false);
+  });
   it('defaults the document-view fields for state saved before they existed', async () => {
     await loadWith({ viewMode: 'list', viewModeMigrated: true });
 

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { store } from '@nimbalyst/runtime/store';
-import { sessionLaunchPopupRequestAtom } from '../../atoms/appCommands';
+import { sessionLaunchPopupRequestAtom, trackerPlannerRequestAtom } from '../../atoms/appCommands';
 import { initAppCommandListeners } from '../appCommandListeners';
 
 describe('session launch popup app command', () => {
@@ -31,5 +31,14 @@ describe('session launch popup app command', () => {
     cleanup = initAppCommandListeners();
     handlers['session-launch-popup-open']();
     expect(store.get(sessionLaunchPopupRequestAtom)).toBe(1);
+  });
+
+  it('routes the native Planner menu command and removes its listener on cleanup', () => {
+    const previous = store.get(trackerPlannerRequestAtom);
+    cleanup = initAppCommandListeners();
+    handlers['tracker-planner-open']();
+    expect(store.get(trackerPlannerRequestAtom)).toBe(previous + 1);
+    cleanup();
+    expect(handlers['tracker-planner-open']).toBeUndefined();
   });
 });

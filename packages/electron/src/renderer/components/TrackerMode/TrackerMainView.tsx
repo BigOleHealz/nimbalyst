@@ -2,6 +2,7 @@ import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useAtomValue, useSetAtom } from 'jotai';
 import { activeFileRepoPathAtom } from '../../store/atoms/workspaceRepos';
 import { copyToClipboard, MaterialSymbol } from '@nimbalyst/runtime';
+import { KeyboardShortcuts, getShortcutDisplay } from '../../../shared/KeyboardShortcuts';
 import { TrackerUnreadDot } from '@nimbalyst/runtime/readReceipts/TrackerUnreadDot';
 import type { TrackerIdentity } from '@nimbalyst/runtime';
 import { trackerRadarActorKey, type RadarLaneEnrichment, type RadarPresence } from '@nimbalyst/tracker-core';
@@ -194,8 +195,7 @@ export const TrackerMainView: React.FC<TrackerMainViewProps> = ({
   onExitSavedView,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [plannerOpen, setPlannerOpen] = useState(false);
-  useEffect(() => setPlannerOpen(false), [workspacePath, viewMode]);
+  const previousPlannerViewMode = useRef(viewMode);
   const [quickAddType, setQuickAddType] = useState<string | null>(null);
   const [pendingWorktreeLaunch, setPendingWorktreeLaunch] = useState<TrackerLaunchContext | null>(null);
   const pendingLaunchIsCurrent = isTrackerLaunchForWorkspace(pendingWorktreeLaunch, workspacePath);
@@ -274,8 +274,13 @@ export const TrackerMainView: React.FC<TrackerMainViewProps> = ({
 
   // Selected item for detail panel
   const modeLayout = useAtomValue(trackerModeLayoutAtom);
-  const resolveRelationshipLabel = useAtomValue(trackerRelationshipLabelAtom);
   const setModeLayout = useSetAtom(setTrackerModeLayoutAtom);
+  const plannerOpen = modeLayout.plannerOpen;
+  useEffect(() => {
+    if (previousPlannerViewMode.current !== viewMode) setModeLayout({ plannerOpen: false });
+    previousPlannerViewMode.current = viewMode;
+  }, [viewMode, setModeLayout]);
+  const resolveRelationshipLabel = useAtomValue(trackerRelationshipLabelAtom);
   // Display Settings for the selected type; the root layout fields are only the
   // fallback behind these, so nothing here reads them directly.
   const viewSettings = useAtomValue(trackerActiveViewSettingsAtom);
@@ -1224,8 +1229,8 @@ export const TrackerMainView: React.FC<TrackerMainViewProps> = ({
           type="button"
           className={`tracker-planner-toggle inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs ${plannerOpen ? 'bg-nim-active text-nim' : 'text-nim-muted hover:bg-nim-hover'}`}
           aria-pressed={plannerOpen}
-          onClick={() => setPlannerOpen(open => !open)}
-          title="Plan work by dependencies, subtasks and due dates"
+          onClick={() => setModeLayout({ plannerOpen: !plannerOpen })}
+          title={`Plan work by dependencies, subtasks and due dates (${getShortcutDisplay(KeyboardShortcuts.view.trackerPlanner)})`}
         >
           <MaterialSymbol icon="account_tree" size={16} />
           Planner

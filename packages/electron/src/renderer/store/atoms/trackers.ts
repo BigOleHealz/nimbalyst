@@ -135,6 +135,7 @@ export async function initTrackerPanelLayout(workspacePath: string): Promise<voi
           : DEFAULT_MODE_LAYOUT.activeFilters,
         viewMode: migratedViewMode,
         selectedItemId: savedModeLayout.selectedItemId ?? DEFAULT_MODE_LAYOUT.selectedItemId,
+        plannerOpen: savedModeLayout.plannerOpen === true,
         sidebarWidth: savedModeLayout.sidebarWidth ?? DEFAULT_MODE_LAYOUT.sidebarWidth,
         sidebarCollapsed: typeof savedModeLayout.sidebarCollapsed === 'boolean'
           ? savedModeLayout.sidebarCollapsed
@@ -286,6 +287,8 @@ export interface TrackerModeLayout {
   viewMode: TrackerViewMode;
   /** Currently selected tracker item ID (opens detail panel when non-null) */
   selectedItemId: string | null;
+  /** Whether the Planner is the current tracker presentation. */
+  plannerOpen: boolean;
   /** Sidebar width in pixels */
   sidebarWidth: number;
   /** Whether the user has collapsed the tracker sidebar (Cmd+T / gutter re-click). */
@@ -371,6 +374,7 @@ const DEFAULT_MODE_LAYOUT: TrackerModeLayout = {
   activeFilters: [],
   viewMode: 'list',
   selectedItemId: null,
+  plannerOpen: false,
   sidebarWidth: 220,
   sidebarCollapsed: false,
   detailPanelWidth: 400,
@@ -636,6 +640,11 @@ export const setTrackerModeLayoutAtom = atom(
     }
   }
 );
+
+/** Opens the Planner even when the selected ticket is in focused document view. */
+export const openTrackerPlannerAtom = atom(null, (_get, set) => {
+  set(setTrackerModeLayoutAtom, { plannerOpen: true, selectedItemId: null });
+});
 
 /**
  * Toggle the tracker sidebar's collapsed state. Writes the preference even

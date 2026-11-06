@@ -18,6 +18,7 @@ const BASE_LAYOUT: TrackerModeLayout = {
   activeFilters: [],
   viewMode: 'list',
   selectedItemId: null,
+  plannerOpen: false,
   sidebarWidth: 220,
   sidebarCollapsed: false,
   detailPanelWidth: 400,
