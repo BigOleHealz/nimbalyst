@@ -60,6 +60,18 @@ const RELEASE_REF: TrackerRelationshipValue = {
 };
 
 describe('board columns', () => {
+  it.each(['status', 'priority'] as const)('keeps an explicitly blocked ticket in Blocked when grouped by %s without requiring a dependency', axis => {
+    const ticket = bug('access-blocked', { status: 'blocked', priority: 'high' });
+    const readiness = computeReadiness([ticket], getRecordStatus);
+    const columns = buildTrackerBoardColumns(axis, 'bug', [ticket], undefined, 'all', readiness);
+    const grouped = groupItemsIntoBoardColumns([ticket], columns, axis, 'manual', readiness);
+    const blocked = columns.find(column => column.dependency)!;
+    expect(grouped[blocked.key].map(item => item.id)).toEqual([ticket.id]);
+    expect(Object.entries(grouped).filter(([key]) => key !== blocked.key).flatMap(([, items]) => items)).toEqual([]);
+    expect(readiness.get(ticket.id)?.state).toBe('blocked');
+    expect(ticket.fields.status).toBe('blocked');
+  });
+
   it('routes blocked tickets to a live lane and restores their saved status when all blockers clear', () => {
     const dependent = bug('dependent', { status: 'in-progress', dependsOn: [{ itemId: 'one' }, { itemId: 'two' }] });
     const one = bug('one');

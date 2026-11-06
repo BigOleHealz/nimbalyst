@@ -61,8 +61,10 @@ it('keeps linked work blocked until every dependency clears, then restores its G
   act(() => update('to-do', 'done'));
   expect(cards('blocked')).toEqual([session.id]);
   act(() => store.set(sessionProcessingAtom(session.id), true));
-  expect(cards('implementing')).toEqual([session.id]);
+  expect(cards('blocked')).toEqual([session.id]);
   act(() => store.set(sessionHasPendingInteractivePromptAtom(session.id), true));
+  expect(cards('blocked')).toEqual([session.id]);
+  act(() => update('done', 'done'));
   expect(cards('awaiting-input')).toEqual([session.id]);
   expect(dependent.fields.status).toBe('in-progress');
 });
@@ -116,6 +118,41 @@ it('recognizes a linked manual Blocked status without blocking archived or forei
   const view = render(<Provider store={store}><SessionKanbanBoard /></Provider>);
   const blocked = view.container.querySelector('[data-phase="blocked"]')! as HTMLElement;
   expect(within(blocked).getAllByTestId('session-kanban-card').map(card => card.dataset.sessionId)).toEqual(['manual-status']);
+});
+
+it.each(['running', 'input'] as const)('keeps a blocked ticket’s agent in Blocked while it is %s and restores its lane when unblocked', activity => {
+  const store = createStore();
+  const session = blockedTestSession('access-agent', { linkedTrackerItemIds: ['access-ticket'] });
+  const ticket = dependencyTicket('access-ticket', { status: 'blocked' });
+  store.set(sessionRegistryAtom, new Map([[session.id, session]]));
+  store.set(trackerItemsMapAtom, new Map([[ticket.id, ticket]]));
+  store.set(sessionProcessingAtom(session.id), true);
+  store.set(sessionHasPendingInteractivePromptAtom(session.id), activity === 'input');
+  const view = render(<Provider store={store}><SessionKanbanBoard /></Provider>);
+  const cards = (column: string) => within(view.container.querySelector(`[data-phase="${column}"]`)! as HTMLElement)
+    .queryAllByTestId('session-kanban-card').map(card => card.dataset.sessionId);
+  expect(cards('blocked')).toEqual([session.id]);
+  expect(screen.getByText('blocked').textContent).toContain('blocked');
+  expect(cards('implementing')).toEqual([]);
+  expect(cards('awaiting-input')).toEqual([]);
+  act(() => store.set(trackerItemsMapAtom, new Map([[ticket.id, { ...ticket, fields: { ...ticket.fields, status: 'in-progress' } }]])));
+  expect(cards('blocked')).toEqual([]);
+  expect(cards(activity === 'input' ? 'awaiting-input' : 'implementing')).toEqual([session.id]);
+});
+
+it('surfaces a blocked descendant ahead of running siblings in its workstream', () => {
+  const store = createStore();
+  const parent = blockedTestSession('parent', { sessionType: 'workstream', childCount: 2 });
+  const blocked = blockedTestSession('blocked-child', { parentSessionId: parent.id, linkedTrackerItemIds: ['ticket'] });
+  const running = blockedTestSession('running-child', { parentSessionId: parent.id });
+  store.set(sessionRegistryAtom, new Map([parent, blocked, running].map(session => [session.id, session])));
+  store.set(trackerItemsMapAtom, new Map([['ticket', dependencyTicket('ticket', { status: 'blocked' })]]));
+  store.set(sessionProcessingAtom(blocked.id), true);
+  store.set(sessionProcessingAtom(running.id), true);
+  const view = render(<Provider store={store}><SessionKanbanBoard /></Provider>);
+  const lane = within(view.container.querySelector('[data-phase="blocked"]')! as HTMLElement);
+  expect(lane.getAllByTestId('session-kanban-card').map(card => card.dataset.sessionId)).toEqual([parent.id]);
+  expect(lane.getByText('1 blocked').textContent).toBe('1 blocked');
 });
 
 it('routes a clicked card and moves three sessions and counts through a question, resume, finish and manual drag', async () => {

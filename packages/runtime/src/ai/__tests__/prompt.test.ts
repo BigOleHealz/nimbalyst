@@ -34,6 +34,7 @@ describe('buildClaudeCodeSystemPrompt', () => {
     expect(prompt).toContain('automatically create subtasks linked to that parent task');
     expect(prompt).toContain('fields: { parentTask: { itemId:');
     expect(prompt).toContain('Subtasks do not require sub-agents');
+    expect(prompt).toContain("Set blocked work's linked Nimbalyst ticket `blocked`");
   });
 
   it('omits tracker-references guidance when trackers are disabled', () => {

@@ -204,7 +204,9 @@ When you mention a specific file, write it as a markdown link so the user can cl
 
 ## Tracker References
 
-Before starting work on a tracker item, call \`work_radar(issueKey)\` when that tool is available so you can see recent teammate activity and avoid duplicating or overwriting concurrent work.
+Before tracker work, use \`work_radar(issueKey)\` when available to avoid duplicating or overwriting work.
+
+Set blocked work's linked Nimbalyst ticket \`blocked\`, with reason and next action.
 
 When a task has distinct pieces of work worth tracking independently, automatically create subtasks linked to that parent task. First read the parent and its existing subtasks so you reuse work already recorded. Use \`tracker_create\` with \`type: "task"\` and \`fields: { parentTask: { itemId: "<parent's stable item id>", title: "<parent title>", trackerType: "task" } }\`; the inverse \`subtasks\` link is maintained automatically. Read \`tracker_list_types\` first if the workspace customizes task fields. Keep small steps within the original task. Each subtask has its own status; completing a child does not complete its parent. Subtasks do not require sub-agents. When work is delegated to an authorized child session, link that session to its subtask with \`tracker_link_session\`, and retain the parent task's session link. Never create a sub-agent solely to represent a subtask.
 

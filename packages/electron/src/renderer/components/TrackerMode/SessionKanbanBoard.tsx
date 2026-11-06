@@ -187,6 +187,9 @@ function useCardState(sessionId: string, cardType: KanbanCardType, isBlocked: bo
   const hasChildRunning = isParent && childStates.running > 0;
   const hasChildWaiting = isParent && childStates.waiting > 0;
 
+  if (isBlocked) {
+    return { state: 'blocked', badgeLabel: 'blocked', badgeIcon: 'block', badgeColor: 'var(--nim-error)', spinIcon: false };
+  }
   if (awaitingApproval) {
     return { state: 'waiting', badgeLabel: 'Awaiting approval', badgeIcon: 'approval', badgeColor: 'color-mix(in srgb, var(--nim-warning) 60%, var(--nim-text))', spinIcon: false };
   }
@@ -201,9 +204,6 @@ function useCardState(sessionId: string, cardType: KanbanCardType, isBlocked: bo
       badgeColor: '#60a5fa',
       spinIcon: true,
     };
-  }
-  if (isBlocked) {
-    return { state: 'blocked', badgeLabel: 'blocked', badgeIcon: 'block', badgeColor: 'var(--nim-error)', spinIcon: false };
   }
   if (hasUnread || (isParent && hasChildUnread)) {
     return {

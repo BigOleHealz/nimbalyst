@@ -308,9 +308,9 @@ function analyzePreparedGraph<T>(prepared: PreparedGraph<T>): DependencyGraphAna
   };
 }
 
-function readinessState(terminal: boolean, openBlockerCount: number): ReadinessState {
+function readinessState(terminal: boolean, openBlockerCount: number, status: string): ReadinessState {
   if (terminal) return 'closed';
-  return openBlockerCount > 0 ? 'blocked' : 'ready';
+  return openBlockerCount > 0 || status.trim().toLowerCase() === 'blocked' ? 'blocked' : 'ready';
 }
 
 /**
@@ -346,7 +346,7 @@ export function computeReadinessForItems<T>(
 
   const unblocksByItemId = new Map<string, number>();
   for (const node of prepared.nodesById.values()) {
-    if (node.terminal) continue;
+    if (node.terminal || node.status.trim().toLowerCase() === 'blocked') continue;
     const blockers = openBlockerIdsByDependentId.get(node.id) ?? [];
     if (blockers.length !== 1) continue;
     const blockerId = blockers[0];
@@ -374,7 +374,7 @@ export function computeReadinessForItems<T>(
       };
     });
     result.set(node.id, {
-      state: readinessState(node.terminal, blockedBy.length),
+      state: readinessState(node.terminal, blockedBy.length, node.status),
       blockedBy,
       unresolvedBlockerIds: unresolvedIdsByDependentId.get(node.id) ?? [],
       unblocks: unblocksByItemId.get(node.id) ?? 0,

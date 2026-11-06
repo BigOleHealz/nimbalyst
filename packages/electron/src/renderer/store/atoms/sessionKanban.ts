@@ -72,7 +72,7 @@ export const SESSION_BOARD_COLUMNS: { value: SessionBoardColumn; label: string; 
   { value: 'blocked', label: 'Blocked', color: 'var(--nim-error)' },
   { value: 'implementing', label: 'Running', color: 'var(--nim-primary)' },
   { value: 'awaiting-input', label: 'Awaiting Input', color: 'var(--nim-warning)' },
-  { value: 'git', label: 'Git status', color: 'var(--nim-primary)' },
+  { value: 'git', label: 'Git status', color: 'color-mix(in srgb, var(--nim-success) 70%, var(--nim-info))' },
   { value: 'validating', label: 'Review', color: 'var(--nim-warning)' },
   { value: 'complete', label: 'Done', color: 'var(--nim-success)' },
 ];
@@ -122,9 +122,9 @@ const trackerBlockedSessionsAtom = atom(get => {
 });
 
 function ownState(get: Getter, meta: SessionMeta): { column: SessionBoardColumn; gitStage?: SessionGitStage } {
+  if (!meta.isArchived && get(trackerBlockedSessionsAtom).has(meta.id)) return { column: 'blocked' };
   if (!meta.isArchived && (get(sessionAwaitingApprovalAtom(meta.id)) || get(sessionHasPendingInteractivePromptAtom(meta.id)))) return { column: 'awaiting-input' };
   if (!meta.isArchived && get(sessionProcessingAtom(meta.id))) return { column: 'implementing' };
-  if (!meta.isArchived && get(trackerBlockedSessionsAtom).has(meta.id)) return { column: 'blocked' };
 
   const workspaceGit = meta.workspaceId === get(activeWorkspacePathAtom) ? get(gitStatusAtom) : null;
   const worktreeGit = meta.worktreeId ? get(worktreeGitStatusAtom(meta.worktreeId)) : null;
@@ -160,7 +160,7 @@ export const sessionAutomaticBoardStateAtom = atom(get => {
   const registry = get(sessionRegistryAtom);
   const own = new Map([...registry].map(([id, meta]) => [id, ownState(get, meta)]));
   const result = new Map<string, { column: SessionBoardColumn; status: string; gitStage?: SessionGitStage }>();
-  const priority = ['awaiting-input', 'implementing', 'blocked', 'git', 'validating', 'backlog', 'complete'];
+  const priority = ['blocked', 'awaiting-input', 'implementing', 'git', 'validating', 'backlog', 'complete'];
   for (const [id, meta] of registry) {
     if (meta.parentSessionId) continue;
     const states = sessionArchiveSubtreeIds(registry, [id]).map(childId => ({ id: childId, ...own.get(childId)! }));
@@ -308,12 +308,12 @@ export const childRunStatesAtom = atomFamily((sessionId: string) =>
       const isProcessing = get(sessionProcessingAtom(meta.id));
       const hasPendingPrompt = get(sessionHasPendingInteractivePromptAtom(meta.id));
 
-      if (!meta.isArchived && (get(sessionAwaitingApprovalAtom(meta.id)) || hasPendingPrompt)) {
+      if (ownState(get, meta).column === 'blocked') {
+        summary.blocked++;
+      } else if (!meta.isArchived && (get(sessionAwaitingApprovalAtom(meta.id)) || hasPendingPrompt)) {
         summary.waiting++;
       } else if (!meta.isArchived && isProcessing) {
         summary.running++;
-      } else if (ownState(get, meta).column === 'blocked') {
-        summary.blocked++;
       } else if (ownState(get, meta).column === 'complete') {
         summary.done++;
       } else if (['validating', 'git'].includes(ownState(get, meta).column)) {

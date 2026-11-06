@@ -101,6 +101,18 @@ function record(
 }
 
 describe('computeReadiness', () => {
+  it('keeps manual access blockers blocked after dependencies clear and releases them only on an active status', () => {
+    const blocker = record('permission', 'task');
+    const blocked = record('waiting', 'task', { status: 'blocked', dependsOn: [{ itemId: blocker.id }] });
+    expect(computeReadiness([blocker, blocked], getRecordStatus).get(blocker.id)?.unblocks).toBe(0);
+    const completedBlocker = { ...blocker, fields: { ...blocker.fields, status: 'done' } };
+    expect(computeReadiness([completedBlocker, blocked], getRecordStatus).get(blocked.id)).toMatchObject({ state: 'blocked', blockedBy: [] });
+    const resumed = { ...blocked, fields: { ...blocked.fields, status: 'in-progress' } };
+    expect(computeReadiness([completedBlocker, resumed], getRecordStatus).get(blocked.id)?.state).toBe('ready');
+    const closed = { ...blocked, fields: { ...blocked.fields, status: 'done' } };
+    expect(computeReadiness([blocker, closed], getRecordStatus).get(blocked.id)?.state).toBe('closed');
+  });
+
   it('clears done, cancelled, cross-type, and archived terminal blockers from the full corpus', () => {
     const bug = record('done-bug', 'bug', { status: 'done' });
     const cancelled = record('cancelled-milestone', 'milestone', { status: 'cancelled' });
