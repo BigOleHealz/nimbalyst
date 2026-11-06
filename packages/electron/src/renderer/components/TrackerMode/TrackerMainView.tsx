@@ -1253,6 +1253,17 @@ export const TrackerMainView: React.FC<TrackerMainViewProps> = ({
               allItems={plannerItems}
               selectedItemId={selectedItemId}
               onItemSelect={handlePlannerItemSelect}
+              menuActions={{
+                onOpenDocument: handleOpenItemAsDocument,
+                onCopyDeepLink: teamOrgId ? handleCopyDeepLink : undefined,
+                getLinkedSessions: getLinkedSessionOptions,
+                onOpenSession: handleSwitchToAgentMode,
+                onLaunchSession: handleLaunchSession,
+                onLaunchWorktree: isWorktreesFeatureAvailable && isGitRepo !== false ? handleLaunchWorktree : undefined,
+                onArchiveItems: handleArchiveItems,
+                onDeleteItems: handleDeleteItems,
+                confirmDelete: confirmTrackerItemDelete,
+              }}
             />
           ) : viewMode === 'list' ? (
             <TrackerTable
