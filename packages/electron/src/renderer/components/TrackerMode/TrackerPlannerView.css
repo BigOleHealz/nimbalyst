@@ -1,0 +1,43 @@
+.tracker-planner-view { display: flex; flex-direction: column; height: 100%; min-height: 0; container-type: inline-size; color: var(--nim-text); background: var(--nim-bg); }
+.tracker-planner-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px; border-bottom: 1px solid var(--nim-border); font-size: 12px; }
+.tracker-planner-controls [role="tablist"] { display: flex; border: 1px solid var(--nim-border); border-radius: 6px; overflow: hidden; }
+.tracker-planner-controls [role="tab"] { padding: 6px 10px; }
+.tracker-planner-controls [aria-selected="true"] { background: var(--nim-bg-active); color: var(--nim-primary); }
+.tracker-planner-controls label { display: flex; align-items: center; gap: 5px; }
+.tracker-planner-controls select { background: var(--nim-bg-secondary); border: 1px solid var(--nim-border); border-radius: 4px; padding: 3px; }
+.tracker-planner-summary { margin-left: auto; color: var(--nim-text-muted); }
+.tracker-planner-guide { padding: 8px 12px; font-size: 11px; color: var(--nim-text-muted); border-bottom: 1px solid var(--nim-border); }
+.tracker-planner-scroll { flex: 1; overflow: auto; min-height: 0; }
+.tracker-planner-row { border-bottom: 1px solid var(--nim-border); }
+.tracker-planner-row:hover { background: var(--nim-bg-hover); }
+.tracker-planner-selected { background: var(--nim-bg-selected); }
+.tracker-planner-ticket { display: flex; padding: 12px; gap: 6px; }
+.tracker-planner-ticket-content { min-width: 0; flex: 1; }
+.tracker-planner-title { display: flex; align-items: baseline; text-align: left; gap: 10px; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.tracker-planner-title:hover, .tracker-planner-reference:hover { color: var(--nim-link); }
+.tracker-planner-rank { min-width: 24px; color: var(--nim-text-faint); font-variant-numeric: tabular-nums; }
+.tracker-planner-meta { display: flex; flex-wrap: wrap; gap: 12px; margin: 5px 0; font-size: 11px; color: var(--nim-text-muted); }
+.tracker-planner-ready { color: var(--nim-success); }
+.tracker-planner-late { color: var(--nim-warning); font-size: 11px; }
+.tracker-planner-reason { color: var(--nim-text-muted); font-size: 11px; margin: 4px 0; }
+.tracker-planner-reference { display: block; max-width: 100%; text-align: left; font-size: 11px; color: var(--nim-text-muted); margin-top: 4px; overflow-wrap: anywhere; }
+.tracker-planner-reference:disabled { color: var(--nim-text-disabled); cursor: default; }
+.tracker-planner-dependencies { font-size: 11px; color: var(--nim-text-muted); margin-top: 5px; }
+.tracker-planner-dependencies summary { cursor: pointer; }
+.tracker-planner-empty { padding: 36px 20px; text-align: center; color: var(--nim-text-muted); font-size: 13px; }
+.tracker-planner-timeline-row, .tracker-planner-axis { display: flex; }
+.tracker-planner-timeline-row .tracker-planner-ticket, .tracker-planner-axis-label { width: 340px; flex-shrink: 0; position: sticky; left: 0; background: var(--nim-bg); z-index: 2; border-right: 1px solid var(--nim-border); }
+.tracker-planner-selected .tracker-planner-ticket { background: var(--nim-bg-selected); }
+.tracker-planner-collapse { align-self: flex-start; width: 16px; flex-shrink: 0; }
+.tracker-planner-axis { position: sticky; top: 0; z-index: 3; background: var(--nim-bg-secondary); height: 36px; border-bottom: 1px solid var(--nim-border); font-size: 11px; }
+.tracker-planner-axis-label { padding: 10px; background: var(--nim-bg-secondary); }
+.tracker-planner-axis-dates { position: relative; flex-shrink: 0; }
+.tracker-planner-axis-dates span { position: absolute; top: 10px; padding-left: 4px; white-space: nowrap; color: var(--nim-text-muted); }
+.tracker-planner-track { position: relative; flex-shrink: 0; min-height: 90px; }
+.tracker-planner-marker { position: absolute; top: 30px; height: 16px; min-width: 14px; border-radius: 4px; background: var(--nim-primary); border: 2px solid var(--nim-primary); z-index: 1; }
+.tracker-planner-marker-ready { background: var(--nim-success); border-color: var(--nim-success); }
+.tracker-planner-marker-warning { background: var(--nim-warning); border-color: var(--nim-warning); }
+.tracker-planner-today { position: absolute; top: 0; bottom: 0; border-left: 1px dashed var(--nim-primary); }
+.tracker-planner-undated { position: absolute; top: 30px; left: 12px; font-size: 11px; color: var(--nim-text-faint); }
+.tracker-planner-view button:focus-visible { outline: 2px solid var(--nim-border-focus); outline-offset: -2px; }
+@container (max-width: 620px) { .tracker-planner-summary { width: 100%; margin-left: 0; } .tracker-planner-controls { gap: 8px; } }

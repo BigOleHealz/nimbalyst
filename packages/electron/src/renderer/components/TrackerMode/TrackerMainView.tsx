@@ -30,6 +30,7 @@ import {
 import { KanbanBoard } from './KanbanBoard';
 import { TrackerGridView } from './TrackerGridView';
 import { TrackerInboxView } from './TrackerInboxView';
+import { TrackerPlannerView } from './TrackerPlannerView';
 import {
   TrackerItemDetail,
   type TrackerContentMode,
@@ -193,6 +194,8 @@ export const TrackerMainView: React.FC<TrackerMainViewProps> = ({
   onExitSavedView,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [plannerOpen, setPlannerOpen] = useState(false);
+  useEffect(() => setPlannerOpen(false), [workspacePath, viewMode]);
   const [quickAddType, setQuickAddType] = useState<string | null>(null);
   const [pendingWorktreeLaunch, setPendingWorktreeLaunch] = useState<TrackerLaunchContext | null>(null);
   const pendingLaunchIsCurrent = isTrackerLaunchForWorkspace(pendingWorktreeLaunch, workspacePath);
@@ -540,6 +543,7 @@ export const TrackerMainView: React.FC<TrackerMainViewProps> = ({
   const archivedItems = useAtomValue(archivedTrackerItemsAtom(filterType));
   const allActiveItems = useAtomValue(trackerItemsByTypeAtom('all'));
   const allArchivedItems = useAtomValue(archivedTrackerItemsAtom('all'));
+  const plannerItems = useMemo(() => [...allActiveItems, ...allArchivedItems], [allActiveItems, allArchivedItems]);
   const filtersArchived = (columnFilters?.clauses ?? []).some(clause => clause.field === 'archived');
   const showArchived = activeFilters.includes('archived');
   const viewSourceItems = useMemo(
@@ -1209,6 +1213,17 @@ export const TrackerMainView: React.FC<TrackerMainViewProps> = ({
           onLayoutChange={handleViewLayoutChange}
         />
 
+        <button
+          type="button"
+          className={`tracker-planner-toggle inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs ${plannerOpen ? 'bg-nim-active text-nim' : 'text-nim-muted hover:bg-nim-hover'}`}
+          aria-pressed={plannerOpen}
+          onClick={() => setPlannerOpen(open => !open)}
+          title="Plan work by dependencies, subtasks and due dates"
+        >
+          <MaterialSymbol icon="account_tree" size={16} />
+          Planner
+        </button>
+
         <TrackerNewMenu
           workspacePath={workspacePath}
           // Non-creatable types (e.g. automations) keep the import menu but not New.
@@ -1225,6 +1240,13 @@ export const TrackerMainView: React.FC<TrackerMainViewProps> = ({
             <div className="h-full flex items-center justify-center text-sm text-nim-muted" data-testid="tracker-personal-state-loading">
               Loading personal tracker state...
             </div>
+          ) : plannerOpen ? (
+            <TrackerPlannerView
+              items={viewFilteredItems}
+              allItems={plannerItems}
+              selectedItemId={selectedItemId}
+              onItemSelect={handleItemSelect}
+            />
           ) : viewMode === 'list' ? (
             <TrackerTable
               filterType={filterType}
