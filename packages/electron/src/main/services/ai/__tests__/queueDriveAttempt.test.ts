@@ -27,6 +27,22 @@ const run = (deps: QueueDriveAttemptDeps<FakeWindow>, reason: DriveReason = 'mob
   runQueueDriveAttempt(deps, { sessionId: 's1', workspacePath: '/ws', reason });
 
 describe('runQueueDriveAttempt', () => {
+  it('does not dispatch if a blocker reopens while the workspace loads', async () => {
+    const deps = createDeps({ isPromptBlocked: vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true) });
+    expect(await run(deps, 'wakeup')).toEqual({ kind: 'deferred', reason: 'session-busy' });
+    expect(deps.resolveWindow).toHaveBeenCalledOnce();
+    expect(deps.dispatch).not.toHaveBeenCalled();
+  });
+  it('holds a dependency continuation before window resolution and rechecks it before dispatch', async () => {
+    const isPromptBlocked = vi.fn().mockResolvedValueOnce(true).mockResolvedValue(false);
+    const deps = createDeps({ isPromptBlocked });
+    expect(await run(deps, 'wakeup')).toEqual({ kind: 'deferred', reason: 'session-busy' });
+    expect(deps.resolveWindow).not.toHaveBeenCalled();
+    expect(deps.dispatch).not.toHaveBeenCalled();
+    expect(isPromptBlocked).toHaveBeenCalledWith('s1', 'p1', '/ws');
+    expect(await run(deps, 'wakeup')).toEqual({ kind: 'dispatched', promptId: 'p1' });
+  });
+
   it('never resolves a window when nothing is pending', async () => {
     const deps = createDeps({ listPendingIds: vi.fn(async () => []) });
 

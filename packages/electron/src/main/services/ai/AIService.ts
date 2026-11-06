@@ -1,4 +1,5 @@
 import { reservePromptAnswer } from './PromptAnswerReservation';
+import { DEPENDENCY_RESUME_PREFIX } from '../TrackerDependencyResumeService';
 import { sessionInbox } from './sessionInboxService';
 import { resolveProviderApiKey } from './resolveProviderApiKey';
 import { SAVED_CREDENTIAL, withoutProviderConfigCredentials } from '../../../shared/providerCredentials';
@@ -328,6 +329,11 @@ export class AIService {
   });
 
   private queueDriveService: QueueDriveService | null = null;
+  private dependencyResumeGuard: ((sessionId: string, workspacePath: string) => Promise<boolean>) | null = null;
+
+  public setDependencyResumeGuard(guard: (sessionId: string, workspacePath: string) => Promise<boolean>): void {
+    this.dependencyResumeGuard = guard;
+  }
 
   /**
    * The single owner of queued-prompt drainage. Every trigger — renderer,
@@ -445,6 +451,11 @@ export class AIService {
     return runQueueDriveAttempt<Electron.BrowserWindow>(
       {
         listPendingIds: async (id) => (await queueStore.listPending(id)).map((row) => row.id),
+        // Hold these even during boot recovery, before the dependency service
+        // has installed its guard. Reopened blockers must hold persisted work.
+        isPromptBlocked: async (id, promptId, path) => promptId.startsWith(DEPENDENCY_RESUME_PREFIX)
+          ? !(await this.dependencyResumeGuard?.(id, path))
+          : false,
         isChainActive: (id) => this.sessionsProcessingQueue.has(id),
         isSessionBusy: (id) => {
           const liveState = getSessionStateManager().getSessionState(id);

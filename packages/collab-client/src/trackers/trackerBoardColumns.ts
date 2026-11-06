@@ -32,6 +32,7 @@ import { compareCellValues } from '@nimbalyst/runtime/plugins/TrackerPlugin/comp
 import { globalRegistry, isTerminalStatus } from '@nimbalyst/tracker-schema';
 import { generateKeyBetween } from '@nimbalyst/runtime/utils/fractionalIndex';
 import type { TrackerStatusScope } from './model';
+import type { Readiness } from '@nimbalyst/tracker-core';
 
 export interface TrackerBoardColumn {
   /**
@@ -52,6 +53,8 @@ export interface TrackerBoardColumn {
    */
   ref?: TrackerRelationshipValue;
   fieldValue?: unknown;
+  /** Live dependency lane; never writes a synthetic workflow status. */
+  dependency?: boolean;
 }
 
 const RELATIONSHIP_AXES: readonly TrackerGroupingAxis[] = ['milestone', 'goal'];
@@ -80,6 +83,26 @@ function columnOwnerType(status: string, items: TrackerRecord[]): string {
 
 /** The board's columns, left to right. */
 export function buildTrackerBoardColumns(
+  groupBy: TrackerGroupBy,
+  filterType: string,
+  items: TrackerRecord[],
+  resolveLabel?: TrackerRelationshipLabelResolver,
+  statusScope: TrackerStatusScope = 'all',
+  readinessByItemId?: ReadonlyMap<string, Readiness>,
+): TrackerBoardColumn[] {
+  const columns = buildBaseBoardColumns(groupBy, filterType, items, resolveLabel, statusScope);
+  if (!readinessByItemId || statusScope === 'closed') return columns;
+  // A schema may already have a manual Blocked status (e.g. Plans). Keep a
+  // single lane for it and dependency-blocked work, preserving stored statuses.
+  const existing = resolveBoardAxis(groupBy) === 'status' ? columns.findIndex(column => column.key === 'blocked') : -1;
+  if (existing >= 0) return columns.map((column, index) => index === existing ? { ...column, dependency: true } : column);
+  columns.splice(Math.min(1, columns.length), 0, {
+    key: 'dependency:blocked', value: null, label: 'Blocked', empty: false, dependency: true,
+  });
+  return columns;
+}
+
+function buildBaseBoardColumns(
   groupBy: TrackerGroupBy,
   filterType: string,
   items: TrackerRecord[],
@@ -165,16 +188,22 @@ export function groupItemsIntoBoardColumns(
   columns: TrackerBoardColumn[],
   axis: TrackerGroupingAxis,
   ordering: TrackerOrdering,
+  readinessByItemId?: ReadonlyMap<string, Readiness>,
 ): Record<string, TrackerRecord[]> {
   const grouped: Record<string, TrackerRecord[]> = {};
   for (const column of columns) grouped[column.key] = [];
+  const blockedColumn = columns.find(column => column.dependency);
 
   for (const item of items) {
+    if (blockedColumn && readinessByItemId?.get(item.id)?.state === 'blocked') {
+      grouped[blockedColumn.key].push(item);
+      continue;
+    }
     if (axis === 'status') {
       // Preserved from the status-only board: an item whose status has no column
       // lands in the first one rather than disappearing off the board.
       const status = (getRecordStatus(item) || 'to-do').toLowerCase();
-      const key = grouped[status] ? status : (columns[0]?.key ?? 'to-do');
+      const key = grouped[status] ? status : (columns.find(column => !column.dependency)?.key ?? 'to-do');
       (grouped[key] ??= []).push(item);
       continue;
     }
@@ -234,6 +263,7 @@ export interface BoardDropRequest {
   columnItems: TrackerRecord[];
   /** Insertion index measured against `columnItems`; null means "at the end". */
   dropIndex: number | null;
+  readinessByItemId?: ReadonlyMap<string, Readiness>;
 }
 
 /**
@@ -244,6 +274,9 @@ export interface BoardDropRequest {
  */
 export function resolveBoardDrop(request: BoardDropRequest): Record<string, unknown> | null {
   const { item, axis, sourceColumnKey, targetColumn, columnItems, dropIndex } = request;
+  // Dependency membership changes with the graph, not with a drag. Reordering
+  // within Blocked is fine; dragging never clears a relationship or invents a status.
+  if (sourceColumnKey !== targetColumn.key && (targetColumn.dependency || request.readinessByItemId?.get(item.id)?.state === 'blocked')) return null;
   // Two different questions. `renderedInTarget` is about the list the drop index
   // was measured against; `stayedPut` is about whether the axis field changed.
   const renderedInTarget = columnItems.some(candidate => candidate.id === item.id);
