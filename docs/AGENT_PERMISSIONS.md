@@ -298,6 +298,8 @@ Trust state is stored per-workspace in Nimbalyst's workspace settings store:
 
 When `permissionMode` is `null` or undefined, the workspace is considered untrusted and the ProjectTrustToast dialog will be shown before the agent can operate.
 
+Sessions use the permissions of the workspace they were created in, including after reloading or opening the session through its worktree. Selecting a repository or running in a Git worktree changes the execution directory, while the owning workspace remains the permission scope. This does not grant trust to that repository for sessions launched independently from it.
+
 **Tool Patterns** (managed by ClaudeSettingsManager):
 - Uses Claude Code's native settings file format
 - Compatible with Claude CLI (`claude` command)

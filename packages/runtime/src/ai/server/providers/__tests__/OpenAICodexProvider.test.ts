@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { codexSandboxSetupCompleted } from '../../protocols/codexAppServer/windowsSandbox';
 import fs from 'fs/promises';
 import os from 'os';
@@ -1635,7 +1636,9 @@ describe('OpenAICodexProvider', () => {
     expect(errorChunk?.error).toContain('not trusted');
   });
 
-  it('propagates Agent-verified trust into Codex session options', async () => {
+  it.each(['allow-all', 'bypass-all'] as const)('uses the launching project’s %s permissions while executing in an untrusted worktree', async (mode) => {
+    const permissionsPath = path.join(process.cwd(), 'trusted-workspace');
+    const worktreePath = process.cwd();
     const createSession = vi.fn(async () => ({
       id: 'thread-agent-verified',
       platform: 'codex-app-server',
@@ -1660,27 +1663,29 @@ describe('OpenAICodexProvider', () => {
       { apiKey: 'test-key' },
       { protocol, transport: 'sdk' },
     );
-    OpenAICodexProvider.setTrustChecker(() => ({
-      trusted: true,
-      mode: 'bypass-all',
-      allowAllUsesClassifier: true,
-    }));
+    const trustChecker = vi.fn((candidate: string) => candidate === permissionsPath
+      ? { trusted: true, mode, allowAllUsesClassifier: mode === 'bypass-all' }
+      : { trusted: false, mode: null });
+    OpenAICodexProvider.setTrustChecker(trustChecker);
     await provider.initialize({ apiKey: 'test-key', model: 'openai-codex:gpt-5' });
 
     for await (const _chunk of provider.sendMessage(
       'verify this turn',
-      undefined,
+      { permissionsPath },
       'session-agent-verified',
       [],
-      process.cwd(),
+      worktreePath,
     )) {
       // drain
     }
 
     expect(createSession).toHaveBeenCalledWith(expect.objectContaining({
-      permissionMode: 'bypass-all',
-      raw: expect.objectContaining({ agentVerified: true }),
+      workspacePath: worktreePath,
+      permissionMode: mode,
+      raw: expect.objectContaining({ agentVerified: mode === 'bypass-all' }),
     }));
+    expect(trustChecker).toHaveBeenCalledWith(permissionsPath);
+    expect(trustChecker).not.toHaveBeenCalledWith(worktreePath);
     provider.cleanupSession('session-agent-verified');
   });
 

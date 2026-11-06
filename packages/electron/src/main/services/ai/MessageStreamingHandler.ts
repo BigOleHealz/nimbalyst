@@ -467,9 +467,10 @@ export class MessageStreamingHandler {
       logWarn: (message) => logger.ai.warn(message),
     });
 
-    // For worktree sessions, use the parent project path for permission lookups
-    // This is passed through documentContext to avoid changing sendMessage signature
-    let permissionsPath = session.worktreeProjectPath || effectiveWorkspacePath;
+    // Permissions belong to the workspace that launched the session. Its
+    // selected repo/worktree may live elsewhere and must not change that scope.
+    // Use the loaded session's owner even when it was opened through a worktree.
+    const permissionsPath = session.workspacePath || workspacePath;
     if (isAgentProvider(session.provider)) {
       const existingProvider = ProviderFactory.getProvider(session.provider as AIProviderType, session.id);
       await this.svc.hooklessWatcher.ensureForSession(session.id, effectiveWorkspacePath, {
@@ -1418,7 +1419,7 @@ export class MessageStreamingHandler {
         // not gate per-turn behavior on it.
         hasBeenNamed: session.hasBeenNamed,
         mode: effectiveMode,
-        permissionsPath,  // For worktree sessions, this is the parent project path
+        permissionsPath,  // Owning workspace, independent of the execution directory
         mcpConfigWorkspacePath: session.worktreeProjectPath || effectiveWorkspacePath,  // Use parent project for MCP config lookup
         attachments,
 
@@ -1607,7 +1608,6 @@ export class MessageStreamingHandler {
                 if (inferredWorktreePath) {
                   await this.svc.adoptWorktreeForSession(session, inferredWorktreePath, event);
                   effectiveWorkspacePath = session.worktreePath || effectiveWorkspacePath;
-                  permissionsPath = session.worktreeProjectPath || permissionsPath;
                   break;
                 }
               }
@@ -1776,7 +1776,6 @@ export class MessageStreamingHandler {
                     if (inferredWorktreePath) {
                       await this.svc.adoptWorktreeForSession(session, inferredWorktreePath, event);
                       effectiveWorkspacePath = session.worktreePath || effectiveWorkspacePath;
-                      permissionsPath = session.worktreeProjectPath || permissionsPath;
                     }
                   }
 

@@ -2444,10 +2444,9 @@ app.whenReady().then(async () => {
         matchesAllowPattern(pattern, allow),
       );
     };
-    // NOTE: For worktree sessions, AIService pre-resolves the worktree path to the parent
-    // project (worktreeProjectPath) and passes it via documentContext.permissionsPath.
-    // Providers then use permissionsPath for trust checks, ensuring this
-    // checker receives the parent project path, not the worktree path.
+    // AIService passes the session's owning workspace in documentContext.permissionsPath.
+    // Providers check that project's trust even when execution uses a worktree
+    // of a different selected repo. The Git root is not the permission scope.
     const trustChecker = (workspacePath: string) => {
       const mode = permissionService.getPermissionMode(workspacePath);
       return {

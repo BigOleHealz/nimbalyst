@@ -72,7 +72,7 @@ export function registerSessionHandlers(ctx: AIServiceContext): void {
       }
 
       worktreePath = worktree.path;
-      worktreeProjectPath = worktree.projectPath;  // Store for permission lookups
+      worktreeProjectPath = worktree.projectPath;  // Source project for worktree context and MCP config
     }
 
     // Check if provider is enabled for this workspace (considers project overrides)

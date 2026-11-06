@@ -82,7 +82,7 @@ export interface CreateSessionPayload {
   filePath?: string;
   worktreeId?: string;  // ID of the associated worktree
   worktreePath?: string;  // Path to the worktree directory
-  worktreeProjectPath?: string;  // Path to the parent project (for permission lookups)
+  worktreeProjectPath?: string;  // Worktree's source project; workspaceId owns session permissions
   parentSessionId?: string | null;  // Parent session ID for hierarchical workstreams
   providerConfig?: Record<string, unknown>;
   providerSessionId?: string;

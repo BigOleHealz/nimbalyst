@@ -52,7 +52,7 @@ export interface DocumentContext {
   // Worktree context (for isolated AI coding sessions)
   worktreeId?: string;  // ID of the associated worktree
   worktreePath?: string;  // Path to the worktree directory
-  worktreeProjectPath?: string;  // Path to the parent project (for permission lookups)
+  worktreeProjectPath?: string;  // Worktree's source project; permissions use the session's owning workspace
 
   // Document transition tracking (for prompt optimization)
   documentTransition?: 'none' | 'opened' | 'closed' | 'switched' | 'modified';
@@ -449,7 +449,7 @@ export interface SessionData {
   // Worktree association
   worktreeId?: string;  // ID of the associated worktree
   worktreePath?: string;  // Path to the worktree directory
-  worktreeProjectPath?: string;  // Path to the parent project (for permission lookups)
+  worktreeProjectPath?: string;  // Worktree's source project; permissions use the session's owning workspace
 
   // Hierarchical session support (workstreams)
   // parent_session_id = hierarchical containment (child sessions within a workstream)

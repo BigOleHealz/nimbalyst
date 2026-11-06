@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SessionManager } from '../SessionManager';
 import type {
@@ -22,6 +23,10 @@ class InMemorySessionStore implements SessionStore {
       title: payload.title,
       draftInput: undefined,
       messages: [],
+      workspacePath: payload.workspaceId,
+      worktreeId: payload.worktreeId,
+      worktreePath: payload.worktreePath,
+      worktreeProjectPath: payload.worktreeProjectPath,
       createdAt: now,
       updatedAt: now,
       metadata: {
@@ -72,7 +77,7 @@ class InMemorySessionStore implements SessionStore {
       model: session.model,
       title: session.title || 'Untitled Session',
       sessionType: session.sessionType || 'session',
-      workspaceId: (session.metadata as any)?.workspaceId || '',
+      workspaceId: session.workspacePath ?? (session.metadata as any)?.workspaceId ?? '',
       worktreeId: session.worktreeId || null,
       parentSessionId: session.parentSessionId || null,
       childCount: 0,
@@ -87,7 +92,7 @@ class InMemorySessionStore implements SessionStore {
 
   async list(workspaceId: string): Promise<SessionMeta[]> {
     return [...this.sessions.values()]
-      .filter(session => (session.metadata as any)?.workspaceId === workspaceId)
+      .filter(session => (session.workspacePath ?? session.metadata?.workspaceId) === workspaceId)
       .map(session => this.toMeta(session))
       .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   }
@@ -101,7 +106,7 @@ class InMemorySessionStore implements SessionStore {
     const lowerQuery = query.toLowerCase();
     return [...this.sessions.values()]
       .filter(session => {
-        if ((session.metadata as any)?.workspaceId !== workspaceId) {
+        if ((session.workspacePath ?? session.metadata?.workspaceId) !== workspaceId) {
           return false;
         }
         // Search in title
@@ -158,6 +163,34 @@ describe('SessionManager (runtime server)', () => {
     const sessions = await manager.getSessions('ws');
     expect(sessions).toHaveLength(1);
     expect(Array.isArray(sessions[0].messages)).toBe(true);
+  });
+
+  it('retains the owning workspace and worktree project when a saved session is reloaded or listed', async () => {
+    const workspace = '/projects/trusted-workspace';
+    const worktreeProject = '/repos/selected-repo';
+    const worktreePath = '/repos/selected-repo_worktrees/task';
+    const created = await manager.createSession(
+      'openai-codex', undefined, workspace, undefined, undefined, 'session', 'agent',
+      'task-worktree', worktreePath, worktreeProject,
+    );
+    // The desktop store puts ownership on the row, not in legacy metadata.
+    delete (await store.get(created.id))!.metadata!.workspaceId;
+    // A fresh manager exercises persisted hydration rather than the newly
+    // created session object, which already has all three paths.
+    const reloadedManager = new SessionManager(store);
+    vi.spyOn(reloadedManager as unknown as { loadCanonicalTranscript: () => Promise<unknown[]> }, 'loadCanonicalTranscript')
+      .mockResolvedValue([]);
+
+    const expected = {
+      workspacePath: workspace,
+      worktreeId: 'task-worktree',
+      worktreePath,
+      worktreeProjectPath: worktreeProject,
+    };
+    expect(await reloadedManager.loadSession(created.id, workspace)).toMatchObject(expected);
+    expect(await reloadedManager.loadSession(created.id, worktreePath)).toMatchObject(expected);
+    expect(await reloadedManager.getSessions(workspace)).toEqual([expect.objectContaining(expected)]);
+    expect(await reloadedManager.loadSession(created.id, '/projects/unrelated')).toBeNull();
   });
 
   it('carries a caller-assigned name through loadSession, including the SQLite 0/1 flag', async () => {

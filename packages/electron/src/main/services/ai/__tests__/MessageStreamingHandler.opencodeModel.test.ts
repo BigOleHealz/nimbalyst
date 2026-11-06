@@ -222,6 +222,7 @@ class RecordingProvider extends EventEmitter {
   config: Record<string, unknown> = {};
   initializeConfigs: Array<Record<string, unknown>> = [];
   requestConfigs: Array<Record<string, unknown>> = [];
+  requestContexts: Array<{ documentContext?: Record<string, unknown>; workspacePath?: string }> = [];
 
   constructor(private readonly chunks: Array<Record<string, unknown>> = []) {
     super();
@@ -238,8 +239,9 @@ class RecordingProvider extends EventEmitter {
     return { supportsFileTools: true };
   }
 
-  async *sendMessage() {
+  async *sendMessage(_message?: unknown, documentContext?: Record<string, unknown>, _sessionId?: string, _history?: unknown, workspacePath?: string) {
     this.requestConfigs.push(this.config);
+    this.requestContexts.push({ documentContext, workspacePath });
     for (const chunk of this.chunks) yield chunk;
   }
 }
@@ -304,6 +306,29 @@ describe("MessageStreamingHandler OpenCode turn config", () => {
     vi.clearAllMocks();
     mocks.providerFactory.getProvider.mockReturnValue(null);
   });
+
+  it.each([undefined, '/repos/selected-repo'])(
+    'uses the launching workspace permissions while running in a worktree (Git project: %s)',
+    async (worktreeProjectPath) => {
+      const provider = new RecordingProvider();
+      const session = openCodeSession({
+        workspacePath: '/projects/trusted-workspace',
+        worktreeId: 'task-worktree',
+        worktreePath: '/repos/selected-repo_worktrees/task',
+        worktreeProjectPath,
+      });
+
+      await runTurn({ session, provider });
+
+      expect(provider.requestContexts).toEqual([{
+        workspacePath: session.worktreePath,
+        documentContext: expect.objectContaining({
+          permissionsPath: '/projects/trusted-workspace',
+          worktreePath: session.worktreePath,
+        }),
+      }]);
+    },
+  );
 
   it("keeps the selected model through the final per-turn provider initialization", async () => {
     // #730 regressed because #800's final shared refresh replaced OpenCode's

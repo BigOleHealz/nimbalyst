@@ -147,7 +147,7 @@ function viewMessageFromServerMessage(msg: any): TranscriptViewMessage {
 function sessionDataFromChatSession(session: ChatSession, fallbackWorkspace: string): SessionData {
   const metadata = (session.metadata ?? {}) as Record<string, unknown>;
   const documentContext = metadata.documentContext as DocumentContext | undefined;
-  const workspaceId = (metadata.workspaceId as string | undefined) ?? fallbackWorkspace;
+  const workspaceId = session.workspacePath ?? (metadata.workspaceId as string | undefined) ?? fallbackWorkspace;
   const providerConfig = metadata.providerConfig as SessionData['providerConfig'];
   // CRITICAL: providerSessionId is stored at top-level, not in metadata
   const providerSessionId = session.providerSessionId ?? (metadata.providerSessionId as string | undefined);
@@ -183,6 +183,7 @@ function sessionDataFromChatSession(session: ChatSession, fallbackWorkspace: str
     // Worktree fields - passed through from database query
     worktreeId: session.worktreeId ?? undefined,
     worktreePath: session.worktreePath ?? undefined,
+    worktreeProjectPath: session.worktreeProjectPath ?? undefined,
     // Hierarchical workstream parent (separate from branch)
     parentSessionId: session.parentSessionId ?? undefined,
     // Branch tracking fields - passed through from database query
