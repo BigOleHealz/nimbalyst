@@ -373,6 +373,10 @@ export const HelpContent: Record<string, HelpEntry> = {
     body: 'Switch to Tracker mode for a full project management view with table and kanban layouts.',
     shortcut: KeyboardShortcuts.view.trackerMode,
   },
+  'calendar-mode-button': {
+    title: 'Calendar',
+    body: 'Open your imported Google and Microsoft calendars in a month view, select a day or event, and manage accounts from calendar settings.',
+  },
   'collab-mode-button': {
     title: 'Wiki',
     body: 'Browse and edit pages shared with your team in real-time. Collaborate on markdown, spreadsheets, diagrams, and placed tracker types.',

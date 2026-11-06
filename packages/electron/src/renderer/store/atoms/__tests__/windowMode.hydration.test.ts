@@ -68,7 +68,14 @@ describe('window mode hydration', () => {
     expect(invoke.mock.calls.some(([channel]) => channel === 'workspace:update-state')).toBe(false);
   });
 
-  it.each<ContentMode>(['files', 'agent', 'tracker', 'collab', 'org', 'pr-review', 'settings'])(
+  it('restores the calendar after reopening a workspace', async () => {
+    const invoke = vi.fn(async () => ({ activeMode: 'calendar' }));
+    vi.stubGlobal('window', { electronAPI: { invoke } });
+    await initWindowMode('/workspace-calendar');
+    expect(store.get(windowModeAtom)).toBe('calendar');
+  });
+
+  it.each<ContentMode>(['files', 'agent', 'tracker', 'collab', 'org', 'pr-review', 'settings', 'calendar'])(
     'reveals %s through fullscreen, sidebar, and bottom panels even when already selected',
     (mode) => {
       vi.stubGlobal('window', { electronAPI: { featureUsage: { record: vi.fn(async () => undefined) } } });

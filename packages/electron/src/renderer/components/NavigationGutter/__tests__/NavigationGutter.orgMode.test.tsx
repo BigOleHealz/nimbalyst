@@ -91,6 +91,12 @@ describe('Org mode gutter item', () => {
     expect(voiceController.disposed).not.toHaveBeenCalled();
   });
 
+  it('opens the calendar directly from the gutter without requiring a team or Git remote', () => {
+    const onContentModeChange = renderGutter();
+    fireEvent.click(screen.getByRole('button', { name: /^Calendar$/ }));
+    expect(onContentModeChange).toHaveBeenCalledWith('calendar');
+  });
+
   it('keeps a deliberately opened sidebar panel after navigating from Agent to Files', () => {
     const store = createStore();
     store.set(windowModeAtom, 'agent');

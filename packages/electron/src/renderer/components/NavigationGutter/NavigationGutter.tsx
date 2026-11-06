@@ -385,6 +385,12 @@ export const NavigationGutter: React.FC<NavigationGutterProps> = ({
         onReclick: () => onToggleTrackerCollapsed?.(),
       }),
     },
+    {
+      id: 'calendar', section: 'modes', icon: 'calendar_month', label: 'Calendar', hideable: true,
+      render: () => renderModeButton({
+        icon: 'calendar_month', label: 'Calendar', contentMode: 'calendar', testId: 'calendar-mode-button',
+      }),
+    },
     ...(hasPrRemote ? [{
       id: 'pr-review', section: 'modes' as GutterSection, icon: 'merge', label: 'GitHub', hideable: true,
       render: () => renderModeButton({

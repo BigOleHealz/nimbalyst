@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- New features go here -->
 - Choose the next tickets to complete with an interactive dependency graph, suggested work queue, and hierarchy timeline, including status-colored nodes and click-to-open ticket details in a right sidebar; open the Planner from any workspace view with Command–Option–P on macOS or Control–Alt–P on Windows and Linux.
 - Start, wake, or stop Voice Mode from any app with Control+Shift+V on macOS or Control+Alt+Shift+V on Windows and Linux.
-- Keep Google and Microsoft calendars in one settings agenda, with secure sign-in, calendar selection, and automatic refresh every five minutes, at startup, and after wake using a rolling date range.
+- Open Google and Microsoft calendars from the gutter in a month view with a daily agenda, event details, visibility filters, and automatic refresh every five minutes, at startup, and after wake using a rolling date range.
 - Plan tasks with color-coded scheduled dates and deadlines in a calendar, with desktop reminders at startup and daily at 5 AM and 8 AM.
 - Import Linear projects into separate workspaces and tickets into existing trackers, with secure credentials, source links, duplicate protection, and retryable partial imports.
 - Sync conversation copies from all providers to local Codex and Claude desktop apps, preserving project folders and session names, with automatic updates and a manual sync action.
