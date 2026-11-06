@@ -374,8 +374,9 @@ export const HelpContent: Record<string, HelpEntry> = {
     shortcut: KeyboardShortcuts.view.trackerMode,
   },
   'calendar-mode-button': {
-    title: 'Calendar',
+    title: 'Agenda',
     body: 'Open your imported Google and Microsoft calendars in a month view, select a day or event, and manage accounts from calendar settings.',
+    shortcut: KeyboardShortcuts.view.agendaMode,
   },
   'collab-mode-button': {
     title: 'Wiki',
