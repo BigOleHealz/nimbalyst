@@ -15,6 +15,7 @@ describe('resolveCreateAction', () => {
     ['pr-review', null],
     ['org', null],
     ['settings', null],
+    ['calendar', null],
   ];
 
   it.each(cases)('resolves %s', (mode, expected) => {

@@ -2,6 +2,8 @@
 
 Open **Settings → Application → Calendar imports** under Integrations. Google Calendar and Microsoft 365, Exchange Online, and Outlook.com accounts share this one page. Choose a provider in **Add calendar account**, expand **Connection setup**, and connect in your browser. You can add multiple accounts from either provider.
 
+To see your events, click **Calendar** in the main left navigation gutter, alongside Files, Agent, and Tracker. Settings also has an **Open calendar** button. Calendar opens a month grid with a daily agenda and event details. **Manage accounts** returns to this unified settings page. If you previously hid the Calendar button, right-click the gutter and show it through its customization menu.
+
 Each provider requires an OAuth application registration for your fork. Enter application credentials directly in Nimbalyst. Credentials and imported event snapshots are encrypted with your operating system’s secure storage and remain in this app profile on this computer.
 
 People who clone the repository should create their own provider registrations and enter them in their own local Nimbalyst settings. Client credentials and account tokens are never supplied through the repository. Read [Calendar data privacy](calendar-privacy.md) for the calendar integration’s data practices.
@@ -42,7 +44,7 @@ The range rolls forward each day: seven days before today through ninety days af
 
 Choose calendars under each account and use **Refresh now** to save those selections and update immediately. The primary calendar is selected when first connecting. To use fixed **From** and **Through** dates instead, turn off **Automatic refresh** for that account, choose up to one year including both end days, and use **Import events** or **Refresh import**. Re-enable automatic refresh to return to the rolling range.
 
-The **Unified agenda** combines the latest snapshots and updates when background refreshes complete, even with settings already open. Expand an event for its calendar, account, location, description, and original-event link. All-day dates stay as calendar dates, and timed events display in this computer’s time zone.
+The **Calendar** view combines the latest snapshots and updates when background refreshes complete. Use previous/next month or **Today** to navigate. Click a day for its agenda or an event to see its details and open the original. Calendar checkboxes at the top control what is visible; they do not change which calendars are synced. All-day dates stay as calendar dates, multi-day events appear on each affected day, and timed events display in this computer’s time zone. Only events in each account’s last successful import range are shown; change that range in settings for dates outside the automatic rolling window.
 
 Use **Refresh import** to retrieve changes, canceled events, and expanded recurring occurrences. A complete successful import replaces that account’s previous snapshot for the selected calendars and range. If any selected calendar or page fails, the last successful snapshot remains visible. Repeating an import deduplicates events within a calendar. The same meeting on two different connected calendars appears with each source.
 

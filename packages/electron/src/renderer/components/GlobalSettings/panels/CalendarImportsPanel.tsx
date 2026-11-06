@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { useAtom } from 'jotai';
-import { calendarImportsAtom } from '../../../store/atoms/calendarImports';
+import { useAtom, useSetAtom } from 'jotai';
+import { calendarImportsAtom, loadCalendarImportsAtom } from '../../../store/atoms/calendarImports';
+import { setWindowModeAtom } from '../../../store/atoms/windowMode';
 import {
   CALENDAR_PROVIDERS,
   type CalendarConnectOptions,
@@ -8,7 +9,7 @@ import {
   type CalendarImportsSnapshot,
   type CalendarProvider,
 } from '../../../../shared/calendarImports';
-import { calendarEventDay, calendarEventOrder, calendarImportRange, localCalendarDate } from './calendarAgenda';
+import { calendarImportRange, localCalendarDate } from './calendarAgenda';
 
 const buttonClass = 'rounded border border-nim px-3 py-2 text-sm hover:bg-nim-hover disabled:opacity-50';
 const inputClass = 'rounded border border-nim bg-nim-secondary px-3 py-2 text-sm text-nim disabled:opacity-50';
@@ -16,6 +17,8 @@ const providerName = (id: CalendarProvider) => CALENDAR_PROVIDERS.find(item => i
 
 export function CalendarImportsPanel(): React.JSX.Element {
   const [snapshot, setSnapshot] = useAtom(calendarImportsAtom);
+  const loadSnapshot = useSetAtom(loadCalendarImportsAtom);
+  const openCalendar = useSetAtom(setWindowModeAtom);
   const [provider, setProvider] = useState<CalendarProvider>('google');
   const [clients, setClients] = useState<Partial<Record<CalendarProvider, { clientId: string; clientSecret?: string }>>>({});
   const [selection, setSelection] = useState<Record<string, string[]>>({});
@@ -38,13 +41,11 @@ export function CalendarImportsPanel(): React.JSX.Element {
 
   useEffect(() => {
     let canceled = false;
-    void window.electronAPI.invoke('calendar-imports:get').then((next: CalendarImportsSnapshot) => {
-      if (!canceled) applySnapshot(next);
-    }).catch((failure: unknown) => {
+    void loadSnapshot().catch((failure: unknown) => {
       if (!canceled) setError(failure instanceof Error ? failure.message : 'Calendar imports could not be loaded.');
     }).finally(() => { if (!canceled) setBusy(false); });
     return () => { canceled = true; };
-  }, []);
+  }, [loadSnapshot]);
 
   const run = async (operation: () => Promise<CalendarImportsSnapshot>, success: string) => {
     setBusy(true); setError(''); setMessage('');
@@ -63,18 +64,10 @@ export function CalendarImportsPanel(): React.JSX.Element {
     setClients(previous => ({ ...previous, [provider]: { clientId: client.clientId } }));
   };
 
-  const entries = snapshot.connections.flatMap(account => account.events.map(event => ({ account, event })))
-    .sort((left, right) => calendarEventOrder(left.event) - calendarEventOrder(right.event) || left.event.title.localeCompare(right.event.title));
-  const grouped = new Map<string, typeof entries>();
-  for (const entry of entries) {
-    const day = calendarEventDay(entry.event);
-    grouped.set(day, [...(grouped.get(day) ?? []), entry]);
-  }
-
   return <section className="calendar-imports-panel space-y-6 text-nim select-text" aria-label="Calendar imports">
     <header className="calendar-imports-header space-y-2">
       <h2 className="text-lg font-semibold">Calendar imports</h2>
-      <p className="text-sm text-nim-muted">Connect calendar accounts, choose calendars, and import their events into one agenda. Refresh an import to pick up changed or canceled events.</p>
+      <p className="text-sm text-nim-muted">Connect calendar accounts and choose which calendars to sync. Open Calendar from the left gutter to view your events.</p>
       <p className="text-sm text-nim-muted">Automatic refresh runs every 5 minutes while Nimbalyst is open, on startup, and after wake or reconnect. It includes 7 days back through 90 days ahead.</p>
       <p className="text-xs text-nim-muted">Calendar access is read-only. Connections and imported events are encrypted on this computer. Each import replaces that account’s previous agenda snapshot for the selected calendars and dates.</p>
     </header>
@@ -141,22 +134,10 @@ export function CalendarImportsPanel(): React.JSX.Element {
     {message && <p className="text-sm" role="status">{message}</p>}
     {error && <p className="text-sm text-nim-error" role="alert">{error}</p>}
 
-    <section className="calendar-unified-agenda space-y-4" aria-label="Unified calendar agenda">
-      <h3 className="font-medium">Unified agenda</h3>
-      <p className="text-xs text-nim-muted">Times are shown in {Intl.DateTimeFormat().resolvedOptions().timeZone}. Each account’s last successful import stays visible until refreshed or disconnected.</p>
-      {entries.length === 0 && <p className="text-sm text-nim-muted">Your imported events will appear here.</p>}
-      {[...grouped].map(([day, dayEntries]) => <section key={day} className="calendar-agenda-day space-y-2">
-        <h4 className="text-sm font-medium">{new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</h4>
-        {dayEntries.map(({ account, event }) => <details key={`${account.id}/${event.calendarId}/${event.id}`} className="calendar-agenda-event rounded border border-nim p-3">
-          <summary className="cursor-pointer text-sm"><span className="font-medium">{event.title}</span><span className="ml-2 text-nim-muted">{event.allDay ? 'All day' : `${new Date(event.start).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}–${new Date(event.end).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`}</span></summary>
-          <div className="mt-2 space-y-2 text-sm">
-            <p className="text-nim-muted">{account.label} · {account.calendars.find(calendar => calendar.id === event.calendarId)?.name ?? 'Calendar'}</p>
-            {event.location && <p>{event.location}</p>}
-            {event.description && <p className="whitespace-pre-wrap break-words">{event.description}</p>}
-            {event.url && <button className={buttonClass} onClick={() => void window.electronAPI.invoke('calendar-imports:open-event', { accountId: account.id, calendarId: event.calendarId, eventId: event.id }).catch((failure: unknown) => setError(failure instanceof Error ? failure.message : 'Could not open the original event.'))}>Open original event</button>}
-          </div>
-        </details>)}
-      </section>)}
+    <section className="calendar-open-view space-y-3 rounded border border-nim p-4" aria-label="Calendar view">
+      <h3 className="font-medium">Calendar view</h3>
+      <p className="text-sm text-nim-muted">See your connected calendars together in a month view with a daily agenda and event details.</p>
+      <button type="button" className={buttonClass} onClick={() => openCalendar('calendar')}>Open calendar</button>
     </section>
   </section>;
 }

@@ -23,6 +23,7 @@ export type CreateActionMode =
   | 'files'
   | 'agent'
   | 'tracker'
+  | 'calendar'
   | 'collab'
   | 'org'
   | 'pr-review'

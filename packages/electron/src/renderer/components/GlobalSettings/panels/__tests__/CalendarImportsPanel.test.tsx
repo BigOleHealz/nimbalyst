@@ -4,6 +4,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { getDefaultStore } from 'jotai';
 import { calendarImportsAtom } from '../../../../store/atoms/calendarImports';
+import { windowModeAtom } from '../../../../store/atoms/windowMode';
 import { CalendarImportsPanel } from '../CalendarImportsPanel';
 import { calendarImportRange } from '../calendarAgenda';
 import type { CalendarImportsSnapshot } from '../../../../../shared/calendarImports';
@@ -21,22 +22,23 @@ beforeEach(() => {
   invoke.mockResolvedValue(structuredClone(snapshot));
 });
 
-it('shows both providers in one agenda and one expandable provider setup form', async () => {
+it('manages both providers on one page and opens the calendar from settings', async () => {
   render(<CalendarImportsPanel />);
-  await screen.findByText('Google standup');
-  expect(screen.getByText('Microsoft holiday')).toBeVisible();
+  await screen.findByText('me@gmail.test');
+  expect(screen.getByText('me@work.test')).toBeVisible();
   expect(screen.getByLabelText('Work calendar (primary)')).toBeChecked();
   expect(screen.getByLabelText('Office calendar (primary)')).toBeChecked();
   fireEvent.click(screen.getByText('Add calendar account'));
   fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'microsoft' } });
   expect(screen.queryByLabelText('Google Desktop app client secret')).not.toBeInTheDocument();
   expect(screen.getByText('Connection setup for Microsoft 365 / Exchange Online / Outlook.com')).toBeVisible();
-  expect(screen.getAllByRole('region', { name: 'Unified calendar agenda' })).toHaveLength(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Open calendar' }));
+  expect(getDefaultStore().get(windowModeAtom)).toBe('calendar');
 });
 
 it('imports only the selected calendars for the chosen inclusive local dates', async () => {
   render(<CalendarImportsPanel />);
-  await screen.findByText('Google standup');
+  await screen.findByText('me@gmail.test');
   fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-11-05' } });
   fireEvent.change(screen.getByLabelText('Through'), { target: { value: '2026-11-06' } });
   fireEvent.click(screen.getAllByRole('button', { name: 'Import events' })[0]);
@@ -51,11 +53,11 @@ it('keeps the last successful agenda visible when a new import fails', async () 
     return structuredClone(snapshot);
   });
   render(<CalendarImportsPanel />);
-  await screen.findByText('Google standup');
+  await screen.findByText('me@gmail.test');
   fireEvent.click(screen.getAllByRole('button', { name: 'Import events' })[0]);
   await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Provider unavailable'));
-  expect(screen.getByText('Google standup')).toBeVisible();
-  expect(screen.getByText('Microsoft holiday')).toBeVisible();
+  expect(getDefaultStore().get(calendarImportsAtom).connections[0].events[0].title).toBe('Google standup');
+  expect(getDefaultStore().get(calendarImportsAtom).connections[1].events[0].title).toBe('Microsoft holiday');
 });
 
 it('uses the rolling range and persists the per-account automatic refresh preference', async () => {
@@ -63,7 +65,7 @@ it('uses the rolling range and persists the per-account automatic refresh prefer
   automatic.connections.forEach(account => { account.autoRefresh = true; });
   invoke.mockResolvedValue(automatic);
   render(<CalendarImportsPanel />);
-  await screen.findByText('Google standup');
+  await screen.findByText('me@gmail.test');
   expect(screen.queryByLabelText('From')).not.toBeInTheDocument();
   fireEvent.click(screen.getAllByRole('button', { name: 'Refresh now' })[0]);
   await waitFor(() => expect(invoke).toHaveBeenCalledWith('calendar-imports:import', { accountId: 'google', calendarIds: ['work'], range: undefined }));
@@ -72,13 +74,13 @@ it('uses the rolling range and persists the per-account automatic refresh prefer
   await waitFor(() => expect(invoke).toHaveBeenCalledWith('calendar-imports:auto-refresh', { accountId: 'google', enabled: false }));
 });
 
-it('updates the visible agenda from a background snapshot without remounting settings', async () => {
+it('updates connected account counts from a background snapshot without remounting settings', async () => {
   render(<CalendarImportsPanel />);
-  await screen.findByText('Google standup');
+  await screen.findByText('me@gmail.test');
   const changed = structuredClone(snapshot);
   changed.connections[0].events = [];
   changed.connections[1].events[0].title = 'Changed meeting';
   await act(async () => { getDefaultStore().set(calendarImportsAtom, changed); });
-  expect(screen.queryByText('Google standup')).not.toBeInTheDocument();
-  expect(screen.getByText('Changed meeting')).toBeVisible();
+  expect(screen.getByText(/Google Calendar · 0 events/)).toBeVisible();
+  expect(getDefaultStore().get(calendarImportsAtom).connections[1].events[0].title).toBe('Changed meeting');
 });

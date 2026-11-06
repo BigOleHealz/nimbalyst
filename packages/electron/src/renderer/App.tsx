@@ -169,6 +169,7 @@ import { initUpdateListeners } from './store/listeners/updateListeners';
 import { initWalkthroughListeners } from './store/listeners/walkthroughListeners';
 import { initWakeupListeners } from './store/listeners/wakeupListener';
 import { TrackerMode } from './components/TrackerMode';
+import { CalendarMode } from './components/CalendarMode/CalendarMode';
 import { PullRequestMode, type PullRequestModeRef } from './components/PullRequestMode';
 import { CollabMode, type CollabModeRef } from './components/CollabMode';
 import { navigatePagesHistory } from './components/CollabMode/pagesTabNavigation';
@@ -1442,6 +1443,7 @@ export default function App() {
       files: 'Files',
       agent: 'Agent',
       tracker: 'Tracker',
+      calendar: 'Calendar',
       collab: 'Wiki',
       org: 'Organization',
       'pr-review': 'PR Review',
@@ -3127,6 +3129,15 @@ export default function App() {
                     onSwitchToFilesMode={() => setActiveMode('files')}
                   />
                 )}
+              </Activity>
+            </div>
+
+            <div data-layout="calendar-mode-wrapper" className={`flex-1 flex-col overflow-hidden min-h-0 ${activeMode === 'calendar' && !isFullscreenPanelActive ? 'flex' : 'hidden'}`}>
+              <Activity mode={activeMode === 'calendar' && !isFullscreenPanelActive ? 'visible' : 'hidden'}>
+                <CalendarMode onManageAccounts={() => {
+                  navigateSettingsInPlace({ category: 'calendar-imports', scope: 'application' });
+                  setActiveMode('settings');
+                }} />
               </Activity>
             </div>
 
