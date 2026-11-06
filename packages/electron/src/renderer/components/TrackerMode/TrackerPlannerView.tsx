@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { TrackerRecord } from '@nimbalyst/runtime/core/TrackerRecord';
 import { getRecordStatus, getRecordTitle } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
 import { buildTrackerPlan, planHierarchy, type PlanRow } from './trackerPlan';
 import { TrackerDagView } from './TrackerDagView';
+import { usePlannerTicketMenu, type PlannerTicketActions } from './usePlannerTicketMenu';
 import './TrackerPlannerView.css';
 
 interface Props {
@@ -10,17 +11,20 @@ interface Props {
   allItems: TrackerRecord[];
   selectedItemId?: string | null;
   onItemSelect: (id: string) => void;
+  menuActions?: PlannerTicketActions;
 }
 
 const dateNumber = (date: string) => Date.parse(`${date}T00:00:00Z`);
 const DAY = 86400000;
 const dateLabel = (date: string) => new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
-export function TrackerPlannerView({ items, allItems, selectedItemId, onItemSelect }: Props) {
+export function TrackerPlannerView({ items, allItems, selectedItemId, onItemSelect, menuActions }: Props) {
   const [mode, setMode] = useState<'dag' | 'queue' | 'timeline'>('dag');
   const [readyOnly, setReadyOnly] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [zoom, setZoom] = useState(7);
+  const ticketMenu = usePlannerTicketMenu(allItems, onItemSelect, Boolean(selectedItemId), menuActions);
+  useEffect(() => ticketMenu.close(), [mode, ticketMenu.close]);
   const plan = useMemo(() => buildTrackerPlan(allItems), [allItems]);
   const visibleIds = useMemo(() => new Set(items.map(item => item.id)), [items]);
   const visible = useMemo(() => plan.filter(row => visibleIds.has(row.item.id)), [plan, visibleIds]);
@@ -59,7 +63,7 @@ export function TrackerPlannerView({ items, allItems, selectedItemId, onItemSele
         return next;
       })}>{collapsed.has(row.item.id) ? '▸' : '▾'}</button>}
       <div className="tracker-planner-ticket-content">
-        <button type="button" className="tracker-planner-title" onClick={() => onItemSelect(row.item.id)}>
+        <button type="button" className="tracker-planner-title" onClick={event => ticketMenu.select(event, row.item.id)}>
           {mode === 'queue' && <span className="tracker-planner-rank">{row.held ? '—' : index + 1}</span>}
           {getRecordTitle(row.item)}
         </button>
@@ -91,16 +95,17 @@ export function TrackerPlannerView({ items, allItems, selectedItemId, onItemSele
     </div>
     <p className="tracker-planner-guide select-text">{mode === 'dag' ? 'Follow arrows from prerequisites to the work they unlock. Subtasks precede parent closeout; earlier deadlines order independent paths. Select a node to inspect its ticket in the right sidebar.' : 'Subtasks and dependencies first; earlier deadlines next, then priority. “Needed by” comes from a parent or dependent. Dates are unchanged. Timeline bars use recorded start dates; markers show deadlines.'}</p>
     {rows.length === 0 ? <div className="tracker-planner-empty select-text">{readyOnly ? 'No tickets are ready in this view. Turn off the ready filter to inspect their prerequisites.' : 'No open tickets match the current Tracker filters.'}</div>
-      : mode === 'dag' ? <div className="tracker-planner-dag-panel" role="tabpanel" aria-label="Dependency graph"><TrackerDagView plan={plan} visibleIds={graphIds} selectedItemId={selectedItemId} onItemSelect={onItemSelect} /></div>
+      : mode === 'dag' ? <div className="tracker-planner-dag-panel" role="tabpanel" aria-label="Dependency graph"><TrackerDagView plan={plan} visibleIds={graphIds} selectedItemId={selectedItemId} onItemSelect={onItemSelect} onItemClick={ticketMenu.select} onItemContextMenu={ticketMenu.open} /></div>
       : <div className="tracker-planner-scroll" role="tabpanel" aria-label={mode === 'queue' ? 'Suggested order' : 'Hierarchy timeline'}>
         {mode === 'timeline' && <div className="tracker-planner-axis" style={{ minWidth: width + 340 }}><div className="tracker-planner-axis-label">Ticket hierarchy</div><div className="tracker-planner-axis-dates" style={{ width }}>{Array.from({ length: slots }, (_, index) => <span key={index} style={{ left: `${index / slots * 100}%` }}>{new Date(first + index * step * DAY).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' })}</span>)}</div></div>}
-        {rows.map((row, index) => <div key={row.item.id} className={`tracker-planner-row ${mode === 'timeline' ? 'tracker-planner-timeline-row' : ''} ${selectedItemId === row.item.id ? 'tracker-planner-selected' : ''}`} style={mode === 'timeline' ? { minWidth: width + 340 } : undefined}>
+        {rows.map((row, index) => <div key={row.item.id} className={`tracker-planner-row ${mode === 'timeline' ? 'tracker-planner-timeline-row' : ''} ${selectedItemId === row.item.id ? 'tracker-planner-selected' : ''}`} style={mode === 'timeline' ? { minWidth: width + 340 } : undefined} onContextMenu={event => ticketMenu.open(event, row.item.id)} onDoubleClick={event => ticketMenu.open(event, row.item.id)}>
           {ticket(row, index)}
           {mode === 'timeline' && <div className="tracker-planner-track" style={{ width }}>
             <span className="tracker-planner-today" style={{ left: `${position(todayKey)}%` }} title="Today" />
-            {row.effectiveDue ? <button type="button" className={`tracker-planner-marker ${row.ready ? 'tracker-planner-marker-ready' : ''} ${row.held || row.conflict ? 'tracker-planner-marker-warning' : ''}`} style={{ left: `${position(row.start && row.start <= row.effectiveDue ? row.start : row.effectiveDue)}%`, width: row.start && row.start < row.effectiveDue ? `${(dateNumber(row.effectiveDue) - dateNumber(row.start)) / span * 100}%` : 14 }} onClick={() => onItemSelect(row.item.id)} aria-label={`Open ${getRecordTitle(row.item)}, ${row.due === row.effectiveDue ? 'due' : 'needed by'} ${dateLabel(row.effectiveDue)}`} /> : <span className="tracker-planner-undated">No due date</span>}
+            {row.effectiveDue ? <button type="button" className={`tracker-planner-marker ${row.ready ? 'tracker-planner-marker-ready' : ''} ${row.held || row.conflict ? 'tracker-planner-marker-warning' : ''}`} style={{ left: `${position(row.start && row.start <= row.effectiveDue ? row.start : row.effectiveDue)}%`, width: row.start && row.start < row.effectiveDue ? `${(dateNumber(row.effectiveDue) - dateNumber(row.start)) / span * 100}%` : 14 }} onClick={event => ticketMenu.select(event, row.item.id)} aria-label={`Open ${getRecordTitle(row.item)}, ${row.due === row.effectiveDue ? 'due' : 'needed by'} ${dateLabel(row.effectiveDue)}`} /> : <span className="tracker-planner-undated">No due date</span>}
           </div>}
         </div>)}
       </div>}
+    {ticketMenu.menu}
   </section>;
 }

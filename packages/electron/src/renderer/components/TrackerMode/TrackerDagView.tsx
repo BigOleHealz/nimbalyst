@@ -10,10 +10,12 @@ interface Props {
   visibleIds: ReadonlySet<string>;
   selectedItemId?: string | null;
   onItemSelect: (id: string) => void;
+  onItemClick?: (event: React.MouseEvent, itemId: string) => void;
+  onItemContextMenu?: (event: React.MouseEvent, itemId: string) => void;
 }
 const dateLabel = (date: string) => new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
-export function TrackerDagView({ plan, visibleIds, selectedItemId, onItemSelect }: Props) {
+export function TrackerDagView({ plan, visibleIds, selectedItemId, onItemSelect, onItemClick, onItemContextMenu }: Props) {
   const dag = useMemo(() => buildTicketDag(plan, visibleIds), [plan, visibleIds]);
   const nodeById = useMemo(() => new Map(dag.nodes.map(node => [node.id, node])), [dag]);
   const connected = useMemo(() => connectedTicketIds(dag, selectedItemId), [dag, selectedItemId]);
@@ -23,10 +25,13 @@ export function TrackerDagView({ plan, visibleIds, selectedItemId, onItemSelect 
   })).values()], [dag]);
   const { viewportRef, sceneRef, percentRef, zoomBy, fit, focus } = useTicketDagViewport(dag.width, dag.height);
   const nextReady = useRef(0);
+  const pointerSelection = useRef<string | null>(null);
   const arrowId = `ticket-dag-arrow-${useId().replace(/:/g, '')}`;
   const selectedNode = selectedItemId ? nodeById.get(selectedItemId) : undefined;
   useEffect(() => {
-    if (selectedNode) focus({ x: selectedNode.x, y: selectedNode.y, width: DAG_NODE_WIDTH, height: DAG_NODE_HEIGHT });
+    // Keep pointer-selected nodes stationary so the second click of a double
+    // click lands on the same ticket when its right sidebar opens.
+    if (selectedNode && pointerSelection.current !== selectedNode.id) focus({ x: selectedNode.x, y: selectedNode.y, width: DAG_NODE_WIDTH, height: DAG_NODE_HEIGHT });
   }, [focus, selectedNode]);
   const stages = [...new Set(dag.nodes.map(node => node.stage))].sort((a, b) => a - b);
 
@@ -42,7 +47,7 @@ export function TrackerDagView({ plan, visibleIds, selectedItemId, onItemSelect 
         <button type="button" disabled={!dag.nodes.some(node => node.row.ready)} onClick={() => {
           const ready = dag.nodes.filter(node => node.row.ready);
           const node = ready[nextReady.current++ % ready.length];
-          if (node) { focus({ x: node.x, y: node.y, width: DAG_NODE_WIDTH, height: DAG_NODE_HEIGHT }); onItemSelect(node.id); }
+          if (node) { pointerSelection.current = null; focus({ x: node.x, y: node.y, width: DAG_NODE_WIDTH, height: DAG_NODE_HEIGHT }); onItemSelect(node.id); }
         }}>Next ready ticket</button>
       </div>
     </div>
@@ -72,7 +77,7 @@ export function TrackerDagView({ plan, visibleIds, selectedItemId, onItemSelect 
             const status = ticketDagStatus(row.item);
             const title = getRecordTitle(row.item);
             return <foreignObject key={node.id} x={node.x} y={node.y} width={DAG_NODE_WIDTH} height={DAG_NODE_HEIGHT} className="tracker-dag-node-container">
-              <button type="button" className={`tracker-dag-node ${selectedItemId === node.id ? 'tracker-dag-node-selected' : ''} ${selectedItemId && !connected.has(node.id) ? 'tracker-dag-node-muted' : ''}`} style={{ borderColor: status.color }} aria-label={`Open ticket ${title}, ${status.label}`} aria-pressed={selectedItemId === node.id} data-ticket-id={node.id} onClick={() => onItemSelect(node.id)} onFocus={event => { if (event.currentTarget.matches(':focus-visible')) focus({ x: node.x, y: node.y, width: DAG_NODE_WIDTH, height: DAG_NODE_HEIGHT }); }}>
+              <button type="button" className={`tracker-dag-node ${selectedItemId === node.id ? 'tracker-dag-node-selected' : ''} ${selectedItemId && !connected.has(node.id) ? 'tracker-dag-node-muted' : ''}`} style={{ borderColor: status.color }} aria-label={`Open ticket ${title}, ${status.label}`} aria-pressed={selectedItemId === node.id} data-ticket-id={node.id} onClick={event => { pointerSelection.current = event.detail > 0 ? node.id : null; if (onItemClick) onItemClick(event, node.id); else onItemSelect(node.id); }} onContextMenu={event => onItemContextMenu?.(event, node.id)} onDoubleClick={event => onItemContextMenu?.(event, node.id)} onFocus={event => { if (event.currentTarget.matches(':focus-visible')) focus({ x: node.x, y: node.y, width: DAG_NODE_WIDTH, height: DAG_NODE_HEIGHT }); }}>
                 <span className="tracker-dag-node-top"><span style={{ color: status.color }}>{status.label}</span><span>{row.effectiveDue ? `${row.due === row.effectiveDue ? 'Due' : 'By'} ${dateLabel(row.effectiveDue)}` : 'Undated'}</span></span>
                 <span className="tracker-dag-node-title">{title}</span>
                 <span className={`tracker-dag-node-bottom ${row.held || row.conflict ? 'tracker-dag-node-attention' : ''}`}>{node.inCycle ? 'Dependency cycle' : row.held ? 'Needs attention' : row.ready ? 'Ready now' : row.childIds.length ? 'Parent closeout' : row.prerequisiteIds.length ? 'After prerequisites' : 'Scheduled'}{node.outsidePrerequisiteCount > 0 ? ` · ${node.outsidePrerequisiteCount} outside view` : ''}{row.conflict ? ' · date conflict' : ''}</span>
