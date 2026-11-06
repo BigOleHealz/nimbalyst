@@ -848,6 +848,13 @@ export const TrackerMainView: React.FC<TrackerMainViewProps> = ({
     setModeLayout({ selectedItemId: null });
   }, [setModeLayout]);
 
+  const handlePlannerItemSelect = useCallback((itemId: string) => {
+    // Graph selection always uses the right detail panel, including tickets
+    // whose last saved presentation was the full document view.
+    setItemView({ itemId, view: 'item' });
+    handleItemSelect(itemId);
+  }, [handleItemSelect, setItemView]);
+
   /** Swap the document in place when a row in the slim list pane is clicked. */
   const handleOpenItemAsDocument = useCallback((itemId: string) => {
     openItemAsDocument(itemId);
@@ -1245,7 +1252,7 @@ export const TrackerMainView: React.FC<TrackerMainViewProps> = ({
               items={viewFilteredItems}
               allItems={plannerItems}
               selectedItemId={selectedItemId}
-              onItemSelect={handleItemSelect}
+              onItemSelect={handlePlannerItemSelect}
             />
           ) : viewMode === 'list' ? (
             <TrackerTable
