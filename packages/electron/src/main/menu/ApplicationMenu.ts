@@ -766,6 +766,16 @@ export async function createApplicationMenu() {
                         }
                     }
                 },
+                {
+                    label: 'Planner',
+                    accelerator: orgWindowFocused ? undefined : KeyboardShortcuts.view.trackerPlanner,
+                    click: () => {
+                        const focused = getFocusedWindow();
+                        if (focused && !isAboutWindow(focused)) {
+                            focused.webContents.send('tracker-planner-open');
+                        }
+                    }
+                },
                 { type: 'separator' },
                 // Panels
                 {

@@ -108,6 +108,13 @@ describe('toggleExpandedTab binding', () => {
 });
 
 describe('getElectronAccelerator', () => {
+  it('keeps the Planner shortcut distinct from all other app bindings', () => {
+    const planner = KeyboardShortcuts.view.trackerPlanner;
+    const all = Object.values(KeyboardShortcuts).flatMap(group => Object.values(group));
+    expect(all.filter(shortcut => shortcut === planner)).toHaveLength(1);
+    expect(getShortcutDisplay(planner, true)).toBe('⌘⌥P');
+    expect(getElectronAccelerator(planner)).toBe('CmdOrCtrl+Alt+P');
+  });
   it('keeps global voice on physical Control and distinct from Paste as Text', () => {
     const voice = getElectronAccelerator(KeyboardShortcuts.voice.toggle);
     expect(voice).toMatch(/^Ctrl\+/);
