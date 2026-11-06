@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 <!-- Bug fixes go here -->
+- New Git worktrees automatically claim their branch so repository safety hooks allow commits without manual setup.
 - Sessions launched from a trusted workspace retain that workspace's permissions when running in a Git worktree or reopening a saved session.
 
 ### Removed

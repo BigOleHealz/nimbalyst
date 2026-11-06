@@ -361,6 +361,14 @@ export class GitWorktreeService {
       }
     }
 
+    try {
+      await this.initializeWorktreeBranchClaim(worktreePath, branchName);
+    } catch (error) {
+      logger.error('Failed to claim branch for new worktree', { error, worktreePath, branchName });
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to claim branch for new worktree: ${message}\nWorktree preserved at ${worktreePath}.`);
+    }
+
     logger.info('Worktree created successfully', { worktreePath });
     return {
       id: ulid(),
@@ -372,6 +380,30 @@ export class GitWorktreeService {
       createdAt: Date.now(),
       ...(creationWarning ? { creationWarning } : {}),
     };
+  }
+
+  private async initializeWorktreeBranchClaim(worktreePath: string, branchName: string): Promise<void> {
+    const git = gitFor(worktreePath);
+    const currentBranch = (await git.raw(['symbolic-ref', '--quiet', '--short', 'HEAD'])).trim();
+    if (currentBranch !== branchName) {
+      throw new Error('The checkout changed branches before its branch could be claimed.');
+    }
+
+    // Match scripts/session.sh claim without executing repository scripts. Git
+    // resolves the private worktree directory, never the shared common dir.
+    const gitDir = (await git.revparse(['--absolute-git-dir'])).trim();
+    const claimPath = path.join(gitDir, 'SESSION_BRANCH');
+    try {
+      await fs.promises.writeFile(claimPath, `${branchName}\n`, { flag: 'wx' });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      // A post-checkout hook may already have claimed this branch. Never
+      // overwrite another claim: that would defeat the pre-commit guard.
+      const existingClaim = (await fs.promises.readFile(claimPath, 'utf8')).trim();
+      if (existingClaim !== branchName) {
+        throw new Error('The new worktree already has a conflicting branch claim.');
+      }
+    }
   }
 
   private async isCompletedWorktreeCheckout(

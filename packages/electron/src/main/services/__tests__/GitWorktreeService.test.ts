@@ -132,6 +132,76 @@ describe('GitWorktreeService.createWorktree checkout failures', () => {
     fs.writeFileSync(path.join(hooks, 'post-checkout'), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
   }
 
+  it('claims only the new worktree and permits commits until its branch changes', async () => {
+    const parentGitDir = (await fixtureGit(repo).revparse(['--absolute-git-dir'])).trim();
+    fs.writeFileSync(path.join(parentGitDir, 'SESSION_BRANCH'), 'parent-claim\n');
+    fs.writeFileSync(path.join(hooks, 'pre-commit'), `#!/bin/sh
+claim="$(git rev-parse --absolute-git-dir)/SESSION_BRANCH"
+if ! test -f "$claim" || ! test "$(cat "$claim")" = "$(git symbolic-ref --quiet --short HEAD)"; then
+  echo 'BLOCKED: branch is not claimed' >&2
+  exit 1
+fi
+`, { mode: 0o755 });
+
+    const worktree = await service.createWorktree(repo, { name: 'claimed' });
+    const git = fixtureGit(worktree.path);
+    assertGitSandbox(worktree.path);
+    await expect(git.raw(['commit', '--allow-empty', '-m', 'commit on claimed branch']))
+      .resolves.toContain('commit on claimed branch');
+    expect(fs.readFileSync(path.join(parentGitDir, 'SESSION_BRANCH'), 'utf8')).toBe('parent-claim\n');
+    expect(await git.status()).toMatchObject({ files: [] });
+
+    assertGitSandbox(worktree.path);
+    await git.checkoutLocalBranch('someone-elses-branch');
+    await expect(git.raw(['commit', '--allow-empty', '-m', 'must be blocked']))
+      .rejects.toThrow('BLOCKED: branch is not claimed');
+    expect((await git.log()).latest?.message).toBe('commit on claimed branch');
+  });
+
+  it('claims a completed checkout even when its post-checkout hook failed', async () => {
+    installHook('exit 1');
+    const worktree = await service.createWorktree(repo, { name: 'claim-after-hook-failure' });
+    const gitDir = (await fixtureGit(worktree.path).revparse(['--absolute-git-dir'])).trim();
+    expect(fs.readFileSync(path.join(gitDir, 'SESSION_BRANCH'), 'utf8')).toBe(`${worktree.branch}\n`);
+    expect(worktree.creationWarning).toContain('post-checkout failed');
+  });
+
+  it('preserves a matching claim written by the post-checkout hook', async () => {
+    installHook('git symbolic-ref --short HEAD > "$(git rev-parse --absolute-git-dir)/SESSION_BRANCH"');
+    const worktree = await service.createWorktree(repo, { name: 'already-claimed' });
+    const gitDir = (await fixtureGit(worktree.path).revparse(['--absolute-git-dir'])).trim();
+    expect(fs.readFileSync(path.join(gitDir, 'SESSION_BRANCH'), 'utf8')).toBe(`${worktree.branch}\n`);
+  });
+
+  it('refuses to overwrite a conflicting claim and preserves the checkout', async () => {
+    installHook('echo other-branch > "$(git rev-parse --absolute-git-dir)/SESSION_BRANCH"');
+    await expect(service.createWorktree(repo, { name: 'conflicting-claim' }))
+      .rejects.toThrow(/Failed to claim[\s\S]*preserved/);
+    const worktreePath = path.join(root, 'repo_worktrees', 'conflicting-claim');
+    const gitDir = (await fixtureGit(worktreePath).revparse(['--absolute-git-dir'])).trim();
+    expect(fs.readFileSync(path.join(gitDir, 'SESSION_BRANCH'), 'utf8')).toBe('other-branch\n');
+    expect(fs.readFileSync(path.join(worktreePath, 'README.md'), 'utf8')).toBe('initial checkout\n');
+  });
+
+  it('reports claim write failures without discarding the new checkout', async () => {
+    installHook('mkdir "$(git rev-parse --absolute-git-dir)/SESSION_BRANCH"');
+    await expect(service.createWorktree(repo, { name: 'unwritable-claim' }))
+      .rejects.toThrow(/Failed to claim[\s\S]*preserved/);
+    expect(fs.readFileSync(path.join(root, 'repo_worktrees', 'unwritable-claim', 'README.md'), 'utf8'))
+      .toBe('initial checkout\n');
+  });
+
+  it('does not claim a different branch selected by a successful checkout hook', async () => {
+    const git = fixtureGit(repo);
+    const baseBranch = (await git.raw(['symbolic-ref', '--short', 'HEAD'])).trim();
+    installHook(`git symbolic-ref HEAD refs/heads/${baseBranch}`);
+    await expect(service.createWorktree(repo, { name: 'switched-before-claim' }))
+      .rejects.toThrow(/changed branches[\s\S]*preserved/);
+    const worktreePath = path.join(root, 'repo_worktrees', 'switched-before-claim');
+    const gitDir = (await fixtureGit(worktreePath).revparse(['--absolute-git-dir'])).trim();
+    expect(fs.existsSync(path.join(gitDir, 'SESSION_BRANCH'))).toBe(false);
+  });
+
   it('retains a completed checkout when post-checkout diffs the null previous commit', async () => {
     installHook('git diff "$1" "$2"');
     assertGitSandbox(repo);
@@ -414,6 +484,9 @@ describe('GitWorktreeService under an inherited repository-selection env', () =>
 
     const worktree = await service.createWorktree(repo, { name: 'env-check' });
     expect(path.dirname(worktree.path)).toBe(path.join(root, 'repo_worktrees'));
+    const worktreeGitDir = (await fixtureGit(worktree.path).revparse(['--absolute-git-dir'])).trim();
+    expect(fs.readFileSync(path.join(worktreeGitDir, 'SESSION_BRANCH'), 'utf8')).toBe(`${worktree.branch}\n`);
+    expect(fs.existsSync(path.join(decoy, '.git', 'SESSION_BRANCH'))).toBe(false);
     expect(await fixtureGit(repo).raw(['branch', '--list', worktree.branch])).toContain(worktree.branch);
     expect(await snapshot(decoy)).toEqual(decoyBefore);
 

@@ -6,6 +6,8 @@ Nimbalyst supports creating git worktrees for isolated AI coding sessions. This 
 
 Git worktrees allow you to have multiple working directories from a single git repository, each checked out to a different branch. Nimbalyst leverages this to create isolated environments for AI-assisted coding sessions.
 
+New worktrees automatically claim their initial branch using a `SESSION_BRANCH` file in their private Git directory, matching the `scripts/session.sh claim` convention. Repositories with a branch-claim pre-commit guard can commit immediately, and the guard still blocks commits if the checkout later switches branches. Existing matching claims are retained; conflicting claims or write failures stop creation and preserve the checkout for recovery. Repositories without a branch-claim guard simply ignore this metadata.
+
 ## Key Concepts
 
 ### Worktree Sessions vs Regular Sessions
