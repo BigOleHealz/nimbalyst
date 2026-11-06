@@ -91,6 +91,7 @@ interface BoardPosition {
 const RUN_STATE_SEGMENTS = [
   { key: 'running' as const, label: 'running', color: '#60a5fa' },
   { key: 'waiting' as const, label: 'waiting', color: '#f97316' },
+  { key: 'blocked' as const, label: 'blocked', color: 'var(--nim-error)' },
   { key: 'review' as const, label: 'review', color: '#a78bfa' },
   { key: 'idle' as const, label: 'idle', color: '#666666' },
   { key: 'done' as const, label: 'done', color: '#4ade80' },
@@ -155,12 +156,13 @@ function CardTypeIcon({ type, provider }: { type: KanbanCardType; provider?: str
 // ============================================================
 
 /** The visual state of a card, used for both background tint and status badge */
-type CardVisualState = 'running' | 'waiting' | 'unread' | 'idle';
+type CardVisualState = 'running' | 'waiting' | 'blocked' | 'unread' | 'idle';
 
 /** Background + border tints for each visual state */
 const CARD_STATE_STYLES: Record<CardVisualState, { bg: string; border: string }> = {
   running:  { bg: 'rgba(96, 165, 250, 0.06)',  border: 'rgba(96, 165, 250, 0.25)' },
   waiting:  { bg: 'rgba(249, 115, 22, 0.06)',  border: 'rgba(249, 115, 22, 0.25)' },
+  blocked:  { bg: 'color-mix(in srgb, var(--nim-error) 6%, transparent)', border: 'color-mix(in srgb, var(--nim-error) 25%, transparent)' },
   unread:   { bg: 'rgba(96, 165, 250, 0.04)',  border: 'rgba(96, 165, 250, 0.18)' },
   idle:     { bg: 'transparent',                border: '' },
 };
@@ -173,7 +175,7 @@ interface CardStateInfo {
   spinIcon: boolean;
 }
 
-function useCardState(sessionId: string, cardType: KanbanCardType): CardStateInfo {
+function useCardState(sessionId: string, cardType: KanbanCardType, isBlocked: boolean): CardStateInfo {
   const awaitingApproval = useAtomValue(sessionAwaitingApprovalAtom(sessionId));
   const isProcessing = useAtomValue(sessionProcessingAtom(sessionId));
   const hasPendingPrompt = useAtomValue(sessionHasPendingInteractivePromptAtom(sessionId));
@@ -199,6 +201,9 @@ function useCardState(sessionId: string, cardType: KanbanCardType): CardStateInf
       badgeColor: '#60a5fa',
       spinIcon: true,
     };
+  }
+  if (isBlocked) {
+    return { state: 'blocked', badgeLabel: 'blocked', badgeIcon: 'block', badgeColor: 'var(--nim-error)', spinIcon: false };
   }
   if (hasUnread || (isParent && hasChildUnread)) {
     return {
@@ -230,6 +235,11 @@ function CardStatusBadge({ info }: { info: CardStateInfo }) {
         {info.badgeLabel}
       </span>
     );
+  }
+  if (info.state === 'blocked') {
+    return <span className="session-kanban-blocked-badge flex items-center gap-0.5 text-[10px] px-1 py-px rounded text-[var(--nim-error)] bg-[color-mix(in_srgb,var(--nim-error)_10%,transparent)]">
+      <MaterialSymbol icon="block" size={12} />{info.badgeLabel}
+    </span>;
   }
   if (info.state === 'waiting') {
     return (
@@ -279,6 +289,7 @@ interface SessionKanbanCardProps {
   onRename?: (sessionId: string, newName: string) => void;
   phaseColor: string;
   isDone?: boolean;
+  isBlocked?: boolean;
   isFocused?: boolean;
   isSelected?: boolean;
   selectedCount?: number;
@@ -286,9 +297,9 @@ interface SessionKanbanCardProps {
   onPeekToggle?: () => void;
 }
 
-function SessionKanbanCard({ session, onSelect, onArchive, onRename, phaseColor, isDone, isFocused, isSelected, selectedCount = 1, showPeekOverride, onPeekToggle }: SessionKanbanCardProps) {
+function SessionKanbanCard({ session, onSelect, onArchive, onRename, phaseColor, isDone, isBlocked = false, isFocused, isSelected, selectedCount = 1, showPeekOverride, onPeekToggle }: SessionKanbanCardProps) {
   const cardType = useMemo(() => getCardType(session), [session]);
-  const cardState = useCardState(session.id, cardType);
+  const cardState = useCardState(session.id, cardType, isBlocked);
   const stateStyle = CARD_STATE_STYLES[cardState.state];
   const tags = session.tags || [];
   const cardRef = useRef<HTMLDivElement>(null);
@@ -699,6 +710,7 @@ function SessionKanbanColumn({ phase, label, color, sessions, onSelect, onArchiv
                     onRename={onRename}
                     phaseColor={color}
                     isDone={phase === 'complete'}
+                    isBlocked={phase === 'blocked'}
                     isFocused={focusedCardId === session.id}
                     isSelected={selectedIds.has(session.id)}
                     selectedCount={selectedIds.size}
