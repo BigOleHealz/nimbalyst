@@ -3,7 +3,7 @@ import { useAtomValue } from 'jotai';
 import { VList } from 'virtua';
 import { FloatingPortal } from '@floating-ui/react';
 import { useScrollableMenuFloating } from '@nimbalyst/runtime/ui/floating/useScrollableMenuFloating';
-import { MaterialSymbol } from '@nimbalyst/runtime';
+import { MaterialSymbol } from '@nimbalyst/runtime/ui/icons/MaterialSymbol';
 import { ProviderIcon } from '@nimbalyst/runtime/ui/icons/ProviderIcons';
 import type { TrackerRecord } from '@nimbalyst/runtime/core/TrackerRecord';
 import type { TrackerIdentity } from '@nimbalyst/runtime/core/DocumentService';
@@ -41,6 +41,9 @@ import {
 } from '@nimbalyst/collab-client/trackers-ui';
 import { TrackerCompletionMetrics } from './CompletionMetrics';
 import { TrackerCardMilestoneChip } from './TrackerCardMilestoneChip';
+import { TrackerCardBlockers } from './TrackerCardBlockers';
+import type { Readiness } from '@nimbalyst/tracker-core';
+import type { BlockerVisibilityScope } from '@nimbalyst/runtime/plugins/TrackerPlugin/models/trackerBlockerVisibility';
 
 interface KanbanBoardProps {
   filterType: TrackerItemType | 'all';
@@ -77,6 +80,9 @@ interface KanbanBoardProps {
   favoriteItemIds?: ReadonlySet<string>;
   onToggleFavorite?: (itemId: string) => void;
   currentIdentity?: TrackerIdentity | null;
+  /** Computed by the host from the full workspace, before board filtering. */
+  readinessByItemId?: ReadonlyMap<string, Readiness>;
+  blockerScope?: BlockerVisibilityScope;
 }
 
 /**
@@ -115,6 +121,8 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   favoriteItemIds = new Set<string>(),
   onToggleFavorite,
   currentIdentity,
+  readinessByItemId,
+  blockerScope,
 }) => {
   // Items always come from the caller (TrackerMainView passes atom-sourced items).
   // KanbanBoard no longer loads its own data -- single source of truth via Jotai atoms.
@@ -268,8 +276,8 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   const boardAxis = resolveBoardAxis(groupBy);
   const statusScope = useAtomValue(trackerModeStatusScopeAtom);
   const columns = useMemo(
-    () => buildTrackerBoardColumns(groupBy, filterType, allItems, relationshipLabel, statusScope),
-    [groupBy, filterType, allItems, relationshipLabel, statusScope],
+    () => buildTrackerBoardColumns(groupBy, filterType, allItems, relationshipLabel, statusScope, readinessByItemId),
+    [groupBy, filterType, allItems, relationshipLabel, statusScope, readinessByItemId],
   );
   const columnsByKey = useMemo(
     () => new Map(columns.map(col => [col.key, col])),
@@ -277,8 +285,8 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   );
 
   const itemsByColumn = useMemo(
-    () => groupItemsIntoBoardColumns(allItems, columns, boardAxis, ordering),
-    [allItems, columns, boardAxis, ordering],
+    () => groupItemsIntoBoardColumns(allItems, columns, boardAxis, ordering, readinessByItemId),
+    [allItems, columns, boardAxis, ordering, readinessByItemId],
   );
 
   /**
@@ -413,6 +421,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
       if (!targetColumn) return;
 
       const updates = resolveBoardDrop({
+        readinessByItemId,
         item,
         axis: boardAxisRef.current,
         sourceColumnKey,
@@ -440,7 +449,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
     <div className="flex-1 flex gap-3 p-3 overflow-x-auto overflow-y-hidden min-h-0">
       {columns.map((col) => {
         const colItems = itemsByColumn[col.key] || [];
-        const color = (col.value && STATUS_COLORS[col.value]) || NEUTRAL_SWATCH;
+        const color = col.dependency ? 'var(--nim-warning)' : (col.value && STATUS_COLORS[col.value]) || NEUTRAL_SWATCH;
 
         return (
           <div
@@ -460,7 +469,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                 className={`w-2 h-2 rounded-full shrink-0 ${col.empty ? 'border border-nim' : ''}`}
                 style={col.empty ? undefined : { backgroundColor: color }}
               />
-              <span className="text-xs font-semibold text-nim truncate">
+              <span className="text-xs font-semibold text-nim truncate" title={col.dependency ? 'Waiting on dependencies. Tickets return to their workflow column and linked agents resume when every blocker clears.' : undefined}>
                 {col.label}
               </span>
               <span className="text-[10px] font-semibold text-nim-faint ml-auto">
@@ -505,7 +514,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                       milestoneSlot={
                         <TrackerCardMilestoneChip item={item} onOpenItem={onItemSelect} />
                       }
-                      fieldsSlot={<TrackerCompletionMetrics item={item} />}
+                      fieldsSlot={<><TrackerCompletionMetrics item={item} /><TrackerCardBlockers readiness={readinessByItemId?.get(item.id)} scope={blockerScope} onOpenItem={onItemSelect} /></>}
                       // Personal lane: desktop holds a personal JWT, so it is
                       // desktop that supplies these. The shared card has no
                       // import of either.

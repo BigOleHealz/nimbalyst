@@ -553,6 +553,8 @@ export type { OnboardingConfig } from '../../shared/types/workspace';
 export type AgentFileScopeMode = 'current-changes' | 'session-files' | 'all-changes';
 
 export interface WorkspaceState {
+  /** Local, restart-safe linked-agent waits; never synced to another device. */
+  trackerDependencyWaits?: import('../services/TrackerDependencyResumeService').DependencyWaits;
   /** Local daily task reminder preferences and restart-safe delivery ledger. */
   taskReminders?: import('../services/TaskReminderService').TaskReminderState;
   remoteSessionDrafts?: Record<string, { text: string; options?: import("@nimbalyst/runtime/sync/types").RemoteTurnOptions; attachments: import("@nimbalyst/runtime/ai/server/types").ChatAttachment[] }>;
@@ -981,6 +983,7 @@ function deepMerge<T extends Record<string, any>>(target: T, source: any): T {
  */
 function createDefaultWorkspaceState(workspacePath: string): WorkspaceState {
   return {
+    trackerDependencyWaits: {},
     workspacePath,
     attachedFolders: [],
     windowState: undefined,

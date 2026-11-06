@@ -10,6 +10,8 @@ import {
   type TrackerRelationshipValue,
 } from '@nimbalyst/runtime/plugins/TrackerPlugin/models';
 import { buildKanbanStatusColumns } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
+import { getRecordStatus } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
+import { computeReadiness } from '@nimbalyst/runtime/plugins/TrackerPlugin/models/trackerReadiness';
 import {
   buildTrackerBoardColumns,
   groupItemsIntoBoardColumns,
@@ -58,6 +60,52 @@ const RELEASE_REF: TrackerRelationshipValue = {
 };
 
 describe('board columns', () => {
+  it('routes blocked tickets to a live lane and restores their saved status when all blockers clear', () => {
+    const dependent = bug('dependent', { status: 'in-progress', dependsOn: [{ itemId: 'one' }, { itemId: 'two' }] });
+    const one = bug('one');
+    const two = bug('two');
+    const layout = (corpus: TrackerRecord[]) => {
+      const readiness = computeReadiness(corpus, getRecordStatus);
+      // The blockers do not have to pass the board's filters.
+      const columns = buildTrackerBoardColumns('status', 'bug', [dependent], undefined, 'all', readiness);
+      return { columns, grouped: groupItemsIntoBoardColumns([dependent], columns, 'status', 'manual', readiness), readiness };
+    };
+    expect(layout([one, two, dependent]).grouped['dependency:blocked'].map(item => item.id)).toEqual(['dependent']);
+    expect(layout([bug('one', { status: 'done' }), two, dependent]).grouped['dependency:blocked']).toHaveLength(1);
+    const ready = layout([bug('one', { status: 'done' }), bug('two', { status: 'cancelled' }), dependent]);
+    expect(ready.grouped['dependency:blocked']).toEqual([]);
+    expect(ready.grouped['in-progress'].map(item => item.id)).toEqual(['dependent']);
+    expect(dependent.fields.status).toBe('in-progress');
+    expect(layout([one, two, dependent]).grouped['dependency:blocked']).toHaveLength(1);
+  });
+
+  it('uses one Blocked lane for schemas that already declare it and keeps closed items in their workflow lane', () => {
+    const blocker = bug('blocker');
+    const plan = { ...bug('plan', { status: 'in-development', dependsOn: [{ itemId: 'blocker' }] }), primaryType: 'plan' };
+    const done = { ...bug('closed', { status: 'completed', dependsOn: [{ itemId: 'blocker' }] }), primaryType: 'plan' };
+    const readiness = computeReadiness([blocker, plan, done], getRecordStatus);
+    const columns = buildTrackerBoardColumns('status', 'plan', [plan, done], undefined, 'all', readiness);
+    expect(columns.filter(column => column.label === 'Blocked')).toHaveLength(1);
+    const grouped = groupItemsIntoBoardColumns([plan, done], columns, 'status', 'manual', readiness);
+    expect(grouped.blocked.map(item => item.id)).toEqual(['plan']);
+    expect(grouped.completed.map(item => item.id)).toEqual(['closed']);
+    expect(buildTrackerBoardColumns('status', 'bug', [done], undefined, 'closed', readiness).some(column => column.dependency)).toBe(false);
+  });
+
+  it('keeps blocked work out of other grouping lanes and prevents a drag from bypassing dependencies', () => {
+    const dependent = bug('dependent', { priority: 'high', dependsOn: [{ itemId: 'one' }] });
+    const readiness = computeReadiness([bug('one'), dependent], getRecordStatus);
+    const columns = buildTrackerBoardColumns('priority', 'bug', [dependent], undefined, 'all', readiness);
+    const blocked = columns.find(column => column.dependency)!;
+    const grouped = groupItemsIntoBoardColumns([dependent], columns, 'priority', 'manual', readiness);
+    expect(grouped[blocked.key].map(item => item.id)).toEqual(['dependent']);
+    expect(Object.entries(grouped).filter(([key]) => key !== blocked.key).flatMap(([, items]) => items)).toEqual([]);
+    const drop = { item: dependent, axis: 'priority' as const, sourceColumnKey: blocked.key, targetColumn: columns.find(column => !column.dependency)!, columnItems: [], dropIndex: null, readinessByItemId: readiness };
+    expect(resolveBoardDrop(drop)).toBeNull();
+    expect(resolveBoardDrop({ ...drop, sourceColumnKey: 'other', targetColumn: blocked })).toBeNull();
+    expect(resolveBoardDrop({ ...drop, targetColumn: blocked, columnItems: [dependent] })).toEqual({ kanbanSortOrder: expect.any(String) });
+  });
+
   const items = [
     bug('1', { status: 'to-do', collection: [milestoneRef('mst_beta', 'Beta Hardening')] }),
     bug('2', { status: 'in-progress', collection: [milestoneRef('mst_alpha', 'Alpha')] }),

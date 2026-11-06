@@ -67,6 +67,7 @@ import { initializeDesktopSessionSync, stopDesktopSessionSync } from './services
 import { registerNotificationHandlers } from './ipc/NotificationHandlers';
 import { registerTaskReminderHandlers } from './ipc/TaskReminderHandlers';
 import { startTaskReminders } from './services/taskReminderRuntime';
+import { startTrackerDependencyResumes } from './services/trackerDependencyRuntime';
 import { registerPermissionHandlers } from './ipc/PermissionHandlers';
 import { registerGitStatusHandlers } from './ipc/GitStatusHandlers';
 import { registerGitHandlers } from './ipc/GitHandlers';
@@ -3139,6 +3140,7 @@ app.whenReady().then(async () => {
     finishStartupWindowCreation();
     // The first reminder check needs the restored workspaces' task services.
     app.once('will-quit', startTaskReminders());
+    if (aiService) app.once('will-quit', startTrackerDependencyResumes(aiService));
 
     // Community popup fallback for passive users:
     // show on launch 5+ if success-moment trigger (3 tool sessions) has not fired.

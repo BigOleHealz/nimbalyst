@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 <!-- New features go here -->
+- See dependency-blocked tickets in a dedicated Kanban column with blocker links, automatic return to their workflow lanes, and automatic resumption of linked agents when all blockers clear, including after app restarts.
 - Choose the next tickets to complete with an interactive dependency graph, suggested work queue, and hierarchy timeline, including status-colored nodes, click-to-open ticket details in a right sidebar, and the same ticket action menu as Trackers on right-click or double-click; open the Planner from any workspace view with Command–Option–P on macOS or Control–Alt–P on Windows and Linux.
 - Start, wake, or stop Voice Mode from any app with Control+Shift+V on macOS or Control+Alt+Shift+V on Windows and Linux.
 - Open Google and Microsoft calendars from the Agenda gutter button or with Command–Option–A on macOS or Control–Alt–A on Windows and Linux, in a month view with a daily agenda, event details, visibility filters, and automatic refresh every five minutes, at startup, and after wake using a rolling date range.

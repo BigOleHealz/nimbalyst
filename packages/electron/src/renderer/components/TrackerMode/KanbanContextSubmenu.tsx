@@ -13,7 +13,7 @@
 import React, { useRef, useState } from 'react';
 import { FloatingPortal } from '@floating-ui/react';
 import { useScrollableMenuFloating } from '@nimbalyst/runtime/ui/floating/useScrollableMenuFloating';
-import { MaterialSymbol } from '@nimbalyst/runtime';
+import { MaterialSymbol } from '@nimbalyst/runtime/ui/icons/MaterialSymbol';
 
 export const KanbanContextSubmenu: React.FC<{
   label: string;

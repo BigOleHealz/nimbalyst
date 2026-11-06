@@ -1396,6 +1396,8 @@ export const TrackerMainView: React.FC<TrackerMainViewProps> = ({
             />
           ) : (
             <KanbanBoard
+              readinessByItemId={readinessByItemId}
+              blockerScope={blockerScope}
               filterType={filterType}
               groupBy={viewSettings.groupBy}
               ordering={viewSettings.ordering}

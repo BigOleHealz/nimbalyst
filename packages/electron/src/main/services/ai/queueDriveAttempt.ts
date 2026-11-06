@@ -20,6 +20,8 @@ export type WindowResolution<W> =
 export interface QueueDriveAttemptDeps<W> {
   /** Ids of the session's pending rows, oldest first. */
   listPendingIds(sessionId: string): Promise<string[]>;
+  /** Persisted automatic continuations may still be waiting on ticket dependencies. */
+  isPromptBlocked?(sessionId: string, promptId: string, workspacePath: string): Promise<boolean>;
   /** Is a queued-prompt chain already running for this session? */
   isChainActive(sessionId: string): boolean;
   /** Is the session mid-turn (running or streaming)? */
@@ -66,6 +68,9 @@ export async function runQueueDriveAttempt<W>(
   if (pendingIds.length === 0) {
     return { kind: 'nothing-pending' };
   }
+  if (await deps.isPromptBlocked?.(sessionId, pendingIds[0], workspacePath)) {
+    return { kind: 'deferred', reason: 'session-busy' };
+  }
 
   if (deps.isCommitProposalInFlight?.(sessionId)) {
     return { kind: 'deferred', reason: 'session-busy' };
@@ -94,6 +99,10 @@ export async function runQueueDriveAttempt<W>(
     return { kind: 'deferred', reason: 'no-window' };
   }
 
+  // A workspace may take time to load; the dependency could have reopened.
+  if (await deps.isPromptBlocked?.(sessionId, pendingIds[0], workspacePath)) {
+    return { kind: 'deferred', reason: 'session-busy' };
+  }
   const dispatched = await deps.dispatch({
     sessionId,
     workspacePath,
