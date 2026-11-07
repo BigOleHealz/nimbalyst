@@ -3,6 +3,7 @@ export * from "./dbBoolean.js";
 export * from "./localIssueKey.js";
 export * from "./planStatusIntegrity.js";
 export * from "./trackerActivity.js";
+export * from "./trackerCompletion.js";
 export * from "./trackerReadiness.js";
 export * from "./trackerRadar.js";
 export * from "./trackerRecord.js";

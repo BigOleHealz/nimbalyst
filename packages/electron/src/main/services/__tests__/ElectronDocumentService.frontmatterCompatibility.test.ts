@@ -235,10 +235,13 @@ planStatus:
 
     const updated = await service.updateTrackerItemInFile(canonicalId, {
       collection: [{ itemId: 'milestone-b' }],
+      status: 'completed',
     });
 
     const stored = JSON.parse(state.row.data);
     expect(stored.customFields.collection).toEqual([{ itemId: 'milestone-b' }]);
+    expect(stored.completedAt).toEqual(expect.any(String));
+    expect(await fs.readFile(path.join(tempDir, relativePath), 'utf-8')).toContain('completedAt:');
     expect(stored).not.toHaveProperty('collection');
     expect(updated.customFields?.collection).toEqual([{ itemId: 'milestone-b' }]);
     expect(await fs.readFile(path.join(tempDir, relativePath), 'utf-8')).toContain('itemId: milestone-b');

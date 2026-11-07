@@ -41,6 +41,7 @@ import {
   validateTrackerItemBatchPayload,
 } from './tracker/trackerBatchRequests';
 import {
+  flattenDataForRead,
   nestRelationshipFieldsIntoCustomFields,
   readStoredFieldValue,
   writeStoredFieldValue,
@@ -68,6 +69,7 @@ import {
   parseFullDocumentTrackerId,
 } from '@nimbalyst/runtime/plugins/TrackerPlugin/documentHeader/frontmatterUtils';
 import { globalRegistry } from '@nimbalyst/tracker-schema';
+import { trackerCompletionUpdate } from '@nimbalyst/tracker-core';
 import { database } from '../database/PGLiteDatabaseWorker';
 import { isExcludedFromTrackerProjection, shouldExcludeDir, shouldExcludePath } from '../utils/fileFilters';
 import { isInLocalWikiFolder, localWikiFolderWithin } from './localWiki/localWikiLocation';
@@ -1988,6 +1990,7 @@ export class ElectronDocumentService implements DocumentService {
     const data = typeof row.data === 'string' ? JSON.parse(row.data) : (row.data || {});
 
     // Handle typeTags separately -- stored in SQL column, not JSONB
+    const previousFields = flattenDataForRead(data);
     const newTypeTags: string[] | undefined = updates.typeTags === undefined ? undefined
       : Array.isArray(updates.typeTags) ? [...updates.typeTags] : [row.type];
     // Ensure primary type is always included
@@ -2017,6 +2020,12 @@ export class ElectronDocumentService implements DocumentService {
       changes[key] = { from: readStoredFieldValue(data, key), to: value };
       writeStoredFieldValue(data, key, value);
     }
+
+    const completion = trackerCompletionUpdate(
+      { getTypeModel: type => globalRegistry.getForWorkspace(row.workspace, type) },
+      row.type, previousFields, flattenDataForRead(data),
+    );
+    for (const [key, value] of Object.entries(completion)) writeStoredFieldValue(data, key, value);
 
     for (const [field, change] of Object.entries(changes)) {
       const action = field === 'status' ? 'status_changed'
@@ -2616,6 +2625,12 @@ export class ElectronDocumentService implements DocumentService {
     // through the same canonicalization and validation as native/store-backed
     // writes before either persistence path observes them.
     const fileUpdates = { ...updates };
+    const storedData = typeof row.data === 'string' ? JSON.parse(row.data) : (row.data || {});
+    const previousFields = flattenDataForRead(storedData);
+    Object.assign(fileUpdates, trackerCompletionUpdate(
+      { getTypeModel: type => globalRegistry.getForWorkspace(this.workspacePath, type) },
+      trackerType, previousFields, { ...previousFields, ...fileUpdates },
+    ));
     const relationshipWrite = applyRelationshipFieldWrites(fileUpdates, fieldDefs, itemId);
     if (!relationshipWrite.ok) {
       throw new Error(`Invalid relationship field "${relationshipWrite.field}": ${relationshipWrite.errors.join('; ')}`);
@@ -2692,6 +2707,7 @@ export class ElectronDocumentService implements DocumentService {
     if (resolvedRow) {
       const existingData = typeof resolvedRow.data === 'string' ? JSON.parse(resolvedRow.data) : (resolvedRow.data || {});
       const mergedData = { ...existingData, ...fileUpdates };
+      if ('completedAt' in fileUpdates) writeStoredFieldValue(mergedData, 'completedAt', fileUpdates.completedAt);
       nestRelationshipFieldsIntoCustomFields(mergedData, fieldDefs, {
         writtenFields: Object.keys(fileUpdates),
       });

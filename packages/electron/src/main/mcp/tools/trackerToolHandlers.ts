@@ -25,7 +25,7 @@ import { assignLocalKeysToRows } from '../../services/tracker/localKeyAllocator'
 import { typeHasLocalNumbers } from '../../services/tracker/localNumberTypes';
 import { workspaceLocalKeyStore } from '../../services/tracker/workspaceLocalKeyStore';
 import { extractItemCustomFields } from '../../services/tracker/trackerRowCustomFields';
-import { nestRelationshipFieldsIntoCustomFields, readStoredFieldValue, writeStoredFieldValue } from '../../services/tracker/relationshipFieldStorage';
+import { flattenDataForRead, nestRelationshipFieldsIntoCustomFields, readStoredFieldValue, writeStoredFieldValue } from '../../services/tracker/relationshipFieldStorage';
 import { reindexItemRelationshipsAfterWrite } from '../../services/tracker/trackerRelationshipIndexStore';
 import {
   isRelationshipField,
@@ -51,7 +51,7 @@ import {
 } from '@nimbalyst/runtime/plugins/TrackerPlugin/models/trackerBlockerVisibility';
 import { trackerItemToRecord } from '@nimbalyst/runtime/core/TrackerRecord';
 import { getRecordStatus, getRecordTitle, resolveRoleFieldName } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
-import { buildTrackerRadar, getRecentTeammateActivity } from '@nimbalyst/tracker-core';
+import { buildTrackerRadar, getRecentTeammateActivity, trackerCompletionUpdate } from '@nimbalyst/tracker-core';
 import { getVisibleTrackerLinkedSessions, shouldPersistTrackerLinkedSessions } from '../../../shared/trackerSessionLinks';
 import { buildFullDocumentTrackerId } from '@nimbalyst/runtime/plugins/TrackerPlugin/documentHeader/frontmatterUtils';
 import { normalizeLegacyLabelValues } from '@nimbalyst/runtime/sync';
@@ -1996,6 +1996,10 @@ export async function handleTrackerCreate(
       }
     }
 
+    Object.assign(data, trackerCompletionUpdate(
+      { getTypeModel: () => model }, args.type, undefined, data,
+    ));
+
     // Auto-populate required self-identifier fields (e.g. plan.planId,
     // decision.decisionId) that the schema marks required but no MCP caller
     // ever supplies. These are non-inline string fields; seed them with the
@@ -2745,6 +2749,12 @@ export async function handleTrackerUpdate(
       for (const key of explicitlyWrittenFields) {
         if (key in data) writeStoredFieldValue(data, key, data[key]);
       }
+
+      const completion = trackerCompletionUpdate(
+        { getTypeModel: type => globalRegistry.get(type) }, row.type,
+        flattenDataForRead(oldDataSnapshot), flattenDataForRead(data),
+      );
+      for (const [key, value] of Object.entries(completion)) writeStoredFieldValue(data, key, value);
 
       const modifierIdentity = getCurrentIdentity(workspacePath);
       for (const [field, change] of Object.entries(changes)) {

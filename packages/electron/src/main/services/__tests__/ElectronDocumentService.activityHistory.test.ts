@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'fs/promises';
 import * as os from 'os';
@@ -104,6 +105,38 @@ afterEach(async () => {
 });
 
 describe('direct UI tracker activity history', () => {
+  it('persists a completion date, preserves it on edits, and starts a new completion after reopening', async () => {
+    const state = installStatefulTrackerRow({ title: 'Example bug', status: 'in-progress' });
+    await service.updateTrackerItem('bug-1', { status: 'done' });
+    const first = JSON.parse(state.row.data).completedAt;
+    expect(first).toEqual(expect.any(String));
+    expect(Number.isNaN(Date.parse(first))).toBe(false);
+    await service.updateTrackerItem('bug-1', { title: 'Renamed' });
+    expect(JSON.parse(state.row.data).completedAt).toBe(first);
+    await service.updateTrackerItem('bug-1', { status: 'in-progress' });
+    expect(JSON.parse(state.row.data).completedAt).toBeNull();
+    await service.updateTrackerItem('bug-1', { status: 'done' });
+    expect(JSON.parse(state.row.data).completedAt).toEqual(expect.any(String));
+  });
+
+  it('does not assign a guessed date to legacy completed tickets or cancelled tickets', async () => {
+    const state = installStatefulTrackerRow({ title: 'Old bug', status: 'done' });
+    await service.updateTrackerItem('bug-1', { title: 'Renamed' });
+    expect(JSON.parse(state.row.data).completedAt).toBeUndefined();
+    await service.updateTrackerItem('bug-1', { status: 'cancelled' });
+    expect(JSON.parse(state.row.data).completedAt).toBeUndefined();
+  });
+
+  it('updates completion fields in the nested shape used by synced tickets', async () => {
+    const state = installStatefulTrackerRow({ title: 'Synced bug', status: 'in-progress', customFields: { completedAt: null, keep: 'value' } });
+    const item = await service.updateTrackerItem('bug-1', { status: 'done' });
+    const saved = JSON.parse(state.row.data);
+    expect(saved.customFields.completedAt).toEqual(expect.any(String));
+    expect(saved.customFields.keep).toBe('value');
+    expect(saved.completedAt).toBeUndefined();
+    expect(item.customFields?.completedAt).toBe(saved.customFields.completedAt);
+  });
+
   it('records an attributed before/after entry for a manual status edit', async () => {
     const original = nativeRow({ title: 'Example bug', status: 'to-do', activity: [] });
     const persisted = nativeRow({ title: 'Example bug', status: 'in-progress', activity: [] });

@@ -1,6 +1,8 @@
 import type { TeamJwt, TeamMemberId } from '@nimbalyst/runtime/auth/jwtScopes';
 import type { TrackerItem, TrackerIdentity } from '@nimbalyst/runtime/core/DocumentService';
 import { trackerRecordToItem, type TrackerRecord } from '@nimbalyst/runtime/core/TrackerRecord';
+import { trackerCompletionUpdate, type TrackerCoreContext } from '@nimbalyst/tracker-core';
+import { globalRegistry } from '@nimbalyst/tracker-schema';
 // Deep paths, not the `@nimbalyst/runtime/sync` barrel: that barrel also
 // re-exports the revision-snapshot bridge and the session store, which reach
 // `@nimbalyst/extension-sdk` and `runtime/src/ai/server/` -- both forbidden in a
@@ -199,21 +201,23 @@ function createPayload(
   item: TrackerCreateItemInput,
   currentUser: TrackerIdentity,
   hasBody: boolean,
+  context: TrackerCoreContext,
 ): TrackerItemPayload {
   const now = new Date().toISOString();
+  const fields = {
+    ...(item.customFields ?? {}),
+    title: item.title,
+    status: item.status,
+    priority: item.priority,
+    ...(item.owner === undefined ? {} : { owner: item.owner }),
+    ...(item.tags === undefined ? {} : { tags: item.tags }),
+  };
   return {
     itemId: item.id,
     primaryType: item.type,
     archived: false,
     bodyVersion: hasBody ? 1 : 0,
-    fields: {
-      ...(item.customFields ?? {}),
-      title: item.title,
-      status: item.status,
-      priority: item.priority,
-      ...(item.owner === undefined ? {} : { owner: item.owner }),
-      ...(item.tags === undefined ? {} : { tags: item.tags }),
-    },
+    fields: { ...fields, ...trackerCompletionUpdate(context, item.type, undefined, fields, now) },
     labels: {},
     comments: [],
     system: {
@@ -234,6 +238,7 @@ export function updatePayload(
   payload: TrackerItemPayload,
   updates: Record<string, unknown>,
   currentUser: TrackerIdentity,
+  context: TrackerCoreContext = { getTypeModel: () => undefined },
 ): TrackerItemPayload {
   const fields = { ...payload.fields, ...updates };
   let labels = payload.labels;
@@ -249,6 +254,7 @@ export function updatePayload(
       : payload.primaryType;
   const archived = typeof updates.archived === 'boolean' ? updates.archived : payload.archived;
   const bodyVersion = typeof updates.bodyVersion === 'number' ? updates.bodyVersion : payload.bodyVersion;
+  Object.assign(fields, trackerCompletionUpdate(context, primaryType, payload.fields, fields));
   for (const key of ['type', 'primaryType', 'archived', 'bodyVersion']) delete fields[key];
   return {
     ...payload,
@@ -266,6 +272,9 @@ export function updatePayload(
 }
 
 export class BrowserTrackerDataSource implements TrackerDataSource {
+  private get completionContext(): TrackerCoreContext {
+    return { getTypeModel: type => globalRegistry.getForWorkspace(this.options.workspacePath, type) };
+  }
   private readonly persistence: IndexedDbTrackerPersistence;
   private readonly engine: TrackerSyncEngine;
   private readonly listeners = new Set<(change: TrackerDataChange) => void>();
@@ -451,7 +460,7 @@ export class BrowserTrackerDataSource implements TrackerDataSource {
           }
           return {
             ok: true,
-            result: await this.upsert(createPayload(command.item, this.options.currentUser, body !== null)),
+            result: await this.upsert(createPayload(command.item, this.options.currentUser, body !== null, this.completionContext)),
           };
         }
       case 'update-item':
@@ -542,6 +551,7 @@ export class BrowserTrackerDataSource implements TrackerDataSource {
       payload,
       input.updates,
       this.options.currentUser,
+      this.completionContext,
     ));
   }
 
@@ -563,6 +573,7 @@ export class BrowserTrackerDataSource implements TrackerDataSource {
         stored.payload,
         entries[index].storeUpdates ?? {},
         this.options.currentUser,
+        this.completionContext,
       );
     });
     const result = await this.engine.upsertItems(payloads);
