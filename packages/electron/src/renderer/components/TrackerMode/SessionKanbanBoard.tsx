@@ -36,6 +36,7 @@ import { SessionCompletionMetrics } from './CompletionMetrics';
 import {
   sessionsByPhaseAtom,
   sessionKanbanFilterAtom,
+  sessionKanbanActivityRangeAtom,
   sessionKanbanTotalCountAtom,
   sessionKanbanTagsAtom,
   setSessionBoardColumnAtom,
@@ -737,6 +738,9 @@ function SessionKanbanToolbar({ selectedCount, onClearSelection }: { selectedCou
   const posthog = usePostHog();
   const filter = useAtomValue(sessionKanbanFilterAtom);
   const setFilter = useSetAtom(sessionKanbanFilterAtom);
+  const activityRange = useAtomValue(sessionKanbanActivityRangeAtom);
+  const setActivityRange = useSetAtom(sessionKanbanActivityRangeAtom);
+  const activityGroupName = React.useId();
   const totalCount = useAtomValue(sessionKanbanTotalCountAtom);
   const allTags = useAtomValue(sessionKanbanTagsAtom);
   const [showTagDropdown, setShowTagDropdown] = useState(false);
@@ -844,7 +848,7 @@ function SessionKanbanToolbar({ selectedCount, onClearSelection }: { selectedCou
     : filter.search;
 
   return (
-    <div className="flex items-center gap-2 px-3 py-1.5 border-b border-nim bg-nim shrink-0" data-testid="kanban-toolbar">
+    <div className="session-kanban-toolbar flex flex-wrap items-center gap-2 px-3 py-1.5 border-b border-nim bg-nim shrink-0" data-testid="kanban-toolbar">
       {/* Search with tag typeahead */}
       <div className="relative flex-1 max-w-[280px]">
         <MaterialSymbol
@@ -912,6 +916,27 @@ function SessionKanbanToolbar({ selectedCount, onClearSelection }: { selectedCou
           <MaterialSymbol icon="close" size={12} />
         </button>
       ))}
+
+      <fieldset className="session-kanban-activity-filter flex flex-wrap items-center gap-x-3 gap-y-1 border-0 p-0 m-0 text-[11px] text-nim-muted">
+        <legend className="sr-only">Last activity</legend>
+        {([
+          ['hour', 'Within the last hour'],
+          ['day', 'Within the last day'],
+          ['all', 'All sessions'],
+        ] as const).map(([value, label]) => (
+          <label key={value} className="flex items-center gap-1 cursor-pointer whitespace-nowrap">
+            <input
+              type="radio"
+              name={activityGroupName}
+              value={value}
+              checked={activityRange === value}
+              onChange={() => setActivityRange(value)}
+              className="m-0 accent-[var(--nim-primary)]"
+            />
+            {label}
+          </label>
+        ))}
+      </fieldset>
 
       {/* Selection indicator */}
       {selectedCount > 0 && (

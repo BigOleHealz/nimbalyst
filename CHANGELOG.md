@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 <!-- New features go here -->
+- Filter session Kanban cards by activity within the last hour or day, or show all sessions, including activity in grouped child sessions.
+- Submit selected answers and typed responses in focused session question forms with Control+Enter.
 - See dependency-blocked and manually blocked tickets and linked sessions in red Kanban columns that take precedence over running or awaiting-input activity, with blocker links, automatic return to their workflow lanes, manual session placement, and automatic resumption of linked agents when all blockers clear, including after app restarts.
 - Choose the next tickets to complete with an interactive dependency graph, suggested work queue, and hierarchy timeline, including status-colored nodes, click-to-open ticket details in a right sidebar, and the same ticket action menu as Trackers on right-click or double-click; open the Planner from any workspace view with Command–Option–P on macOS or Control–Alt–P on Windows and Linux.
 - Start, wake, or stop Voice Mode from any app with Control+Shift+V on macOS or Control+Alt+Shift+V on Windows and Linux.

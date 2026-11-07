@@ -11,6 +11,7 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useAtom, useAtomValue } from 'jotai';
 import type { CustomToolWidgetProps } from './index';
+import { handleQuestionSubmitShortcut } from '../questionSubmitShortcut';
 import { interactiveWidgetHostAtom } from '../../../../store/atoms/interactiveWidgetHost';
 import {
   askUserQuestionDraftAtom,
@@ -551,6 +552,7 @@ export const AskUserQuestionWidget: React.FC<CustomToolWidgetProps> = ({
       testId="ask-user-question-widget"
       state="pending"
       tone="active"
+      onKeyDownCapture={event => handleQuestionSubmitShortcut(event, allAnswered && !isSubmitting && !!host, handleSubmit)}
     >
       <InteractiveWidgetHeader
         icon={<QuestionMarkIcon />}
@@ -630,7 +632,8 @@ export const AskUserQuestionWidget: React.FC<CustomToolWidgetProps> = ({
                         value={otherText[question.question] || ''}
                         onChange={(e) => handleOtherTextChange(question.question, e.target.value)}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey && allAnswered) {
+                          if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey
+                            && !e.nativeEvent.isComposing && !e.repeat && allAnswered) {
                             e.preventDefault();
                             handleSubmit();
                           }
@@ -649,7 +652,7 @@ export const AskUserQuestionWidget: React.FC<CustomToolWidgetProps> = ({
         })}
 
         {/* Action buttons */}
-        <WidgetFooter>
+        <WidgetFooter note="Ctrl+Enter to submit">
           <WidgetActionButton
             variant="secondary"
             testId="ask-user-question-cancel"

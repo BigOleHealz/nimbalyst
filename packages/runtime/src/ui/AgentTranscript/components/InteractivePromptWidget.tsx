@@ -25,6 +25,7 @@ import {
   interactivePromptDraftAtom,
 } from '../../../store/atoms/interactivePromptDraft';
 import { unwrapShellCommand } from '../utils/unwrapShellCommand';
+import { handleQuestionSubmitShortcut } from './questionSubmitShortcut';
 
 // Inject interactive prompt styles once (for animations and color-mix patterns)
 const injectInteractivePromptStyles = () => {
@@ -340,7 +341,10 @@ const AskUserQuestionWidgetInteractive: React.FC<AskUserQuestionWidgetProps> = (
   }
 
   return (
-    <div className="interactive-prompt interactive-prompt--pending interactive-prompt--question">
+    <div
+      className="interactive-prompt interactive-prompt--pending interactive-prompt--question"
+      onKeyDownCapture={event => handleQuestionSubmitShortcut(event, allAnswered && !isSubmitting, handleSubmit)}
+    >
       <div className="interactive-prompt__header">
         <span className="interactive-prompt__icon">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -418,7 +422,8 @@ const AskUserQuestionWidgetInteractive: React.FC<AskUserQuestionWidgetProps> = (
                     value={otherText[question.question] || ''}
                     onChange={(e) => handleOtherTextChange(question.question, e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey && allAnswered) {
+                      if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey
+                        && !e.nativeEvent.isComposing && !e.repeat && allAnswered) {
                         e.preventDefault();
                         handleSubmit();
                       }
@@ -446,6 +451,7 @@ const AskUserQuestionWidgetInteractive: React.FC<AskUserQuestionWidgetProps> = (
       </div>
 
       <div className="interactive-prompt__actions interactive-prompt__actions--centered">
+        <span className="self-center text-xs text-nim-faint">Ctrl+Enter to submit</span>
         <button
           className="interactive-prompt__button interactive-prompt__button--submit"
           onClick={handleSubmit}

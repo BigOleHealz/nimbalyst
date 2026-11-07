@@ -191,6 +191,40 @@ export const sessionKanbanFilterAtom = atom<SessionKanbanFilter>({
   showComplete: true,
 });
 
+export type SessionKanbanActivityRange = 'hour' | 'day' | 'all';
+export const sessionKanbanActivityRangeAtom = atom<SessionKanbanActivityRange>('all');
+
+// Only mounted while a time filter is visible. Refresh on mount and every minute
+// so quiet sessions age out even when no new activity arrives.
+const sessionKanbanNowAtom = atom(0);
+sessionKanbanNowAtom.onMount = (setNow) => {
+  setNow(Date.now());
+  const timer = setInterval(() => setNow(Date.now()), 60_000);
+  return () => clearInterval(timer);
+};
+
+const sessionKanbanRecentRootsAtom = atom(get => {
+  const range = get(sessionKanbanActivityRangeAtom);
+  if (range === 'all') return null;
+  const cutoff = (get(sessionKanbanNowAtom) || Date.now()) - (range === 'hour' ? 3_600_000 : 86_400_000);
+  const registry = get(sessionRegistryAtom);
+  const recent = new Set<string>();
+  for (const meta of registry.values()) {
+    if (meta.isArchived) continue;
+    const liveActivity = get(sessionLastActivityAtom(meta.id));
+    if ((liveActivity > 0 ? liveActivity : meta.updatedAt) < cutoff) continue;
+    // A grouped card represents activity throughout its session tree.
+    let current: SessionMeta | undefined = meta;
+    const seen = new Set<string>();
+    while (current && !seen.has(current.id)) {
+      seen.add(current.id);
+      if (!current.parentSessionId) recent.add(current.id);
+      current = current.parentSessionId ? registry.get(current.parentSessionId) : undefined;
+    }
+  }
+  return recent;
+});
+
 // ============================================================
 // Derived Atoms
 // ============================================================
@@ -203,6 +237,7 @@ export const sessionsByPhaseAtom = atom((get) => {
   const registry = get(sessionRegistryAtom);
   const filter = get(sessionKanbanFilterAtom);
   const automatic = get(sessionAutomaticBoardStateAtom);
+  const recentRoots = get(sessionKanbanRecentRootsAtom);
 
   const grouped = new Map<SessionPhaseKey, SessionMeta[]>();
   grouped.set('unphased', []);
@@ -213,6 +248,7 @@ export const sessionsByPhaseAtom = atom((get) => {
   for (const [_id, meta] of registry) {
     // Only show active root sessions (not children of workstreams).
     if (meta.isArchived || meta.parentSessionId) continue;
+    if (recentRoots && !recentRoots.has(meta.id)) continue;
 
     const state = automatic.get(meta.id)!;
     const override = meta.kanbanOverride;

@@ -6,14 +6,14 @@ import type { TrackerRecord } from '@nimbalyst/runtime/core/TrackerRecord';
 import { loadBuiltinTrackers } from '@nimbalyst/runtime/plugins/TrackerPlugin/models/ModelLoader';
 import type { SessionMeta } from '@nimbalyst/runtime/ai/adapters/sessionStore';
 import { SessionKanbanBoard } from '../SessionKanbanBoard';
-import { sessionRegistryAtom, sessionProcessingAtom, sessionHasPendingInteractivePromptAtom, sessionStoreAtom, sessionListWorkspaceAtom, refreshSessionListAtom, trackerSessionMetricsActiveAtom, updateSessionStoreAtom } from '../../../store/atoms/sessions';
+import { sessionRegistryAtom, sessionProcessingAtom, sessionLastActivityAtom, sessionHasPendingInteractivePromptAtom, sessionStoreAtom, sessionListWorkspaceAtom, refreshSessionListAtom, trackerSessionMetricsActiveAtom, updateSessionStoreAtom } from '../../../store/atoms/sessions';
 import { trackerItemsMapAtom } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerDataAtoms';
 import { trackerCompletionMetricsAtom } from '../../../store/atoms/completionMetrics';
 import { TrackerCompletionMetrics } from '../CompletionMetrics';
 import { worktreeRecordsAtom } from '../../../store/atoms/worktrees';
 import { worktreeGitStatusAtom } from '../../../store/atoms/sessionFiles';
 import { prListAtom } from '../../../store/atoms/pullRequests';
-import { observeSessionKanbanStatus, sessionKanbanTagsAtom, sessionKanbanTotalCountAtom, setSessionBoardColumnAtom } from '../../../store/atoms/sessionKanban';
+import { observeSessionKanbanStatus, sessionKanbanFilterAtom, sessionKanbanTagsAtom, sessionKanbanTotalCountAtom, setSessionBoardColumnAtom } from '../../../store/atoms/sessionKanban';
 
 vi.mock('posthog-js/react', () => ({ usePostHog: () => undefined }));
 vi.mock('../../AgenticCoding/SessionContextMenu', () => ({ SessionContextMenu: () => null }));
@@ -22,7 +22,7 @@ vi.mock('../../AgenticCoding/SessionRelativeTime', () => ({ SessionRelativeTime:
 vi.mock('../../AgentMode/ArchiveWorktreeDialog', () => ({ ArchiveWorktreeDialog: () => null }));
 vi.mock('../../../hooks/useArchiveWorktreeDialog', () => ({ useArchiveWorktreeDialog: () => ({ dialogState: null }) }));
 
-afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 beforeAll(() => loadBuiltinTrackers());
 
 const blockedTestSession = (id: string, overrides: Partial<SessionMeta> = {}): SessionMeta => ({
@@ -36,6 +36,72 @@ const dependencyTicket = (id: string, fields: Record<string, unknown> = {}, link
   system: { workspace: '/repo', createdAt: '2026-11-05', updatedAt: '2026-11-05', linkedSessions },
   fields: { title: id, status: 'to-do', ...fields },
 } as TrackerRecord);
+
+it('filters by rolling hour/day boundaries and restores all sessions while preserving search, tags and Done visibility', () => {
+  vi.useFakeTimers();
+  const now = Date.now();
+  const hour = 3_600_000;
+  const store = createStore();
+  const sessions = [
+    blockedTestSession('recent', { updatedAt: now - 1000, tags: ['focus'] }),
+    blockedTestSession('hour-boundary', { updatedAt: now - hour }),
+    blockedTestSession('past-hour', { updatedAt: now - hour - 1 }),
+    blockedTestSession('day-boundary', { updatedAt: now - 24 * hour }),
+    blockedTestSession('older', { updatedAt: now - 24 * hour - 1 }),
+    blockedTestSession('archived', { updatedAt: now, isArchived: true }),
+  ];
+  store.set(sessionRegistryAtom, new Map(sessions.map(s => [s.id, s])));
+  render(<Provider store={store}><SessionKanbanBoard /></Provider>);
+  const ids = () => screen.queryAllByTestId('session-kanban-card').map(card => card.dataset.sessionId).sort();
+  const choose = (name: string) => fireEvent.click(screen.getByRole('radio', { name }));
+  expect((screen.getByRole('radio', { name: 'All sessions' }) as HTMLInputElement).checked).toBe(true);
+  expect(ids()).toEqual(['day-boundary', 'hour-boundary', 'older', 'past-hour', 'recent']);
+  choose('Within the last hour');
+  expect(ids()).toEqual(['hour-boundary', 'recent']);
+  expect(store.get(sessionKanbanTotalCountAtom)).toBe(2);
+  choose('Within the last day');
+  expect(ids()).toEqual(['day-boundary', 'hour-boundary', 'past-hour', 'recent']);
+  act(() => store.set(sessionKanbanFilterAtom, { search: 'recent', tags: ['focus'], showComplete: false }));
+  expect(ids()).toEqual(['recent']);
+  choose('All sessions');
+  expect(ids()).toEqual(['recent']);
+  expect(store.get(sessionKanbanFilterAtom)).toEqual({ search: 'recent', tags: ['focus'], showComplete: false });
+  act(() => store.set(sessionKanbanFilterAtom, { search: '', tags: [], showComplete: true }));
+  expect(ids()).toEqual(['day-boundary', 'hour-boundary', 'older', 'past-hour', 'recent']);
+});
+
+it('reacts to live activity, includes nested child activity on grouped cards, and ages out quiet cards', () => {
+  vi.useFakeTimers();
+  const now = Date.now();
+  const hour = 3_600_000;
+  const store = createStore();
+  const sessions = [
+    blockedTestSession('quiet', { updatedAt: now - hour + 30_000 }),
+    blockedTestSession('live', { updatedAt: now - 48 * hour }),
+    blockedTestSession('group', { sessionType: 'workstream', childCount: 1, updatedAt: now - 48 * hour }),
+    blockedTestSession('child', { parentSessionId: 'group', childCount: 1, updatedAt: now - 48 * hour }),
+    blockedTestSession('nested', { parentSessionId: 'child', updatedAt: now - 48 * hour }),
+    blockedTestSession('archived-group', { childCount: 1, updatedAt: now - 48 * hour }),
+    blockedTestSession('archived-child', { parentSessionId: 'archived-group', isArchived: true, updatedAt: now }),
+  ];
+  store.set(sessionRegistryAtom, new Map(sessions.map(s => [s.id, s])));
+  store.set(sessionLastActivityAtom('live'), now);
+  render(<Provider store={store}><SessionKanbanBoard /></Provider>);
+  const ids = () => screen.queryAllByTestId('session-kanban-card').map(card => card.dataset.sessionId).sort();
+  fireEvent.click(screen.getByRole('radio', { name: 'Within the last hour' }));
+  expect(ids()).toEqual(['live', 'quiet']);
+  act(() => store.set(sessionLastActivityAtom('nested'), now));
+  expect(ids()).toEqual(['group', 'live', 'quiet']);
+  act(() => vi.advanceTimersByTime(60_000));
+  expect(ids()).toEqual(['group', 'live']);
+  act(() => store.set(sessionLastActivityAtom('quiet'), Date.now()));
+  expect(ids()).toEqual(['group', 'live', 'quiet']);
+  fireEvent.click(screen.getByRole('radio', { name: 'All sessions' }));
+  act(() => vi.advanceTimersByTime(48 * hour));
+  fireEvent.click(screen.getByRole('radio', { name: 'Within the last hour' }));
+  expect(ids()).toEqual([]);
+  expect(store.get(sessionKanbanTotalCountAtom)).toBe(0);
+});
 
 it('keeps linked work blocked until every dependency clears, then restores its Git lane without changing ticket status', async () => {
   const store = createStore();

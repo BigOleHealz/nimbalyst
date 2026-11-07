@@ -22,6 +22,7 @@ import * as rtl from '@testing-library/react';
 import { createStore, Provider as JotaiProvider } from 'jotai';
 import type { TranscriptViewMessage } from '../../../../ai/server/transcript/TranscriptProjector';
 import type { CustomToolWidgetProps } from '../CustomToolWidgets/index';
+import type { InteractiveWidgetHost } from '../CustomToolWidgets/InteractiveWidgetHost';
 
 const { render, screen, fireEvent, waitFor } = rtl;
 
@@ -746,6 +747,59 @@ describe('AskUserQuestionWidget', () => {
   beforeEach(async () => {
     const mod = await import('../CustomToolWidgets/AskUserQuestionWidget');
     AskUserQuestionWidget = mod.AskUserQuestionWidget;
+  });
+
+  it.each([false, true])('submits valid %s multi-select answers once with Ctrl+Enter inside the question form', async multiSelect => {
+    const { interactiveWidgetHostAtom } = await import('../../../../store/atoms/interactiveWidgetHost');
+    const testStore = createStore();
+    const submit = vi.fn().mockResolvedValue(undefined);
+    const parentKeyDown = vi.fn();
+    testStore.set(interactiveWidgetHostAtom('shortcut-session'), { askUserQuestionSubmit: submit } as unknown as InteractiveWidgetHost);
+    const message = makeToolMessage('AskUserQuestion', { questions: [
+      { question: 'Which areas?', header: 'Areas', multiSelect, options: [{ label: 'Editor' }, { label: 'Sync' }] },
+      { question: 'Proceed?', header: 'Proceed', multiSelect: false, options: [{ label: 'Yes' }] },
+    ] });
+    message.toolCall!.providerToolCallId = `shortcut-${multiSelect}`;
+    const view = render(<JotaiProvider store={testStore}><div onKeyDown={parentKeyDown}>
+      <AskUserQuestionWidget message={message} sessionId="shortcut-session" isExpanded onToggle={() => {}} />
+    </div></JotaiProvider>);
+    fireEvent.click(screen.getByText('Editor'));
+    if (multiSelect) fireEvent.click(screen.getByText('Sync'));
+    fireEvent.keyDown(screen.getByText('Editor'), { key: 'Enter', ctrlKey: true });
+    expect(submit).not.toHaveBeenCalled();
+    expect(parentKeyDown).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('Yes'));
+    fireEvent.keyDown(document.body, { key: 'Enter', ctrlKey: true });
+    expect(submit).not.toHaveBeenCalled();
+    await rtl.act(async () => {
+      fireEvent.keyDown(screen.getByText('Yes'), { key: 'Enter', ctrlKey: true });
+    });
+    expect(submit).toHaveBeenCalledExactlyOnceWith(`shortcut-${multiSelect}`, {
+      'Which areas?': multiSelect ? 'Editor, Sync' : 'Editor', 'Proceed?': 'Yes',
+    });
+    fireEvent.keyDown(view.container, { key: 'Enter', ctrlKey: true });
+    expect(submit).toHaveBeenCalledTimes(1);
+  });
+
+  it('submits Other text with Ctrl+Enter without duplicate textarea handling, repeats, or IME submission', async () => {
+    const { interactiveWidgetHostAtom } = await import('../../../../store/atoms/interactiveWidgetHost');
+    const testStore = createStore();
+    const submit = vi.fn().mockResolvedValue(undefined);
+    testStore.set(interactiveWidgetHostAtom('shortcut-other'), { askUserQuestionSubmit: submit } as unknown as InteractiveWidgetHost);
+    const message = makeToolMessage('AskUserQuestion', { questions: [
+      { question: 'Choose?', header: 'Choice', options: [{ label: 'Default' }], multiSelect: false },
+    ] });
+    message.toolCall!.providerToolCallId = 'shortcut-other';
+    render(<JotaiProvider store={testStore}><AskUserQuestionWidget message={message} sessionId="shortcut-other" isExpanded onToggle={() => {}} /></JotaiProvider>);
+    fireEvent.click(screen.getByText('Other'));
+    const input = screen.getByTestId('ask-user-question-other-input');
+    fireEvent.change(input, { target: { value: 'My answer' } });
+    for (const modifiers of [{repeat:true}, {isComposing:true}, {shiftKey:true}, {altKey:true}]) {
+      fireEvent.keyDown(input, { key:'Enter', ctrlKey:true, ...modifiers });
+    }
+    expect(submit).not.toHaveBeenCalled();
+    await rtl.act(async () => { fireEvent.keyDown(input, { key:'Enter', ctrlKey:true }); });
+    expect(submit).toHaveBeenCalledExactlyOnceWith('shortcut-other', { 'Choose?': 'My answer' });
   });
 
   it('renders pending state without host', () => {
@@ -1778,6 +1832,28 @@ describe('InteractivePromptWidget', () => {
   beforeEach(async () => {
     const mod = await import('../InteractivePromptWidget');
     InteractivePromptWidget = mod.InteractivePromptWidget;
+  });
+
+  it('submits fallback question answers with Ctrl+Enter only when complete and not submitting', () => {
+    const submit = vi.fn();
+    const content = { type:'ask_user_question_request', questionId:'shortcut-fallback', status:'pending', questions:[
+      {question:'Choose areas?', header:'Areas', multiSelect:true, options:[{label:'Editor'}, {label:'Sync'}]},
+    ] };
+    const widget = (isSubmitting = false) => <InteractivePromptWidget promptType="ask_user_question_request" content={content} onSubmitResponse={submit} isSubmitting={isSubmitting} />;
+    const view = render(widget());
+    const root = view.container.querySelector('.interactive-prompt--question')!;
+    fireEvent.keyDown(root, {key:'Enter', ctrlKey:true});
+    expect(submit).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('Editor'));
+    fireEvent.click(screen.getByText('Sync'));
+    view.rerender(widget(true));
+    fireEvent.keyDown(root, {key:'Enter', ctrlKey:true});
+    expect(submit).not.toHaveBeenCalled();
+    view.rerender(widget());
+    fireEvent.keyDown(screen.getByText('Sync'), {key:'Enter', ctrlKey:true});
+    expect(submit).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      questionId:'shortcut-fallback', answers:{'Choose areas?':'Editor, Sync'},
+    }));
   });
 
   it('renders permission request in pending state with action buttons', () => {

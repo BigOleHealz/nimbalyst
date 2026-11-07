@@ -46,6 +46,7 @@ import {
 } from 'lexical';
 
 import type { CustomToolWidgetProps } from './index';
+import { handleQuestionSubmitShortcut } from '../questionSubmitShortcut';
 import { interactiveWidgetHostAtom } from '../../../../store/atoms/interactiveWidgetHost';
 import {
   clearRequestUserInputDraft,
@@ -935,6 +936,7 @@ export const RequestUserInputWidget: React.FC<CustomToolWidgetProps> = ({ messag
     <div
       data-testid="request-user-input-widget"
       data-state="pending"
+      onKeyDownCapture={event => handleQuestionSubmitShortcut(event, allValid && !isSubmitting, handleSubmit)}
       className="request-user-input-widget rounded-lg bg-nim-secondary border border-nim-primary overflow-hidden"
     >
       <div className="flex items-center gap-2 py-3 px-4 border-b border-nim bg-nim-tertiary">
@@ -974,6 +976,7 @@ export const RequestUserInputWidget: React.FC<CustomToolWidgetProps> = ({ messag
             <span>{voiceHint.reason}</span>
           </div>
           <div className="flex gap-2">
+            <span className="self-center text-[0.6875rem] text-nim-faint">Ctrl+Enter to submit</span>
             <button
               type="button"
               data-testid="request-user-input-cancel"

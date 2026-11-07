@@ -39,6 +39,7 @@ export interface InteractiveWidgetCardProps {
   /** Value for `data-state` (e.g. `pending`, `completed`, `draft`). */
   state?: string;
   tone: InteractiveWidgetTone;
+  onKeyDownCapture?: React.KeyboardEventHandler<HTMLDivElement>;
   children: React.ReactNode;
 }
 
@@ -47,11 +48,13 @@ export const InteractiveWidgetCard: React.FC<InteractiveWidgetCardProps> = ({
   testId,
   state,
   tone,
+  onKeyDownCapture,
   children,
 }) => (
   <div
     data-testid={testId}
     data-state={state}
+    onKeyDownCapture={onKeyDownCapture}
     className={joinClasses(
       rootClassName,
       'rounded-lg bg-nim-secondary border',

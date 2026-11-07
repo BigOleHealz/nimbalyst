@@ -12,7 +12,7 @@
 
 import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, fireEvent } from '@testing-library/react';
 import { Provider as JotaiProvider } from 'jotai';
 import { store } from '../../../../../store/store';
 import { setInteractiveWidgetHost } from '../../../../../store/atoms/interactiveWidgetHost';
@@ -91,6 +91,33 @@ describe('RequestUserInputWidget editText draft survival', () => {
 
     expect(draftText()).toBe(TYPED);
     expect(screen.getByTestId('request-user-input-edittext-content').textContent).toContain(TYPED);
+  });
+
+  it('submits the current editor draft with Ctrl+Enter, ignoring composition and repeated keys', async () => {
+    const submit = vi.fn().mockResolvedValue(undefined);
+    setInteractiveWidgetHost(SESSION_ID, { requestUserInputSubmit:submit } as unknown as InteractiveWidgetHost);
+    renderWidget();
+    await act(async () => {});
+    const input = screen.getByTestId('request-user-input-edittext-content');
+    fireEvent.keyDown(input, {key:'Enter', ctrlKey:true, isComposing:true});
+    fireEvent.keyDown(input, {key:'Enter', ctrlKey:true, repeat:true});
+    expect(submit).not.toHaveBeenCalled();
+    await act(async () => { fireEvent.keyDown(input, {key:'Enter', ctrlKey:true}); });
+    expect(submit).toHaveBeenCalledExactlyOnceWith(PROMPT_ID, {body:{type:'editText', text:SEED, edited:false}});
+  });
+
+  it('validates structured selections before Ctrl+Enter and submits the latest choice', async () => {
+    const submit = vi.fn().mockResolvedValue(undefined);
+    setInteractiveWidgetHost(SESSION_ID, { requestUserInputSubmit:submit } as unknown as InteractiveWidgetHost);
+    const message = makeMessage();
+    message.toolCall.arguments.fields = [{type:'singleSelect', id:'color', label:'Color', options:[{id:'red', label:'Red'}, {id:'blue', label:'Blue'}]}];
+    render(<JotaiProvider store={store}><RequestUserInputWidget message={message} sessionId={SESSION_ID} isExpanded onToggle={() => {}} /></JotaiProvider>);
+    await act(async () => {});
+    fireEvent.keyDown(screen.getByTestId('request-user-input-widget'), {key:'Enter', ctrlKey:true});
+    expect(submit).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('Blue'));
+    await act(async () => { fireEvent.keyDown(screen.getByText('Blue'), {key:'Enter', ctrlKey:true}); });
+    expect(submit).toHaveBeenCalledExactlyOnceWith(PROMPT_ID, {color:{type:'singleSelect', selectedId:'blue'}});
   });
 });
 
