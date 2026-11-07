@@ -116,9 +116,10 @@ describe('BrowserTrackerDataSource create-item body', () => {
     expect(payload.bodyVersion).toBe(1);
     expect(payload.fields).not.toHaveProperty('description');
 
-    await source.command({ type: 'create-item', item: item('item-2') });
+    await source.command({ type: 'create-item', item: { ...item('item-2'), status: 'done' } });
     expect(rooms.has('tracker-content/item-2')).toBe(false);
     expect((await storedPayload(source, 'item-2')).bodyVersion).toBe(0);
+    expect((await storedPayload(source, 'item-2')).fields.completedAt).toEqual(expect.any(String));
   });
 
   it('refuses to overwrite a body room that already has other content', async () => {

@@ -1342,6 +1342,12 @@ export const TrackerItemDetail: React.FC<TrackerItemDetailProps> = ({
               <span className="text-nim-faint">Updated</span>
               <div className="text-nim-muted">{formatTimestamp(item.system.updatedAt || item.system.lastIndexed)}</div>
             </div>
+            {typeof item.fields.completedAt === 'string' && (
+              <div className="tracker-completed-date">
+                <span className="text-nim-faint">Completed</span>
+                <div className="text-nim-muted">{formatTimestamp(item.fields.completedAt)}</div>
+              </div>
+            )}
             {item.issueKey && (
               <div>
                 <span className="text-nim-faint">Key</span>

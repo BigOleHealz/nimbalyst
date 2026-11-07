@@ -14,6 +14,8 @@ In the Tasks or All tracker kanban, open the field filter, select **Parent Task*
 
 ## Git delivery and task completion
 
+Completing a ticket records `completedAt` as an ISO timestamp in its generic fields, using the schema's workflow-status role and Done category. Later edits leave it unchanged. Reopening clears it; completing again records the new completion time. Cancelled work does not count as completed. Items created in Done can retain a supplied completion timestamp, while older Done items without a recorded timestamp stay unknown. The desktop detail pane displays Completed beside Created and Updated.
+
 Local commits link to Task items but leave their workflow status open, including commits with closing keywords. A confirmed PR merge completes a task linked explicitly to that PR, or linked through a session whose clean worktree HEAD matches the merged PR head. Tasks referencing several PRs wait until every reference is confirmed merged. Background PR polling also handles merges performed outside Nimbalyst. Cancelled and already completed tasks keep their status.
 
 The Sessions board derives Done from merged PR evidence; archiving, setting the session phase to complete, or dragging an unmerged card into Done does not complete it. Its Git status column shows Ready for commit, Ready for push, and Ready for PR from live Git state. Push readiness uses the branch's tracked upstream rather than its base branch.

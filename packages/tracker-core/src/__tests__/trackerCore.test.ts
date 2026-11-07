@@ -6,11 +6,31 @@ import {
   computeReadinessForItems,
   createTrackerCoreContext,
   dbRowToRecord,
+  trackerCompletionUpdate,
   type ReadinessAccessors,
   type TrackerTypeModel,
 } from "../index";
 
 describe("tracker-core host parity", () => {
+  it('uses the schema workflow role and Done category for completion dates', () => {
+    const ctx = createTrackerCoreContext(() => ({
+      type: 'task', roles: { workflowStatus: 'phase' },
+      fields: [{ name: 'phase', type: 'select', options: [
+        { value: 'delivered', category: 'done' },
+        { value: 'closed', category: 'cancelled' },
+      ] }],
+    }));
+    const first = '2026-11-07T10:00:00.000Z';
+    const second = '2026-11-08T10:00:00.000Z';
+    expect(trackerCompletionUpdate(ctx, 'task', { phase: 'working' }, { phase: 'delivered' }, first)).toEqual({ completedAt: first });
+    expect(trackerCompletionUpdate(ctx, 'task', { phase: 'delivered', completedAt: first }, { phase: 'delivered' }, second)).toEqual({ completedAt: first });
+    expect(trackerCompletionUpdate(ctx, 'task', { phase: 'delivered', completedAt: first }, { phase: 'working' }, second)).toEqual({ completedAt: null });
+    expect(trackerCompletionUpdate(ctx, 'task', { phase: 'working', completedAt: null }, { phase: 'delivered' }, second)).toEqual({ completedAt: second });
+    expect(trackerCompletionUpdate(ctx, 'task', undefined, { phase: 'closed' }, first)).toEqual({});
+    expect(trackerCompletionUpdate(ctx, 'task', undefined, { phase: 'delivered', completedAt: first }, second)).toEqual({ completedAt: first });
+    expect(trackerCompletionUpdate(ctx, 'task', { phase: 'delivered' }, { phase: 'delivered' }, second)).toEqual({});
+  });
+
   it("classifies tracker metadata as system data while preserving genuine fields", () => {
     const record = dbRowToRecord({
       id: "bug-1",

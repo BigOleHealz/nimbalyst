@@ -132,6 +132,20 @@ afterEach(() => {
 });
 
 describe('DirectGateway offline writes', () => {
+  it('records completion dates for offline creates and updates, preserving them until reopened', async () => {
+    seed({ id: 'completion', issueKey: 'NIM-1', type: 'bug', data: { title: 'Bug', status: 'in-progress', customFields: { completedAt: null } } });
+    const gw = new DirectGateway(dbPath);
+    try {
+      const completed = await gw.updateTracker(WORKSPACE, 'NIM-1', { status: 'done' });
+      expect(completed.fields.completedAt).toEqual(expect.any(String));
+      const edited = await gw.updateTracker(WORKSPACE, 'NIM-1', { title: 'Renamed' });
+      expect(edited.fields.completedAt).toBe(completed.fields.completedAt);
+      expect((await gw.updateTracker(WORKSPACE, 'NIM-1', { status: 'in-progress' })).fields.completedAt).toBeNull();
+      expect((await gw.createTracker(WORKSPACE, { type: 'bug', title: 'Already done', status: 'done' })).fields.completedAt).toEqual(expect.any(String));
+    } finally {
+      gw.close();
+    }
+  });
   it('produces the same stored row bytes as the app update path', async () => {
     const identity = getCurrentIdentity(WORKSPACE);
     const stored = {

@@ -24,6 +24,7 @@ import type { TrackerAutomationSettings } from '../utils/store';
 import { getEffectiveTrackerAutomation } from '../utils/store';
 import { getCurrentIdentity } from './TrackerIdentityService';
 import { appendActivity } from './tracker/trackerActivity';
+import { writeStoredFieldValue } from './tracker/relationshipFieldStorage';
 import type { LinkedCommit } from '@nimbalyst/runtime';
 import type { TrackerIdentity } from '@nimbalyst/runtime/core/DocumentService';
 import {
@@ -475,6 +476,7 @@ export class CommitTrackerLinker {
     }
 
     data[statusField] = closingStatus;
+    writeStoredFieldValue(data, 'completedAt', new Date().toISOString());
 
     // Through the shared writer, never a raw push: sync merges the trail on
     // entry `id` and sorts on a numeric `timestamp`, so a hand-built entry

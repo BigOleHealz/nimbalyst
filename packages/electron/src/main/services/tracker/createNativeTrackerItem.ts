@@ -3,6 +3,7 @@ import type {
   TrackerItemChangeEvent,
 } from '@nimbalyst/runtime/core/DocumentService';
 import { globalRegistry } from '@nimbalyst/tracker-schema';
+import { trackerCompletionUpdate } from '@nimbalyst/tracker-core';
 import { generateKeyBetween } from '@nimbalyst/runtime/utils/fractionalIndex';
 import { database } from '../../database/PGLiteDatabaseWorker';
 import { getCurrentIdentity } from '../TrackerIdentityService';
@@ -147,6 +148,10 @@ async function createRow(
   if (payload.customFields) {
     Object.assign(data, payload.customFields);
   }
+  Object.assign(data, trackerCompletionUpdate(
+    { getTypeModel: type => globalRegistry.getForWorkspace(payload.workspace, type) },
+    payload.type, undefined, data,
+  ));
 
   const source = payload.source || 'native';
   const contentJson =

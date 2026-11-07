@@ -10,6 +10,22 @@ import { updatePayload } from '../browser/BrowserTrackerDataSource';
 
 const user = { displayName: 'Browser member', email: 'b@example.com', gitName: null, gitEmail: null };
 
+it('carries completion dates in synced fields and clears them when reopened', () => {
+  const payload = {
+    itemId: 'task', primaryType: 'task', archived: false, bodyVersion: 0,
+    fields: { state: 'active' }, labels: {}, comments: [], system: {},
+  } as Parameters<typeof updatePayload>[0];
+  const context = { getTypeModel: () => ({ type: 'task', roles: { workflowStatus: 'state' }, fields: [
+    { name: 'state', type: 'select', options: [{ value: 'delivered', category: 'done' as const }] },
+  ] }) };
+  const completed = updatePayload(payload, { state: 'delivered' }, user, context);
+  expect(completed.fields.completedAt).toEqual(expect.any(String));
+  const edited = updatePayload(completed, { title: 'Renamed' }, user, context);
+  expect(edited.fields.completedAt).toBe(completed.fields.completedAt);
+  const reopened = updatePayload(edited, { state: 'active' }, user, context);
+  expect(reopened.fields.completedAt).toBeNull();
+});
+
 it('diffs a labels update into the label set and keeps other fields as fields', () => {
   const payload = {
     itemId: 'i1',

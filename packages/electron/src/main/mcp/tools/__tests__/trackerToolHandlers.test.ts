@@ -1038,7 +1038,7 @@ describe('handleTrackerCreate issue-key timing', () => {
   // unpublished item reports its uuid to the agent: it has no team key, and
   // its number was only minted by a later list (NIM.2842).
   it('reports the local number as the ref for an unpublished item', async () => {
-    mockGlobalRegistry.get.mockImplementation((type?: string) => type === 'bug' ? { localNumbers: true } : undefined);
+    mockGlobalRegistry.get.mockImplementation((type?: string) => type === 'bug' ? { localNumbers: true, fields: [] } : undefined);
     vi.mocked(isTrackerSyncActive).mockReturnValue(false);
     vi.mocked(shouldSyncTrackerItem).mockReturnValue(false);
     const numbered = makeRow({
@@ -1093,7 +1093,7 @@ describe('handleTrackerCreate issue-key timing', () => {
   });
 
   it('leaves a team draft without any key', async () => {
-    (mockGlobalRegistry.get as any).mockReturnValue({ sharing: 'team', draftByDefault: true });
+    (mockGlobalRegistry.get as any).mockReturnValue({ sharing: 'team', draftByDefault: true, fields: [] });
     vi.mocked(shouldSyncTrackerItem).mockReturnValue(false);
     setupUnkeyedCreateQueue({ published: false, serverKeyArrives: false });
 
@@ -3093,6 +3093,15 @@ describe('session metadata parsing on SQLite (NIM-829)', () => {
 // change, re-polluting sessions with unrelated items. Linking on update must
 // now require an explicit linkSession: true.
 describe('handleTrackerUpdate session linking (NIM-879)', () => {
+  it('persists the completion timestamp when an agent completes a native ticket', async () => {
+    mockQuery.mockResolvedValue({ rows: [makeRow({ id: 'bug_target', workspace: '/tmp/ws', source: 'native', document_path: '', data: JSON.stringify({ status: 'in-progress', customFields: { completedAt: null } }) })] });
+    const result = await handleTrackerUpdate({ id: 'NIM-1', status: 'done' }, '/tmp/ws');
+    expect(result.isError).toBe(false);
+    const write = mockQuery.mock.calls.find(call => String(call[0]).includes('UPDATE tracker_items SET data = $1'));
+    const saved = JSON.parse(write![1][0]);
+    expect(saved.customFields.completedAt).toEqual(expect.any(String));
+    expect(saved.completedAt).toBeUndefined();
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     mockDocumentServices.clear();
@@ -3182,8 +3191,9 @@ describe('handleTrackerCreate schema defaults', () => {
 
   it('honours an explicit status over the schema default', async () => {
     setupCreateQueue();
-    await handleTrackerCreate({ type: 'plan', title: 'A plan', status: 'in-development' }, '/tmp/ws');
-    expect(insertedData().status).toBe('in-development');
+    await handleTrackerCreate({ type: 'plan', title: 'A plan', status: 'completed' }, '/tmp/ws');
+    expect(insertedData().status).toBe('completed');
+    expect(insertedData().completedAt).toEqual(expect.any(String));
   });
 
   it('populates a required self-id field no caller supplies', async () => {

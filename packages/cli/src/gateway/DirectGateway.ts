@@ -12,6 +12,7 @@ import {
   computeReadinessForItems,
   createTrackerCoreContext,
   dbRowToRecord,
+  trackerCompletionUpdate,
   isLocalKeyReference,
   READINESS_FILTER_FIELD,
   type Readiness,
@@ -601,6 +602,10 @@ export class DirectGateway implements TrackerGateway {
         data[field.name] = id;
       }
     }
+    Object.assign(data, trackerCompletionUpdate(
+      { getTypeModel: () => model ? { ...model, fields: model.fields ?? [] } : undefined },
+      input.type, undefined, data, nowIso,
+    ));
     appendActivity(data, identity, 'created');
 
     const typeTags: string[] = [input.type];
@@ -661,6 +666,7 @@ export class DirectGateway implements TrackerGateway {
 
       const data: Record<string, any> =
         typeof row.data === 'string' ? JSON.parse(row.data) : row.data || {};
+      const previousFields = dbRowToRecord({ ...row, data: structuredClone(data) }).fields;
       data.lastModifiedBy = identity;
 
       const rf = (role: string, fallback: string): string =>
@@ -715,6 +721,18 @@ export class DirectGateway implements TrackerGateway {
       if (input.primaryType && input.primaryType !== row.type) {
         changes.type = { from: row.type, to: input.primaryType };
         newType = input.primaryType;
+      }
+
+      const model = this.loadTypeDefs(workspace).get(newType);
+      const completion = trackerCompletionUpdate(
+        { getTypeModel: () => model ? { ...model, fields: model.fields ?? [] } : undefined }, newType, previousFields,
+        dbRowToRecord({ ...row, data }).fields, nowIso,
+      );
+      if ('completedAt' in completion) {
+        if (data.customFields && 'completedAt' in data.customFields) {
+          data.customFields.completedAt = completion.completedAt;
+          delete data.completedAt;
+        } else data.completedAt = completion.completedAt;
       }
 
       for (const [field, change] of Object.entries(changes)) {

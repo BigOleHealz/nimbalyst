@@ -181,6 +181,8 @@ describe('CommitTrackerLinker', () => {
       expect(query.mock.calls[3]?.[1]).toEqual(['/workspace', 'tracker-1']);
       const closePayload = JSON.parse(query.mock.calls[5]?.[1]?.[0] as string);
       expect(closePayload.status).toBe('done');
+      expect(closePayload.completedAt).toEqual(expect.any(String));
+      expect(Number.isNaN(Date.parse(closePayload.completedAt))).toBe(false);
     });
 
     it('closes a plan into the status a plan actually has', async () => {

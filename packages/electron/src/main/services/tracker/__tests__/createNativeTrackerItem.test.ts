@@ -19,7 +19,7 @@ vi.mock('../../TrackerIdentityService', () => ({
 }));
 vi.mock(
   '@nimbalyst/tracker-schema',
-  () => ({ globalRegistry: { get: () => ({ creatable: true }) } }),
+  () => ({ globalRegistry: { get: () => ({ creatable: true }), getForWorkspace: () => undefined } }),
 );
 vi.mock('../../TrackerPolicyService', () => ({
   getEffectiveTrackerSharingPolicy: () => ({ sharing: 'personal' }),
@@ -118,6 +118,11 @@ describe.each(['sqlite', 'pglite'] as const)(
         createNativeTrackerItem(payload, deps),
       ]);
       expect(notify).toHaveBeenCalledTimes(1);
+      await createNativeTrackerItem({ ...payload, id: 'done-task', creationRequestId: 'done-task', status: 'done' }, { ...deps, notify: vi.fn() });
+      const { rows: completedRows } = await state.db.query('SELECT data FROM tracker_items WHERE id = $1', ['done-task']);
+      const completedData = typeof completedRows[0].data === 'string' ? JSON.parse(completedRows[0].data) : completedRows[0].data;
+      expect(completedData.completedAt).toEqual(expect.any(String));
+      expect(Number.isNaN(Date.parse(completedData.completedAt))).toBe(false);
       await expect(
         createNativeTrackerItem({ ...payload, title: 'Changed request' }, deps),
       ).rejects.toThrow('different draft');
