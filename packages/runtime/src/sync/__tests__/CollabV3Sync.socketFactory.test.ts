@@ -391,3 +391,16 @@ function nodeTokenFor(sub: string, exp = Math.floor(Date.now() / 1000) + 900): s
   })).toString('base64url');
   return `nimnode_v1~test-key~${payload}~c2lnbmF0dXJl`;
 }
+
+
+it('does not reopen the index or keep announcement timers alive after disconnectAll', async () => {
+  const sockets: FakeWebSocket[] = [];
+  const provider = createCollabV3Sync({...baseConfig(), createWebSocket: url => {const socket = new FakeWebSocket(url);sockets.push(socket);return socket as unknown as WebSocket;}});
+  await vi.waitFor(() => expect(sockets).toHaveLength(1)); sockets[0].open();
+  vi.useFakeTimers();
+  try {
+    provider.disconnectAll();
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(sockets).toHaveLength(1);
+  } finally {provider.disconnectAll();vi.useRealTimers();}
+});

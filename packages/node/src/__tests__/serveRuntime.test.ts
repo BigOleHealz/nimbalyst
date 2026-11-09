@@ -683,3 +683,20 @@ describe('serve: session control', () => {
     ]);
   });
 });
+
+
+it('runs initial and recovered follow-up turns in the persisted session worktree', async () => {
+  const workspacePath = '/workspace/stravu-editor/worktrees/nimbalyst-req-1';
+  const prepareWorkspace = vi.fn(async () => workspacePath);
+  const f = makeRuntime({prepareWorkspace, getSessionWorkspacePath: async () => workspacePath});
+  await f.runtime.handleCreateSessionRequest(request({initialPrompt: 'initial'}));
+  await f.runtime.idle();
+  expect(f.created[0]).toMatchObject({workspacePath});
+  expect(f.turns[0]).toMatchObject({workspacePath, prompt: 'initial'});
+  f.queue.offer({id: 'followup', sessionId: 'session-1', prompt: 'follow-up', createdAt: 2});
+  await f.runtime.recoverPersistedQueue();
+  await f.runtime.idle();
+  expect(f.turns[1]).toMatchObject({workspacePath, prompt: 'follow-up'});
+  expect(prepareWorkspace).toHaveBeenCalledTimes(1);
+  expect(f.deps.ensureCheckout).not.toHaveBeenCalled();
+});

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import {
   selectedMachineAtom,
+  EXECUTION_MACHINE_LOADING,
   machineSessionSelectionsAtom,
 } from "../store/atoms/remoteMachines";
 import {
@@ -45,6 +46,7 @@ export function RemoteMachineSelector({
       className="remote-machine-selector mt-1.5 w-full rounded border border-[var(--nim-border)] bg-[var(--nim-bg-secondary)] px-2 py-1 text-[12px] text-[var(--nim-text)]"
       aria-label="Execution machine"
       value={host}
+      disabled={host === EXECUTION_MACHINE_LOADING}
       onChange={(event) => {
         const next = event.target.value;
         if (currentSelection)
@@ -61,6 +63,7 @@ export function RemoteMachineSelector({
         });
       }}
     >
+      {host === EXECUTION_MACHINE_LOADING && <option value={host}>Loading execution machine…</option>}
       <option value="">This Mac</option>
       {hosts.map((device) => (
         <option key={device.deviceId} value={device.deviceId} title={device.lastSeenAt ? `Last seen ${new Date(device.lastSeenAt).toLocaleString()}` : undefined}>
@@ -69,7 +72,7 @@ export function RemoteMachineSelector({
           {device.isOnline === false ? " · Offline" : ""}
         </option>
       ))}
-      {host && !hosts.some((device) => device.deviceId === host) && (
+      {host && host !== EXECUTION_MACHINE_LOADING && !hosts.some((device) => device.deviceId === host) && (
         <option value={host}>Remote machine · Offline</option>
       )}
     </select>

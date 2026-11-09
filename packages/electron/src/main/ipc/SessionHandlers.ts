@@ -1,5 +1,7 @@
 import { registerSessionPromptResponseHandler } from './sessionPromptResponseHandler';
 import { remoteSessions } from '../services/ai/remoteSessions';
+import { projectExecutionMachine } from '../services/ai/projectExecution';
+import {updateWorkspaceState} from '../utils/store';
 import { database } from '../database/PGLiteDatabaseWorker';
 import { projectSessionList, readSessionLaunchCounts } from './sessionListProjection';
 import { SessionManager, ProviderFactory } from '@nimbalyst/runtime/ai/server';
@@ -235,6 +237,11 @@ export async function registerSessionHandlers() {
         try {
             const { session, workspaceId, launchSource, hadPrefilledPrompt } = payload;
 
+            const remoteHost = projectExecutionMachine(workspaceId);
+            if (remoteHost) {
+                const id = await remoteSessions.create(workspaceId, remoteHost, {model: session.model, parentSessionId: session.parentSessionId});
+                return {success: true, id};
+            }
             const requestedProvider = session.provider as AIProviderType;
             const { provider, model } = resolveSessionModelSelection(requestedProvider, session.model);
             if (!session.model) {
@@ -1126,6 +1133,14 @@ export async function registerSessionHandlers() {
     // Link a tracker item or file to a session
     // trackerId can be a DB tracker item ID or "file:path/to/file.md" for file-based items
     safeHandle('tracker:link-session', async (_event, payload: { trackerId: string; sessionId: string }) => {
+        const remoteWorkspace = await remoteSessions.workspaceForSession(payload.sessionId);
+        if (remoteWorkspace) {
+            updateWorkspaceState(remoteWorkspace, state => {
+                const links = state.remoteSessionTrackerLinks ?? {};
+                state.remoteSessionTrackerLinks = {...links, [payload.sessionId]: [...new Set([...(links[payload.sessionId] ?? []), payload.trackerId])]};
+            });
+            return {success: true};
+        }
         // A Local wiki item is a file in the wiki folder, not a tracker row.
         if (isLocalWikiItemId(payload?.trackerId)) {
             return { success: false, error: 'Local wiki pages cannot be linked to sessions yet' };

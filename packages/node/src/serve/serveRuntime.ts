@@ -52,6 +52,7 @@ export interface CreateSessionInput {
   agentRole?: string;
   parentSessionId?: string;
   hostDeviceId: string;
+  workspacePath?: string;
 }
 
 export interface CreatedSession {
@@ -80,6 +81,8 @@ export interface ServeRuntimeDeps {
   /** Re-read per request so the desktop can map a new project without a restart. */
   loadWorkspaces(): WorkspaceMapping[];
   ensureCheckout(mapping: WorkspaceMapping): Promise<CheckoutOutcome>;
+  prepareWorkspace?(mapping: WorkspaceMapping, requestId: string): Promise<string>;
+  getSessionWorkspacePath?(sessionId: string): Promise<string | null>;
   /**
    * The canonical checkout directory for a mapping, or a throw if it is not
    * confined to the configured root.
@@ -290,7 +293,9 @@ export function createServeRuntime(deps: ServeRuntimeDeps): ServeRuntime {
       // read from disk just now and may not be the one the session was created
       // against; an unvalidated `checkoutDir` becomes the agent's cwd, and the
       // agent runs with the OS user's permissions.
-      return deps.confineCheckout(mapping);
+      const saved = await deps.getSessionWorkspacePath?.(sessionId);
+      if (mapping.sessionWorktrees && !saved) throw new Error("This session has no persisted remote worktree path.");
+      return deps.confineCheckout(saved ? {...mapping, checkoutDir: saved} : mapping);
     } catch (error) {
       deps.log('drain-skipped', {
         sessionId,
@@ -424,8 +429,8 @@ export function createServeRuntime(deps: ServeRuntimeDeps): ServeRuntime {
       // so the socket can already be gone by the time this runs.
       if (claimLost('the request was decrypted', true)) return;
 
-      if (request.provider && request.provider !== DEFAULT_PROVIDER) {
-        await refuse(request.requestId, 'This machine currently supports Claude Code sessions.');
+      if (request.provider && !['claude-code', 'openai-codex'].includes(request.provider)) {
+        await refuse(request.requestId, 'This machine supports Claude Code and Codex sessions.');
         return;
       }
       if (request.parentSessionId && await deps.getSessionProjectId(request.parentSessionId) !== request.projectId) {
@@ -473,8 +478,10 @@ export function createServeRuntime(deps: ServeRuntimeDeps): ServeRuntime {
       // for a follow-up turn, so both run the agent in exactly one place.
       let checkoutDir: string;
       try {
-        checkoutDir = deps.confineCheckout(mapping);
-        const outcome = await deps.ensureCheckout(mapping);
+        const outcome = deps.prepareWorkspace ? 'prepared' : await deps.ensureCheckout(mapping);
+        checkoutDir = deps.prepareWorkspace
+          ? await deps.prepareWorkspace(mapping, request.requestId)
+          : deps.confineCheckout(mapping);
         deps.log('checkout-ready', {
           checkoutDir,
           branch: mapping.branch,
@@ -505,6 +512,7 @@ export function createServeRuntime(deps: ServeRuntimeDeps): ServeRuntime {
           agentRole: request.agentRole,
           parentSessionId: request.parentSessionId,
           hostDeviceId: deps.deviceId,
+          workspacePath: checkoutDir,
         });
       } catch (error) {
         await refuse(

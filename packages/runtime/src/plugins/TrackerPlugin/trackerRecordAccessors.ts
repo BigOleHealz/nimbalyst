@@ -9,6 +9,7 @@ import type { TrackerRecord } from '../../core/TrackerRecord';
 import type { TrackerIdentity } from '../../core/DocumentService';
 import type { TrackerSchemaRole, FieldDefinition } from '@nimbalyst/tracker-schema';
 import { globalRegistry, getRoleField } from '@nimbalyst/tracker-schema';
+import { isPrivateIssueReference, resolveDisplayIssueKey } from './models/localIssueKey';
 import {
   STATUS_CATEGORIES,
   STATUS_CATEGORY_LABELS,
@@ -139,6 +140,53 @@ export function getRecordFieldStr(record: TrackerRecord, fieldName: string, fall
  */
 export function getRecordTitle(record: TrackerRecord): string {
   return getFieldByRoleAs<string>(record, 'title', '');
+}
+
+/** Readable ticket keys, never an import UUID or an internal record id. */
+export function getTitleTicketKey(title: string): string | undefined {
+  return /^([A-Z][A-Z0-9_]*-\d+)(?=[:\s]|$)/.exec(title.trim())?.[1];
+}
+
+/** Prefer the upstream ticket's identity over the local import's identity. */
+export function getRecordTicketKey(record: TrackerRecord): string | undefined {
+  const origin = record.system.origin;
+  if (origin?.kind === 'external' && ['linear', 'jira'].includes(origin.external.providerId)) {
+    const external = origin.external;
+    const key = getTitleTicketKey(external.externalId)
+      || /\/issue\/([A-Z][A-Z0-9_]*-\d+)(?:[/?#]|$)/.exec(external.url || '')?.[1]
+      || getTitleTicketKey(external.titleSnapshot || '')
+      || getTitleTicketKey(getRecordTitle(record));
+    if (key) return key;
+  }
+  const displayKey = resolveDisplayIssueKey(record);
+  return (record.issueKey && !isPrivateIssueReference(record.issueKey) && getTitleTicketKey(record.issueKey) === record.issueKey ? record.issueKey : undefined)
+    || getTitleTicketKey(getRecordTitle(record))
+    || (displayKey && isPrivateIssueReference(displayKey) ? displayKey : undefined);
+}
+
+/** Add the key once while keeping the editable title independent of its identity. */
+export function formatTicketTitle(title: string, key?: string, aliases: readonly string[] = []): string {
+  let brief = title.trim();
+  if (!key) return brief;
+  let previous: string;
+  do {
+    previous = brief;
+    for (const prefix of new Set([key, ...aliases].filter(Boolean))) {
+      const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      brief = brief.replace(new RegExp(`^(?:${escaped})(?=[:\\s]|$)[:\\s–—-]*`, 'i'), '');
+    }
+  } while (brief !== previous);
+  return brief ? `${key}: ${brief}` : key;
+}
+
+export function getRecordDisplayTitle(record: TrackerRecord): string {
+  return formatTicketTitle(getRecordTitle(record), getRecordTicketKey(record), [record.issueKey || '', record.localKey || '']);
+}
+
+/** Machine-private numbers must never become public PR references. */
+export function getRecordPullRequestTitle(record: TrackerRecord): string | undefined {
+  const key = getRecordTicketKey(record);
+  return key && !isPrivateIssueReference(key) ? getRecordDisplayTitle(record) : undefined;
 }
 
 /**

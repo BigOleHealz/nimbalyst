@@ -1,5 +1,5 @@
 import type { TrackerRecord } from '@nimbalyst/runtime/core/TrackerRecord';
-import { getWorkflowStatusOptions } from '@nimbalyst/tracker-schema';
+import { getWorkflowStatusOptions, isDoneStatus } from '@nimbalyst/tracker-schema';
 import { getRecordStatus } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
 import { getStatusColor } from '@nimbalyst/runtime/plugins/TrackerPlugin/components/trackerColumns';
 import type { PlanRow } from './trackerPlan';
@@ -38,7 +38,7 @@ export interface TicketDag {
 export function ticketDagStatus(item: TrackerRecord) {
   const value = getRecordStatus(item);
   const option = getWorkflowStatusOptions(item.primaryType).find(candidate => candidate.value === value);
-  return { value, label: option?.label ?? (value.replace(/-/g, ' ') || 'No status'), color: option?.color ?? getStatusColor(value, item.primaryType) };
+  return { value, label: option?.label ?? (value.replace(/-/g, ' ') || 'No status'), color: isDoneStatus(item.primaryType, value) ? 'var(--nim-success)' : option?.color ?? getStatusColor(value, item.primaryType) };
 }
 
 /** Iterative Kosaraju keeps malformed cycles from overflowing the stack. */

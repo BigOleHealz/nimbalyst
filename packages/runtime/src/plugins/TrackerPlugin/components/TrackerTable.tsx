@@ -1,3 +1,4 @@
+import { clientSessionClass } from '../../../core/clientSessionHighlight';
 /**
  * TrackerTable - Standalone table component for displaying tracker items
  * Shows bugs, tasks, plans, and ideas across all documents in workspace
@@ -21,7 +22,7 @@ import {
   LEGACY_KEY_TO_TYPE,
   buildFullDocumentTrackerId,
 } from '../documentHeader/frontmatterUtils';
-import { getRecordTitle, getRecordStatus, getRecordPriority, getFieldByRole, resolveRoleFieldName, getItemPublicationState } from '../trackerRecordAccessors';
+import { getRecordTitle, getRecordDisplayTitle, getRecordStatus, getRecordPriority, getFieldByRole, resolveRoleFieldName, getItemPublicationState } from '../trackerRecordAccessors';
 import {
   globalRegistry,
   parseDate,
@@ -520,7 +521,7 @@ export function renderCell(
         );
       }
       return (
-        <div className="title-text text-[13px] font-medium text-[var(--nim-text)] truncate min-w-0">{title}</div>
+        <div className="title-text text-[13px] font-medium text-[var(--nim-text)] truncate min-w-0">{getRecordDisplayTitle(item)}</div>
       );
 
     case 'key': {
@@ -1332,7 +1333,7 @@ export function TrackerTable({
                   </div>
                 )}
                 <div
-                  className={`tracker-table-row group flex items-center gap-3 px-3 py-[7px] border-b border-[var(--nim-border)] cursor-pointer transition-colors duration-100 hover:bg-[var(--nim-bg-secondary)] select-none ${
+                  className={`${clientSessionClass(item)} tracker-table-row group flex items-center gap-3 px-3 py-[7px] border-b border-[var(--nim-border)] cursor-pointer transition-colors duration-100 hover:bg-[var(--nim-bg-secondary)] select-none ${
                     selectedIds.has(item.id) ? 'bg-[var(--nim-bg-secondary)]' : ''
                   } ${
                     selectedItemId && item.id === selectedItemId ? 'bg-[var(--nim-bg-secondary)]' : ''
@@ -1387,10 +1388,7 @@ export function TrackerTable({
                     />
                   ) : (
                     <div className="flex items-baseline gap-2 min-w-0">
-                      {resolveDisplayIssueKey(item) && (
-                        <span className="shrink-0 text-[10px] font-mono font-medium uppercase tracking-[0.08em] text-[var(--nim-text-faint)]">{resolveDisplayIssueKey(item)}</span>
-                      )}
-                      <span className="text-[13px] font-medium text-[var(--nim-text)] truncate">{title}</span>
+                      <span className="text-[13px] font-medium text-[var(--nim-text)] truncate">{getRecordDisplayTitle(item)}</span>
                     </div>
                   )}
                 </div>

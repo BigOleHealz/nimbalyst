@@ -40,6 +40,18 @@ describe('GhApiService GitHub issues', () => {
     upsertList.mockReset().mockResolvedValue(undefined);
   });
 
+  it('rehydrates previously verified PR evidence on a failed authorized refresh, without inventing an unmerged state', async () => {
+    spawnMock.mockImplementation(() => childReturning('', 1, 'private repository is unavailable'));
+    const merged = { id: 'delivery', workspaceId: '/workspace', remote: 'owner/app', number: 1, state: 'merged', fetchedAt: 10 };
+    const list = vi.fn().mockResolvedValue([merged, { ...merged, remote: 'other/app' }]);
+    const service = new GhApiService({ list } as never);
+    expect(await service.listPullRequests('/workspace', 'owner/app', { state: 'all' })).toEqual([merged]);
+    expect(list).toHaveBeenCalledWith('/workspace', { state: 'all' });
+    await expect(service.listPullRequests('/workspace', 'owner/app', { state: 'open' })).rejects.toThrow('gh api');
+    list.mockResolvedValue([]);
+    await expect(service.listPullRequests('/workspace', 'owner/app', { state: 'all' })).rejects.toThrow('gh api');
+  });
+
   it('filters pull requests, consumes pages, and threads since through every request', async () => {
     spawnMock.mockImplementation((_command: string, args: string[]) => {
       const endpoint = args.find((arg) => arg.startsWith('repos/')) ?? '';

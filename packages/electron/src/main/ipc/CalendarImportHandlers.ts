@@ -4,7 +4,7 @@ import { CalendarImportService } from '../services/calendar/CalendarImportServic
 import { calendarSourceUrl } from '../services/calendar/CalendarClient';
 import { CalendarAutoRefresh } from '../services/calendar/CalendarAutoRefresh';
 import { logger } from '../utils/logger';
-import type { CalendarConnectOptions, CalendarImportRange, CalendarImportsSnapshot } from '../../shared/calendarImports';
+import type { CalendarAddNoteInput, CalendarConnectOptions, CalendarImportRange, CalendarImportsSnapshot } from '../../shared/calendarImports';
 
 let service: CalendarImportService | undefined;
 let autoRefresh: CalendarAutoRefresh | undefined;
@@ -27,8 +27,17 @@ function accountId(input: unknown): string {
   return input;
 }
 
+/** Shared by the calendar UI and agent tools so every write uses one service and broadcast. */
+export function getCalendarImportsSnapshot(): CalendarImportsSnapshot { return calendars().snapshot(); }
+
+export function addCalendarMeetingNote(input: CalendarAddNoteInput): Promise<CalendarImportsSnapshot> {
+  accountId(input?.accountId);
+  return mutation(calendars().addNote(input));
+}
+
 export function registerCalendarImportHandlers(): void {
   safeHandle('calendar-imports:get', () => calendars().snapshot());
+  safeHandle('calendar-imports:add-note', (_event, input: CalendarAddNoteInput) => addCalendarMeetingNote(input));
   safeHandle('calendar-imports:connect', async (_event, input: CalendarConnectOptions) => {
     const snapshot = await mutation(calendars().connect(input));
     void autoRefresh?.refresh();

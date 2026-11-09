@@ -15,6 +15,7 @@ import { registerNodeHostEnvironment } from './host/nodeHost.js';
 
 import { SessionManager } from '@nimbalyst/runtime/ai/server/SessionManager';
 import { ClaudeCodeProvider } from '@nimbalyst/runtime/ai/server/providers/ClaudeCodeProvider';
+import { OpenAICodexProvider } from '@nimbalyst/runtime/ai/server/providers/OpenAICodexProvider';
 import {
   AgentMessagesRepository,
   type AgentMessagesStore,
@@ -169,7 +170,8 @@ export class NimbalystNode {
       throw new Error(`[nimbalyst-node] session ${resolvedSessionId} not found`);
     }
 
-    const provider = new ClaudeCodeProvider();
+    if (session.provider && !['claude-code', 'openai-codex'].includes(session.provider)) throw new Error(`Unsupported remote provider: ${session.provider}`);
+    const provider = session.provider === 'openai-codex' ? new OpenAICodexProvider() : new ClaudeCodeProvider();
 
     // Persisting `providerSessionId` is the HOST's job, not the provider's: the
     // provider only emits it. Without this listener the column stays NULL, and
@@ -218,8 +220,8 @@ export class NimbalystNode {
       // Only ever an explicitly-provisioned key from the config file. Claude
       // Code does not need one -- it authenticates through the CLI's own login
       // -- and nothing here reads `process.env`.
-      apiKey: this.config.providerApiKeys?.['claude-code'],
-      model: (options.options?.model ?? session.model)?.replace(/^claude-code:/, ""),
+      apiKey: this.config.providerApiKeys?.[session.provider ?? 'claude-code'],
+      model: (options.options?.model ?? session.model)?.replace(/^(claude-code|openai-codex):/, ""),
       effortLevel: options.options?.effortLevel,
     });
 
@@ -243,7 +245,8 @@ export class NimbalystNode {
     // partial transcript never reaches the session room.
     options.onTurnStarted?.({
       cancel: async () => {
-        await provider.interruptCurrentTurn();
+        if (provider instanceof OpenAICodexProvider) provider.abort();
+        else await provider.interruptCurrentTurn();
       },
     });
 
@@ -253,8 +256,9 @@ export class NimbalystNode {
     // the paths that reach it, which means the generator must be drained to
     // completion. Do not `break` out of this loop; `flushPendingWrites()` is
     // `protected`, so a consumer has no way to drain it from outside.
+    try {
     for await (const chunk of provider.sendMessage(
-      options.prompt,
+      `Execution workspace: ${options.workspacePath}. Run commands and make edits in this remote workspace. Before editing a repository, read its AGENTS.md and CLAUDE.md and follow their applicable instructions. For served sessions, use the isolated session worktrees already prepared by the host rather than the original checkouts.\n\n${options.prompt}`,
       documentContext,
       resolvedSessionId,
       [],
@@ -265,6 +269,10 @@ export class NimbalystNode {
       if (chunk.type === 'text' && chunk.content) text.push(chunk.content);
       if (chunk.type === 'tool_call' && chunk.toolCall) toolCalls.push(chunk.toolCall.name);
       if (chunk.type === 'error') error = chunk.error ?? 'unknown provider error';
+    }
+
+    } finally {
+      if (provider instanceof OpenAICodexProvider) provider.destroy();
     }
 
     const persistedMessageCount = Number(

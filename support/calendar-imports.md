@@ -50,4 +50,12 @@ Use **Refresh import** to retrieve changes, canceled events, and expanded recurr
 
 **Reload calendars** refreshes the list of calendars you can select. **Disconnect** removes the account’s saved tokens and its events from the local agenda. You can reconnect and import again.
 
+## Meeting notes
+
+Select a meeting in Calendar to read its **Meeting notes** or add a note. Notes are private to your local Nimbalyst profile and do not change the Google or Microsoft event or notify attendees. Automatic refresh, manual imports, and reconnecting the same account preserve notes for each occurrence. Notes stay saved when an event temporarily leaves the imported range and reappear if that occurrence returns. Disconnecting the account removes its notes along with its local agenda.
+
+You can also use the agent prompt, for example: “Add a note to tomorrow’s design review: ask about the launch date.” The agent looks up imported meetings and saves directly when your request clearly identifies one occurrence. For a request such as “Add a meeting note: discuss the budget,” it asks which meeting, showing titles, local dates and times, calendars and accounts. Repeated titles, recurring occurrences and multiple matching calendars also require a choice. It saves only after you choose; canceling the question saves nothing. The agent confirms the meeting after saving, and notes appear in that meeting’s calendar details.
+
+Prompt access uses your latest imported snapshots. If an account is disconnected, a refresh has failed, or the meeting is outside the imported range, check **Manage accounts** and refresh or adjust the range. Using calendar tools in a prompt shares the returned meeting details and notes with the AI provider selected for that conversation; see [Calendar data privacy](calendar-privacy.md).
+
 Imports read from the providers. Creating or changing events, replying to invitations, webhooks, syncing while the desktop app is closed, and turning events into tracker tasks are outside this import workflow.

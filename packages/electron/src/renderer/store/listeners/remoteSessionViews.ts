@@ -26,7 +26,7 @@ export function initRemoteSessionListeners(): () => void {
         store.set(sessionDraftLocalModifiedAtAtom(session.id), 0);
       }
       for (const workspace of selectedMachineAtom.getParams()) {
-        store.set(selectedMachineAtom(workspace), '');
+        // Preserve the remote routing preference: an account change must not enable local execution.
         store.set(machineSessionSelectionsAtom(workspace), {});
       }
     }

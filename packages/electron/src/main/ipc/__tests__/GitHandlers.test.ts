@@ -12,6 +12,7 @@ import {
   isDetachedHeadState,
   normalizeBranchSelection,
   normalizeCurrentBranch,
+  readBranchStatus,
   resolveGitDiffTarget,
 } from '../GitHandlers';
 import { GitOperationLogService } from '../../services/GitOperationLogService';
@@ -59,6 +60,13 @@ async function initScratchRepo(cwd: string): Promise<void> {
 }
 
 describe('working tree mutations', () => {
+  it('identifies the repository that produced a branch snapshot', async () => {
+    await initScratchRepo(tmpRoot);
+    const status = await readBranchStatus(tmpRoot);
+    expect(status.repoPath).toBe(tmpRoot);
+    expect(status.ahead).toBe(0);
+  });
+
   it('does not expand a pathspec-magic filename while discarding changes', async () => {
     await initScratchRepo(tmpRoot);
     const magicPath = path.join(tmpRoot, ':(glob)**');

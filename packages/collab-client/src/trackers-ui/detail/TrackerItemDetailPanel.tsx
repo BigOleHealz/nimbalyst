@@ -43,7 +43,7 @@ import {
   type TeamMemberOption,
 } from '@nimbalyst/runtime/plugins/TrackerPlugin/components/TrackerFieldEditor';
 import {
-  getRecordTitle,
+  getRecordDisplayTitle as getRecordTitle,
   getRecordStatus,
   getFieldByRole,
   resolveRoleFieldName,

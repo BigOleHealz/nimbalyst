@@ -7,7 +7,7 @@ import type { Database as SqliteDatabase } from 'better-sqlite3';
 import { openDatabase } from '../db/openDatabase.js';
 import { createQueuedPromptStore } from '../serve/queuedPrompts.js';
 import { createHeadlessDeviceInfo } from '../serve/deviceIdentity.js';
-import { ensureCheckout } from '../serve/repoCheckout.js';
+import { ensureCheckout, prepareSessionWorkspace } from '../serve/repoCheckout.js';
 import { findWorkspace, loadWorkspaces } from '../serve/workspaces.js';
 import { createStderrLogger } from '../serve/log.js';
 import { createRefreshLoop, shutdownServe } from '../serve/lifecycle.js';
@@ -133,6 +133,37 @@ describe('repo checkout', () => {
     branch: 'main',
     checkoutDir: '/workspace/repo',
   };
+
+  it('creates a separate branch and worktree for a persistent Coder checkout without fetching or resetting it', async () => {
+    const runGit = vi.fn(async () => {});
+    const mapping = { ...MAPPING, sessionWorktrees: true };
+    const first = await prepareSessionWorkspace(mapping, 'request-one', {runGit, exists: () => true, makeDirectory: () => {}});
+    const second = await prepareSessionWorkspace(mapping, 'request-two', {runGit, exists: () => true, makeDirectory: () => {}});
+    expect(first).toBe('/workspace/repo/worktrees/nimbalyst-request-one');
+    expect(second).toBe('/workspace/repo/worktrees/nimbalyst-request-two');
+    expect(runGit.mock.calls).toEqual([
+      [['worktree', 'add', '-b', 'codex/nimbalyst-request-one', first, 'HEAD'], MAPPING.checkoutDir],
+      [['worktree', 'add', '-b', 'codex/nimbalyst-request-two', second, 'HEAD'], MAPPING.checkoutDir],
+    ]);
+  });
+
+  it('isolates every repository in a multi-repo Coder project in the same session directory', async () => {
+    const runGit = vi.fn(async () => {});
+    const mapping = {...MAPPING, checkoutDir: '/workspace/foss', sessionWorktrees: true, repositoryPaths: ['/workspace/foss/Website', '/workspace/foss/App']};
+    const result = await prepareSessionWorkspace(mapping, 'multi-one', {runGit, exists: () => true, makeDirectory: () => {}});
+    expect(result).toBe('/workspace/foss/worktrees/nimbalyst-multi-one');
+    expect(runGit.mock.calls).toEqual([
+      [['worktree', 'add', '-b', 'codex/nimbalyst-multi-one', result + '/Website', 'HEAD'], '/workspace/foss/Website'],
+      [['worktree', 'add', '-b', 'codex/nimbalyst-multi-one', result + '/App', 'HEAD'], '/workspace/foss/App'],
+    ]);
+  });
+
+  it('does not prepare an absent persistent checkout or accept a traversal-shaped session id', async () => {
+    const runGit = vi.fn(async () => {});
+    await expect(prepareSessionWorkspace({...MAPPING, sessionWorktrees: true}, '../escape', {runGit})).rejects.toThrow(/request id/i);
+    await expect(prepareSessionWorkspace({...MAPPING, sessionWorktrees: true}, 'request-one', {runGit, exists: () => false})).rejects.toThrow(/existing checkout/i);
+    expect(runGit).not.toHaveBeenCalled();
+  });
 
   it('clones on first sight and fast-forwards afterwards, never through a shell', async () => {
     const calls: Array<{ args: string[]; cwd?: string }> = [];

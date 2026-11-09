@@ -6,6 +6,7 @@
  */
 
 import { ipcMain, BrowserWindow } from 'electron';
+import { assertProjectAllowsLocalExecution } from '../services/ai/projectExecution';
 import log from 'electron-log/main';
 import { createGit } from '../services/gitClient';
 import { FeatureUsageService, FEATURES } from '../services/FeatureUsageService';
@@ -333,6 +334,7 @@ export function registerWorktreeHandlers(): void {
     workspacePath: string,
     options?: { name?: string; baseBranch?: string; sourceFolderPath?: string }
   ): Promise<WorktreeCreateResult> => {
+    assertProjectAllowsLocalExecution(workspacePath);
     const startTime = Date.now();
     const MAX_RETRIES = 3;
     const name = options?.name;

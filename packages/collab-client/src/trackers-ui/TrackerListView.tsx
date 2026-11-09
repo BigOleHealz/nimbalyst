@@ -1,3 +1,4 @@
+import { clientSessionClass } from '@nimbalyst/runtime/core/clientSessionHighlight';
 /**
  * The compact list: one row per item, grouped by the view's `groupBy`.
  *
@@ -18,7 +19,7 @@ import {
   getFieldByRole,
   getRecordPriority,
   getRecordStatus,
-  getRecordTitle,
+  getRecordDisplayTitle as getRecordTitle,
 } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
 import { UserAvatar } from '@nimbalyst/runtime/plugins/TrackerPlugin/components/UserAvatar';
 import { groupTrackerItems } from '@nimbalyst/collab-client/trackers';
@@ -74,7 +75,7 @@ function TrackerListRow({
       type="button"
       data-testid="tracker-list-row"
       data-item-id={item.id}
-      className={`tracker-list-row w-full flex items-center gap-2 px-3 py-1.5 text-left border-b border-nim transition-colors ${
+      className={`${clientSessionClass(item)} tracker-list-row w-full flex items-center gap-2 px-3 py-1.5 text-left border-b border-nim transition-colors ${
         selected ? 'bg-nim-active' : 'hover:bg-nim-tertiary'
       }`}
       onClick={onOpen}
@@ -85,14 +86,6 @@ function TrackerListRow({
         style={{ backgroundColor: PRIORITY_COLORS[priority || 'medium'] || NEUTRAL_SWATCH }}
       />
       {unreadSlot}
-      {item.issueKey ? (
-        // `text-nim-muted`, not `text-nim-faint`: the key is the item's
-        // citable identifier, so it is content. Faint is the decorative tier
-        // and measures 3.49:1 on the dark row background, under AA at any size.
-        <span className="shrink-0 font-mono text-[11px] uppercase tracking-[0.06em] text-nim-muted">
-          {item.issueKey}
-        </span>
-      ) : null}
       <span className="min-w-0 flex-1 truncate text-sm text-nim">{getRecordTitle(item)}</span>
       <TrackerSwatchBadge
         label={getTrackerTypeLabel(item.primaryType)}

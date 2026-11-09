@@ -207,6 +207,9 @@ export const TRACKER_TOOLS: readonly string[] = [
  * collab doc, filing feedback).
  */
 export const SITUATIONAL_TOOLS: readonly string[] = [
+  // private notes on imported calendar meetings
+  'calendar_list_meetings',
+  'calendar_add_note',
   // voice mode only
   'voice_agent_speak',
   'voice_agent_stop',

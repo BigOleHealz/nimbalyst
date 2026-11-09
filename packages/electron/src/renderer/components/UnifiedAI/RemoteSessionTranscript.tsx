@@ -318,8 +318,8 @@ export const RemoteSessionTranscript = forwardRef<
           mode={turnOptions.mode}
           onModeChange={(mode) => updateOptions({ mode })}
           onModelChange={(model) => {
-            if (!model.startsWith("claude-code:")) {
-              setError("This machine currently runs Claude Code models.");
+            if (!model.startsWith(`${snapshot?.session.provider ?? "claude-code"}:`)) {
+              setError("Choose a model for this session’s provider.");
               return;
             }
             updateOptions({ model });

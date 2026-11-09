@@ -16,7 +16,7 @@ import type { FieldDefinition } from '@nimbalyst/tracker-schema';
 import { MaterialSymbol } from '@nimbalyst/runtime/ui/icons/MaterialSymbol';
 import type { TrackerRecord } from '@nimbalyst/runtime/core/TrackerRecord';
 import { globalRegistry } from '@nimbalyst/runtime/plugins/TrackerPlugin/models';
-import { getRecordTitle } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
+import { getRecordTitle, getRecordDisplayTitle } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
 import { TrackerTypeRow } from '@nimbalyst/runtime/plugins/TrackerPlugin/components/TrackerTypeRow';
 import type { TrackerFieldPills } from '@nimbalyst/runtime/plugins/TrackerPlugin/components/TrackerFieldPills';
 import { NEUTRAL_SWATCH, TYPE_COLORS } from '../board/trackerBoardTokens';
@@ -188,7 +188,7 @@ export const TrackerPageView: React.FC<TrackerPageViewProps> = ({
               data-testid="tracker-page-title"
             />
           ) : (
-            <h1 className="tracker-page-view-title m-0 mb-3 break-words text-[28px] font-medium leading-tight text-nim select-text">{title}</h1>
+            <h1 className="tracker-page-view-title m-0 mb-3 break-words text-[28px] font-medium leading-tight text-nim select-text">{getRecordDisplayTitle(item)}</h1>
           )}
           <TrackerTypeRow
             typeId={item.primaryType}

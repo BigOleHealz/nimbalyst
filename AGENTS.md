@@ -7,3 +7,13 @@ Every new coding agent/session must work in its own Git worktree by default, inc
 The project settings in `.vscode/settings.json` enable Cursor's Git worktree discovery and display of Cursor-created worktrees. Each worktree should appear separately in Source Control's Repositories view, where its uncommitted diffs can be opened. If a newly created worktree does not appear immediately, run **Git: Rescan Repositories** in Cursor. Committed branch changes are viewed by comparing the worktree branch with its base branch.
 
 When adding, significantly expanding, or removing a notable product capability, update [docs/FEATURE_INVENTORY.md](docs/FEATURE_INVENTORY.md) as part of implementation. Follow the inclusion test in [CLAUDE.md](CLAUDE.md): meaningful capabilities belong; minor UI improvements such as elapsed-time counters do not. Follow its shared-file ownership and final-report requirements. This applies to every agent provider, whether or not a skill or slash command is used.
+
+
+When browser work is necessary:
+- Create a new Chrome tab dedicated to this agent session.
+- Give the browser session a unique name based on the task.
+- Retain the returned tab ID and use it for subsequent actions.
+- Never reuse, navigate, or close another session’s tabs.
+- Use browser tab controls rather than global mouse/keyboard
+  input or shortcuts that act on the foreground Chrome window.
+- Reuse your own tab throughout the task.

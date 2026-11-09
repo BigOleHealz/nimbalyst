@@ -18,6 +18,8 @@ import { resolveEffortLevel, resolveThinkingMode } from '@nimbalyst/runtime/ai/s
 import { type AIProviderType, type DocumentContext, type Message, type SessionType } from '@nimbalyst/runtime/ai/server/types';
 import * as fs from 'fs';
 import { remoteSessions } from '../remoteSessions';
+import { assertProjectAllowsLocalExecution } from '../projectExecution';
+import { updateWorkspaceState } from '../../../utils/store';
 import { registerRemoteSessionHandlers } from './registerRemoteSessionHandlers';
 
 /**
@@ -38,6 +40,7 @@ export function registerSessionHandlers(ctx: AIServiceContext): void {
     sessionType?: string,
     worktreeId?: string
   ) => {
+    if (workspacePath) assertProjectAllowsLocalExecution(workspacePath);
     // TODO: Debug logging - uncomment if needed
     //   provider,
     //   modelId,
@@ -477,6 +480,12 @@ export function registerSessionHandlers(ctx: AIServiceContext): void {
     draftInput: string,
     workspacePath?: string
   ) => {
+    if (workspacePath && await remoteSessions.get(sessionId, workspacePath)) {
+      updateWorkspaceState(workspacePath, state => {
+        state.remoteSessionDrafts = {...state.remoteSessionDrafts, [sessionId]: {text: draftInput, attachments: []}};
+      });
+      return {success: true};
+    }
     const success = await ctx.sessionManager.saveDraftInput(sessionId, draftInput, workspacePath);
     return { success };
   });

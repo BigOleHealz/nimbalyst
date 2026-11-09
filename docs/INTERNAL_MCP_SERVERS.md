@@ -93,6 +93,10 @@ Comment writes require `clientMutationId` for idempotency. Main derives the agen
 
 `RequestFeedback` is the nonblocking, organization-delivered counterpart to the local interactive prompt tools. `AskUserQuestion` and `PromptForUserInput` address the person at the current session, wait for that local answer, and do not use a server. `RequestFeedback` addresses other organization members, resolves them through `findOrgMembers`, checks subjects through `getResourceSharingStatus`, and returns a validated compose draft immediately. It never publishes or sends during the MCP call; the transcript compose widget requires the author to confirm before its host creates the request and delivers it through Messaging.
 
+### Private calendar meeting notes
+
+The situational endpoint also exposes `calendar_list_meetings` and `calendar_add_note`. Discovery reads the credential-free imported calendar snapshot, including notes, source freshness, and the local time zone. Adding a note uses the same serialized calendar service and `calendar-imports:changed` broadcast as the Calendar UI. Notes live separately from replaceable provider events in the encrypted calendar store; account/calendar/event IDs identify one recurring occurrence. A stable `clientMutationId` makes retries idempotent. Missing or ambiguous selectors return `needs_selection` without mutation; the agent uses the existing durable interactive question tools to obtain a meeting choice and then submits the chosen reference. No new interactive prompt type or waiter is introduced.
+
 ## How to Add a New Internal MCP Server
 
 ### Step 1: Create the MCP Server Module

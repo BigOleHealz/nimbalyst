@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SessionCompletionActions } from '../SessionCompletionActions';
 import { sessionSuccessfulCompletionAtom } from '../../../store/atoms/sessionCompletionActions';
 import { sessionGitStatusAtom } from '../../../store/atoms/sessionFiles';
+import { sessionRegistryAtom } from '../../../store/atoms/sessions';
+import { trackerItemsMapAtom } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerDataAtoms';
 
 afterEach(cleanup);
 const context = { success: true, scenario: 'single', files: [{ path: 'src/task.ts', status: 'modified' }] };
@@ -21,6 +23,15 @@ function setup(options: { completion?: number | null; available?: boolean; provi
 }
 
 describe('session completion actions', () => {
+  it('uses the linked ticket title for PR creation, keeping one canonical ID prefix', async () => {
+    const {state,invoke}=setup();
+    act(()=>{
+      state.set(sessionRegistryAtom,new Map([['task',{id:'task',workspaceId:'/repo',title:'Short session',linkedTrackerItemIds:['ticket']} as any]]));
+      state.set(trackerItemsMapAtom,new Map([['ticket',{id:'ticket',primaryType:'task',issueKey:'DES-79',fields:{title:'DES-79 Lesson navigation'},system:{workspace:'/repo'}} as any]]));
+    });
+    fireEvent.click(await screen.findByRole('button',{name:'Commit, Push & Open PR'}));
+    await waitFor(()=>expect(invoke).toHaveBeenCalledWith('ai:sendMessage',expect.stringContaining('Use this exact pull request title: "DES-79: Lesson navigation"'),{mode:'agent',inputType:'user'},'task','/repo'));
+  });
   it.each([
     ['Commit', 'Commit only. Do not push or open a pull request.'],
     ['Commit & Push', 'After the commit succeeds, push the task branch. Do not open a pull request.'],

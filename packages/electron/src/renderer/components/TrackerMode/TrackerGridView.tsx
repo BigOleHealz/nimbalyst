@@ -881,6 +881,7 @@ export function TrackerGridView({
           </div>
         ) : (
           <RevoGrid
+            rowClass="__clientSessionClass"
             key={`dbg-d:${gridRenderKey}`}
             ref={gridRef}
             columns={gridColumns}

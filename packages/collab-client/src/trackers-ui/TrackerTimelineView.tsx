@@ -22,7 +22,7 @@ import {
   type TrackerOrdering,
   type TrackerRelationshipLabelResolver,
 } from '@nimbalyst/runtime/plugins/TrackerPlugin/models';
-import { getRecordStatus, getRecordTitle } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
+import { getRecordStatus, getRecordDisplayTitle as getRecordTitle } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
 import {
   buildTrackerTimeline,
   resolveTodayFraction,

@@ -19,6 +19,10 @@ export interface WorkspaceMapping {
   branch: string;
   /** Absolute path this node checks the branch out to. */
   checkoutDir: string;
+  /** Preserve this existing repo and create a separate worktree for every session. */
+  sessionWorktrees?: boolean;
+  /** Existing repositories to isolate together when the project is a multi-repo folder. */
+  repositoryPaths?: string[];
 }
 
 function fail(message: string): never {
@@ -62,6 +66,8 @@ export function loadWorkspaces(workspacesPath: string): WorkspaceMapping[] {
       repoUrl: mapping.repoUrl!,
       branch: mapping.branch!,
       checkoutDir: mapping.checkoutDir!,
+      ...(mapping.sessionWorktrees === true ? {sessionWorktrees: true} : {}),
+      ...(Array.isArray(mapping.repositoryPaths) && mapping.repositoryPaths.every(value => typeof value === "string" && value.length > 0) ? {repositoryPaths: mapping.repositoryPaths} : {}),
     };
   });
 }

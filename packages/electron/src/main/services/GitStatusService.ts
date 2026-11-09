@@ -7,6 +7,8 @@ export interface FileGitStatus {
   filePath: string;
   status: 'modified' | 'staged' | 'untracked' | 'unchanged' | 'deleted';
   gitStatusCode?: string; // Raw git status code (M, A, D, ??, etc.)
+  /** null means the file is a workspace document outside Git; absent is unknown. */
+  repoPath?: string | null;
 }
 
 export interface GitStatusResult {
@@ -160,7 +162,7 @@ export class GitStatusService {
 
     // No git repo anywhere in the picture - preserve old behavior.
     if (filesByRoot.size === 0) {
-      return this.createEmptyResult(filePaths);
+      return this.createEmptyResult(filePaths, null);
     }
 
     // Cache key includes every owning root we are about to query, so a
@@ -188,7 +190,7 @@ export class GitStatusService {
         // On error for this root only, treat its files as unchanged. Don't
         // poison the cache - other roots may still succeed below.
         for (const fp of rootFiles) {
-          result[fp] = { filePath: fp, status: 'unchanged' };
+          result[fp] = { filePath: fp, status: 'unchanged', repoPath: rootPath };
         }
         continue;
       }
@@ -255,15 +257,15 @@ export class GitStatusService {
         }
 
         result[filePath] = status
-          ? { ...status, filePath }
-          : { filePath, status: 'unchanged' };
+          ? { ...status, filePath, repoPath: rootPath }
+          : { filePath, status: 'unchanged', repoPath: rootPath };
       }
     }
 
     // Files outside any git root - mirror the old non-git-workspace behavior
     // by marking them untracked so they still show in the edited-files UI.
     for (const fp of filesWithoutRoot) {
-      result[fp] = { filePath: fp, status: 'untracked' };
+      result[fp] = { filePath: fp, status: 'untracked', repoPath: null };
     }
 
     // Cache the result
@@ -483,12 +485,13 @@ export class GitStatusService {
    * Create empty result for non-git repos (all files as untracked).
    * This ensures checkboxes are shown for files in non-git directories.
    */
-  private createEmptyResult(filePaths: string[]): GitStatusResult {
+  private createEmptyResult(filePaths: string[], repoPath?: string | null): GitStatusResult {
     const result: GitStatusResult = {};
     for (const filePath of filePaths) {
       result[filePath] = {
         filePath,
-        status: 'untracked'
+        status: 'untracked',
+        ...(repoPath !== undefined ? { repoPath } : {}),
       };
     }
     return result;

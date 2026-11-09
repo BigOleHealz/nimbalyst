@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { CalendarApiError, CalendarClient } from './CalendarClient';
 import { CalendarOAuth, validateCalendarClient } from './CalendarOAuth';
 import { CalendarStore, type CalendarAccount, type CalendarStorage } from './CalendarStore';
-import type { CalendarConnectOptions, CalendarImportRange, CalendarImportsSnapshot } from '../../../shared/calendarImports';
+import type { CalendarAddNoteInput, CalendarConnectOptions, CalendarImportRange, CalendarImportsSnapshot } from '../../../shared/calendarImports';
 import { calendarAutoRefreshRange } from '../../../shared/calendarImports';
 
 export function validateCalendarRange(input: CalendarImportRange): CalendarImportRange {
@@ -27,8 +27,14 @@ export class CalendarImportService {
   snapshot(): CalendarImportsSnapshot {
     const data = this.storage.read();
     return {
-      connections: data.accounts.map(({ id, provider, label, calendars, selectedCalendarIds, events, importedAt, range, autoRefresh, syncError }) => ({
-        id, provider, label, calendars, selectedCalendarIds, events, importedAt, range, autoRefresh: autoRefresh ?? true, syncError,
+      connections: data.accounts.map(({ id, provider, label, calendars, selectedCalendarIds, events, importedAt, range, autoRefresh, syncError, meetingNotes }) => ({
+        id, provider, label, calendars, selectedCalendarIds,
+        events: events.map(event => {
+          const notes = meetingNotes?.filter(note => note.calendarId === event.calendarId && note.eventId === event.id)
+            .map(({ id, text, createdAt }) => ({ id, text, createdAt }));
+          return notes?.length ? { ...event, notes } : event;
+        }),
+        importedAt, range, autoRefresh: autoRefresh ?? true, syncError,
       })),
       clients: Object.fromEntries(Object.entries(data.clients).map(([provider, client]) => [provider, { clientId: client.clientId, hasClientSecret: Boolean(client.clientSecret) }])),
     };
@@ -65,6 +71,7 @@ export class CalendarImportService {
         selectedCalendarIds: existing?.selectedCalendarIds.filter(key => calendars.some(calendar => calendar.id === key)) ?? calendars.filter(calendar => calendar.primary).map(calendar => calendar.id),
         events: existing?.events ?? [], importedAt: existing?.importedAt, range: existing?.range,
         autoRefresh: existing?.autoRefresh ?? true,
+        meetingNotes: existing?.meetingNotes,
       };
       data.accounts = [...data.accounts.filter(item => item.id !== id), account];
       data.clients[config.provider] = { clientId: config.clientId, clientSecret: config.clientSecret };
@@ -141,6 +148,31 @@ export class CalendarImportService {
     if (typeof enabled !== 'boolean') throw new Error('Automatic refresh requires a boolean value.');
     return this.exclusive(async () => {
       this.saveAccount({ ...this.account(id), autoRefresh: enabled, syncError: undefined });
+      return this.snapshot();
+    });
+  }
+
+  /** Notes are local append-only records, separate from replaceable provider snapshots. */
+  async addNote(input: CalendarAddNoteInput): Promise<CalendarImportsSnapshot> {
+    for (const key of ['accountId', 'calendarId', 'eventId', 'text', 'clientMutationId'] as const) {
+      if (typeof input?.[key] !== 'string' || !input[key].trim()) throw new Error('Choose a meeting and enter a note with a retry ID.');
+    }
+    if (input.text.length > 50_000 || input.clientMutationId.length > 200) throw new Error('The meeting note or retry ID is too long.');
+    return this.exclusive(async () => {
+      const account = this.account(input.accountId);
+      const event = account.events.find(event => event.calendarId === input.calendarId && event.id === input.eventId);
+      if (!event) throw new Error('This meeting is no longer available. Refresh the calendar and choose a meeting again.');
+      const text = input.text.trim();
+      const existing = account.meetingNotes?.find(note => note.id === input.clientMutationId);
+      if (existing) {
+        if (existing.calendarId !== input.calendarId || existing.eventId !== input.eventId || existing.text !== text) {
+          throw new Error('This note retry ID was already used for a different note.');
+        }
+        return this.snapshot();
+      }
+      this.saveAccount({ ...account, meetingNotes: [...(account.meetingNotes ?? []), {
+        calendarId: input.calendarId, eventId: input.eventId, id: input.clientMutationId, text, createdAt: new Date().toISOString(),
+      }] });
       return this.snapshot();
     });
   }

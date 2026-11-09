@@ -30,6 +30,8 @@ describe('buildClaudeCodeSystemPrompt', () => {
     const prompt = buildClaudeCodeSystemPrompt({});
 
     expect(prompt).toContain('## Tracker References');
+    expect(prompt).toContain('name sessions "ID: 2-5 words"');
+    expect(prompt).toContain('title authorized PRs "ID: Ticket title"');
     expect(prompt).toContain('nimbalyst://NIM-123');
     expect(prompt).toContain('automatically create subtasks linked to that parent task');
     expect(prompt).toContain('fields: { parentTask: { itemId:');

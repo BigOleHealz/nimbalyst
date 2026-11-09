@@ -7,6 +7,10 @@ import {
   buildKanbanStatusColumns,
   buildSelectionStatusChoices,
   resolveSelectionStatusValue,
+  formatTicketTitle,
+  getRecordDisplayTitle,
+  getRecordPullRequestTitle,
+  getRecordTitle,
 } from '../trackerRecordAccessors';
 
 function makeRecord(primaryType: string, status: string): TrackerRecord {
@@ -21,6 +25,35 @@ function makeRecord(primaryType: string, status: string): TrackerRecord {
     fields: { status },
   };
 }
+
+describe('ticket title identity', () => {
+  it.each(['DES-79 Brief title', 'DES-79: Brief title', 'DES-79: DES-79: Brief title', 'Brief title'])('normalizes %s without changing editable data', title => {
+    const item = { ...makeRecord('task', 'open'), issueKey: 'DES-79', fields: { title } };
+    expect(getRecordDisplayTitle(item)).toBe('DES-79: Brief title');
+    expect(getRecordTitle(item)).toBe(title);
+    expect(getRecordPullRequestTitle(item)).toBe('DES-79: Brief title');
+  });
+
+  it('prefers the Linear URL key over the imported UUID and local numbering', () => {
+    const item = { ...makeRecord('task', 'open'), issueKey: 'NIM-12', fields: { title: 'DES-79: Lesson fix' } };
+    item.system.origin = { kind:'external', external:{ providerId:'linear', externalId:'some-uuid', urn:'linear://issue/some-uuid', url:'https://linear.app/team/issue/DES-79/lesson-fix', titleSnapshot:'Lesson fix', importedAt:'', lastSyncedAt:'' } };
+    expect(getRecordDisplayTitle(item)).toBe('DES-79: Lesson fix');
+    item.fields.title = 'NIM-12: Lesson fix';
+    expect(getRecordDisplayTitle(item)).toBe('DES-79: Lesson fix');
+    item.system.origin.external.providerId = 'jira';
+    item.system.origin.external.externalId = 'APP-4';
+    expect(getRecordPullRequestTitle(item)).toBe('APP-4: Lesson fix');
+  });
+
+  it('keeps private numbers in the UI and excludes them from PR titles', () => {
+    const item = { ...makeRecord('task', 'open'), localKey:'NIM.4', fields:{title:'Short task'} };
+    expect(getRecordDisplayTitle(item)).toBe('NIM.4: Short task');
+    expect(getRecordPullRequestTitle(item)).toBeUndefined();
+    expect(formatTicketTitle('NIM.4 Short task','NIM.4')).toBe('NIM.4: Short task');
+    expect(formatTicketTitle('DES-790 another task','DES-79')).toBe('DES-79: DES-790 another task');
+    expect(getRecordDisplayTitle({ ...item, localKey:undefined })).toBe('Short task');
+  });
+});
 
 describe('orderKanbanColumns (pure ordering helper)', () => {
   it('uses the schema option order as authoritative', () => {

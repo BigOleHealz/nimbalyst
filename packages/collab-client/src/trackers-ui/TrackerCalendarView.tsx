@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { calendarMonthDays, localCalendarDay, taskCalendarDay, taskCalendarEntries, type TaskCalendarEntry, type TrackerRecord } from '@nimbalyst/tracker-core';
 import './TrackerCalendarView.css';
+import { getRecordDisplayTitle } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
 
 interface TrackerCalendarViewProps {
   items: readonly TrackerRecord[];
@@ -43,11 +44,11 @@ export function TrackerCalendarView({ items, onItemSelect, selectedItemId }: Tra
   const entryButton = (entry: TaskCalendarEntry, compact = false) => (
     <button key={entry.key} type="button"
       className={`task-calendar-entry task-calendar-entry-${entry.kind}${selectedItemId === entry.item.id ? ' is-selected' : ''}`}
-      title={`${entry.kind.toUpperCase()} ${entry.date}: ${entry.item.fields.title}`}
+      title={`${entry.kind.toUpperCase()} ${entry.date}: ${getRecordDisplayTitle(entry.item)}`}
       onClick={() => onItemSelect?.(entry.item.id)}>
       <strong>{entry.kind.toUpperCase()}</strong>{' '}
       {!compact && <span>{entry.date}{entry.date < today && entry.kind === 'by' ? ' · Overdue' : ''} · </span>}
-      {String(entry.item.fields.title || 'Untitled task')}
+      {getRecordDisplayTitle(entry.item) || 'Untitled task'}
     </button>
   );
 
@@ -84,7 +85,7 @@ export function TrackerCalendarView({ items, onItemSelect, selectedItemId }: Tra
           <div className="task-calendar-agenda-items">{agenda.length ? agenda.map(entry => entryButton(entry)) : <p className="select-text text-xs text-nim-muted">No dated tasks for this day in the current view.</p>}</div>
           {undated.length > 0 && <div className="mt-3">
             <button type="button" className="task-calendar-control text-xs" aria-expanded={showUndated} onClick={() => setShowUndated(value => !value)}>{undated.length} task{undated.length === 1 ? '' : 's'} with no date</button>
-            {showUndated && undated.map(item => <button type="button" key={item.id} className="task-calendar-undated block w-full px-2 py-1 text-left text-xs hover:bg-nim-hover" onClick={() => onItemSelect?.(item.id)}>{String(item.fields.title || 'Untitled task')}</button>)}
+            {showUndated && undated.map(item => <button type="button" key={item.id} className="task-calendar-undated block w-full px-2 py-1 text-left text-xs hover:bg-nim-hover" onClick={() => onItemSelect?.(item.id)}>{getRecordDisplayTitle(item) || 'Untitled task'}</button>)}
           </div>}
         </div>
       </div>

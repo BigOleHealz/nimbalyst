@@ -268,6 +268,16 @@ describe('buildGridColumns', () => {
     expect(cellText([{ itemId: 'rel_2', title: 'Release 1.4' }])).toEqual(['Release 1.4']);
   });
 
+  it('prefixes the displayed title without adding the key to its editable value', () => {
+    registerType();
+    const [column]=buildGridColumns(columnsFor(['title']),{trackerType:gridType,isRowEditable:()=>true});
+    const [source]=buildGridSource([record('1',{title:'Short title'})],columnsFor(['title']));
+    const h=(tag:string,props:Record<string,unknown>,children:unknown)=>({tag,props,children});
+    const cell=(column.cellTemplate as any)(h,{model:source});
+    expect(cell.children).toBe('GCS-1: Short title');
+    expect(source.title).toBe('Short title');
+  });
+
   /**
    * A value is one pill because it is one value, not because it happens to
    * contain no comma: joining the resolved titles and re-splitting them on

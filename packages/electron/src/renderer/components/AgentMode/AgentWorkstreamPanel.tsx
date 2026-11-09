@@ -16,9 +16,9 @@
  * Clicking a file in any session's sidebar opens it in the workstream editor tabs.
  */
 
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState, useImperativeHandle, type KeyboardEvent } from 'react';
+import React, { useMemo, useCallback, useEffect, useLayoutEffect, useRef, useState, useImperativeHandle, type KeyboardEvent } from 'react';
 import { getWorktreeNameFromPath } from '../../utils/pathUtils';
-import { useAtom, useAtomValue, useSetAtom } from 'jotai';
+import { atom, useAtom, useAtomValue, useSetAtom } from 'jotai';
 import {
   useFloating,
   offset,
@@ -870,6 +870,8 @@ export const AgentWorkstreamPanel = React.memo(React.forwardRef<AgentWorkstreamP
   const chatTargetId = activeSessionId || (workstreamType === 'session' ? workstreamId : null);
   const chatTargetSession = useAtomValue(sessionStoreAtom(chatTargetId || '__no_chat_target__'));
   const chatTargetTitle = chatTargetSession?.title || 'Session';
+  const remoteHostId = useAtomValue(useMemo(() => atom(get => get(sessionRegistryAtom).get(chatTargetId || '')?.remoteHostDeviceId), [chatTargetId]));
+  const isRemoteSession = !!remoteHostId || !!chatTargetSession?.metadata?.remoteHostDeviceId;
   const chatSessionId = chatTargetId ? sessionChatSessionIds[chatTargetId] ?? null : null;
   const [chatCreationError, setChatCreationError] = useState<string | null>(null);
   const [chatCreationAttempt, setChatCreationAttempt] = useState(0);
@@ -1626,7 +1628,11 @@ export const AgentWorkstreamPanel = React.memo(React.forwardRef<AgentWorkstreamP
             collapseTranscript={collapseTranscript}
           />
         }
-        sidebar={sidebarVisible ? <>
+        sidebar={sidebarVisible ? isRemoteSession ? (
+          <div className="remote-session-files-notice p-4 text-sm text-[var(--nim-text-muted)]">
+            Files and Git operations for this session are in the remote workspace. Use the remote agent or your Coder editor to inspect changes and commit them.
+          </div>
+        ) : <>
           {rightPanelMode === 'edited-files' && (
             <FilesEditedSidebar
               workstreamId={workstreamId}

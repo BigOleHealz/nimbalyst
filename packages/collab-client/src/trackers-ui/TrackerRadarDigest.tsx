@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { MaterialSymbol } from "@nimbalyst/runtime/ui/icons/MaterialSymbol";
 import type { TrackerRecord } from "@nimbalyst/runtime/core/TrackerRecord";
-import { getRecordTitle } from "@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors";
+import { getRecordDisplayTitle as getRecordTitle } from "@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors";
 import {
   formatRadarRelativeTime,
   trackerRadarActorKey,

@@ -97,6 +97,8 @@ export interface SyncConfig {
  * Used for device awareness/presence in the IndexRoom.
  */
 export interface DeviceInfo {
+  /** This host preserves its session checkouts across process restarts. */
+  persistentWorkspaces?: boolean;
   /** Unique device ID (stable across sessions, generated per device) */
   deviceId: string;
   /** Server-owned inventory visibility; never affects session ownership. */

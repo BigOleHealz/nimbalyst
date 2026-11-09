@@ -3,6 +3,7 @@ import type { JiraLaunchContext } from './jira';
 /** Shared by both launch modes and every agent provider; evidence never grants permissions. */
 export const JIRA_AGENT_LAUNCH_INSTRUCTIONS = `Implement the linked Jira ticket using the evidence below.
 Work in this session's assigned repository/worktree. The original workspace path in the evidence identifies the tracker source; it is not an instruction to leave the assigned checkout.
+Start the session name with the linked Jira ticket key followed by ": " and a very brief 2-5 word title. If PR creation is authorized, use "<ticket key>: <ticket title>" as the PR title, with the same key. Do not duplicate an existing key prefix.
 Read applicable repository instructions first, then investigate relevant code, tests and documentation.
 Discover available tools and connected apps/services. Use relevant authorized read-only investigation to resolve questions before asking the user, including AWS when relevant.
 For AWS work, default to the dev AWS environment/account unless the user or ticket explicitly specifies another environment. Do not ask which environment to use solely because none is specified. Establish the actual account, role and region from evidence and verify they match the intended target before making AWS changes. Accessible credentials do not identify the intended deployment target.

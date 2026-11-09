@@ -553,6 +553,9 @@ export type { OnboardingConfig } from '../../shared/types/workspace';
 export type AgentFileScopeMode = 'current-changes' | 'session-files' | 'all-changes';
 
 export interface WorkspaceState {
+  /** Empty means this desktop; nonempty routing must never silently fall back locally. */
+  executionMachineId?: string;
+  remoteSessionTrackerLinks?: Record<string, string[]>;
   /** Local, restart-safe linked-agent waits; never synced to another device. */
   trackerDependencyWaits?: import('../services/TrackerDependencyResumeService').DependencyWaits;
   /** Local daily task reminder preferences and restart-safe delivery ledger. */
@@ -983,6 +986,7 @@ function deepMerge<T extends Record<string, any>>(target: T, source: any): T {
  */
 function createDefaultWorkspaceState(workspacePath: string): WorkspaceState {
   return {
+    executionMachineId: "",
     trackerDependencyWaits: {},
     workspacePath,
     attachedFolders: [],

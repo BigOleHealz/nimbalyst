@@ -211,3 +211,17 @@ it('keeps desktop history readable after its presence record expires and invento
   expect((await f.mirror.hosts('/repo')).map(d => d.deviceId)).toEqual(['retired-desktop']);
   await expect(f.mirror.assertLocalExecution('remote')).rejects.toThrow('host');
 });
+
+
+it('preserves Codex provider selection when dispatching to Coder', async () => {
+  const f = fixture(); let answer: ((response: any) => void) | undefined;
+  const sendCreateSessionRequest = vi.fn(async (request: any) => {answer?.({requestId: request.requestId, success: true, sessionId: 'coder-session'});});
+  Object.assign(f.provider, {onCreateSessionResponse: (cb: any) => {answer = cb; return () => {};}, sendCreateSessionRequest});
+  await expect(f.mirror.create('/repo', 'sandbox-1', {model: 'openai-codex:gpt-6.1-sol'})).resolves.toBe('coder-session');
+  expect(sendCreateSessionRequest).toHaveBeenCalledWith(expect.objectContaining({targetDeviceId: 'sandbox-1', provider: 'openai-codex', model: 'openai-codex:gpt-6.1-sol'}));
+});
+
+it('allows a durable Coder session to continue after the runner process restarts', async () => {
+  const f = fixture(); f.provider.getConnectedDevices.mockReturnValue([{deviceId:'sandbox-1', type:'headless', isOnline:true, connectedAt:500, persistentWorkspaces:true}] as any);
+  await expect(f.mirror.queue('remote', '/repo', 'continue')).resolves.toHaveProperty('promptId');
+});

@@ -45,6 +45,7 @@ describe('buildTrackerLaunchContext', () => {
       trackerLinkId: 'feature_1624',
       draftInput: [
         'implement tracker item NIM-1624: Launch a Worktree from a Tracker',
+        'Keep the session name very brief (2-5 words after the ticket ID) and start it with NIM-1624: . If you create a pull request, use this exact title: \"NIM-1624: Launch a Worktree from a Tracker\". This naming rule does not authorize creating or editing a PR.',
         'type: feature, status: in-progress, priority: high',
         '',
         'Create an isolated session with the tracker context pre-filled.',

@@ -6,7 +6,7 @@ import type { TrackerIdentity } from "@nimbalyst/runtime/core/DocumentService";
 import type { TrackerRecord } from "@nimbalyst/runtime/core/TrackerRecord";
 import {
   getRecordStatus,
-  getRecordTitle,
+  getRecordDisplayTitle as getRecordTitle,
 } from "@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors";
 import {
   buildTrackerRadar,

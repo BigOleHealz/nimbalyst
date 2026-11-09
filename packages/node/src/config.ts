@@ -101,6 +101,7 @@ export interface NodeSyncConfig {
   deviceId: string;
   /** Human-readable name shown in the desktop's device list. */
   deviceName?: string;
+  persistentWorkspaces?: boolean;
 }
 
 export interface LoadedConfig extends NodeConfig {

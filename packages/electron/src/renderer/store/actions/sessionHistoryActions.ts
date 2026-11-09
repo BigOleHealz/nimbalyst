@@ -354,6 +354,8 @@ export const branchSessionActionAtom = atom(null, async (get, set, sessionId: st
 
 /** Use the existing worktree service when the selected local folder is a Git repository. */
 export async function createDefaultSessionWorktree(workspacePath: string, sourceFolderPath?: string) {
+  const routing = await window.electronAPI.invoke('workspace:get-state', workspacePath);
+  if (routing?.executionMachineId) return undefined;
   const git = await window.electronAPI.invoke('git:is-repo', sourceFolderPath ?? workspacePath);
   if (!git?.success || typeof git.isRepo !== 'boolean') {
     throw new Error(git?.error || 'Could not check whether this project is a Git repository.');
@@ -396,7 +398,7 @@ export const createNewSessionActionAtom = atom(
     const host = get(selectedMachineAtom(workspacePath));
     if (host) {
       try {
-      const id = await window.electronAPI.invoke('ai:createRemoteSession', workspacePath, host, {model: options.model ?? (model?.startsWith('claude-code:') ? model : undefined)});
+      const id = await window.electronAPI.invoke('ai:createRemoteSession', workspacePath, host, {model});
       if (options.initialDraft) await window.electronAPI.invoke('ai:saveRemoteDraft', id, workspacePath, {text: options.initialDraft, attachments: []});
       set(machineSessionSelectionsAtom(workspacePath), previous => ({...previous, [host]: id}));
       if (options.selectSession !== false) window.dispatchEvent(new CustomEvent('open-ai-session', {detail: {sessionId: id, workspacePath}}));

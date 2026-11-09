@@ -1,5 +1,6 @@
+import { clientSessionClass } from '@nimbalyst/runtime/core/clientSessionHighlight';
 import React, { useEffect, useId, useMemo, useRef } from 'react';
-import { getRecordTitle } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
+import { getRecordDisplayTitle as getRecordTitle } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
 import type { PlanRow } from './trackerPlan';
 import { buildTicketDag, connectedTicketIds, DAG_COLUMN_STRIDE, DAG_NODE_HEIGHT, DAG_NODE_WIDTH, ticketDagStatus } from './trackerDag';
 import { useTicketDagViewport } from './useTicketDagViewport';
@@ -77,10 +78,10 @@ export function TrackerDagView({ plan, visibleIds, selectedItemId, onItemSelect,
             const status = ticketDagStatus(row.item);
             const title = getRecordTitle(row.item);
             return <foreignObject key={node.id} x={node.x} y={node.y} width={DAG_NODE_WIDTH} height={DAG_NODE_HEIGHT} className="tracker-dag-node-container">
-              <button type="button" className={`tracker-dag-node ${selectedItemId === node.id ? 'tracker-dag-node-selected' : ''} ${selectedItemId && !connected.has(node.id) ? 'tracker-dag-node-muted' : ''}`} style={{ borderColor: status.color }} aria-label={`Open ticket ${title}, ${status.label}`} aria-pressed={selectedItemId === node.id} data-ticket-id={node.id} onClick={event => { pointerSelection.current = event.detail > 0 ? node.id : null; if (onItemClick) onItemClick(event, node.id); else onItemSelect(node.id); }} onContextMenu={event => onItemContextMenu?.(event, node.id)} onDoubleClick={event => onItemContextMenu?.(event, node.id)} onFocus={event => { if (event.currentTarget.matches(':focus-visible')) focus({ x: node.x, y: node.y, width: DAG_NODE_WIDTH, height: DAG_NODE_HEIGHT }); }}>
+              <button type="button" className={`${clientSessionClass(row.item)} tracker-dag-node ${selectedItemId === node.id ? 'tracker-dag-node-selected' : ''} ${selectedItemId && !connected.has(node.id) ? 'tracker-dag-node-muted' : ''}`} style={{ borderColor: status.color }} aria-label={`Open ticket ${title}, ${status.label}`} aria-pressed={selectedItemId === node.id} data-ticket-id={node.id} onClick={event => { pointerSelection.current = event.detail > 0 ? node.id : null; if (onItemClick) onItemClick(event, node.id); else onItemSelect(node.id); }} onContextMenu={event => onItemContextMenu?.(event, node.id)} onDoubleClick={event => onItemContextMenu?.(event, node.id)} onFocus={event => { if (event.currentTarget.matches(':focus-visible')) focus({ x: node.x, y: node.y, width: DAG_NODE_WIDTH, height: DAG_NODE_HEIGHT }); }}>
                 <span className="tracker-dag-node-top"><span style={{ color: status.color }}>{status.label}</span><span>{row.effectiveDue ? `${row.due === row.effectiveDue ? 'Due' : 'By'} ${dateLabel(row.effectiveDue)}` : 'Undated'}</span></span>
                 <span className="tracker-dag-node-title">{title}</span>
-                <span className={`tracker-dag-node-bottom ${row.held || row.conflict ? 'tracker-dag-node-attention' : ''}`}>{node.inCycle ? 'Dependency cycle' : row.held ? 'Needs attention' : row.ready ? 'Ready now' : row.childIds.length ? 'Parent closeout' : row.prerequisiteIds.length ? 'After prerequisites' : 'Scheduled'}{node.outsidePrerequisiteCount > 0 ? ` · ${node.outsidePrerequisiteCount} outside view` : ''}{row.conflict ? ' · date conflict' : ''}</span>
+                <span className={`tracker-dag-node-bottom ${row.held || row.conflict ? 'tracker-dag-node-attention' : ''}`}>{row.completed ? 'Completed' : node.inCycle ? 'Dependency cycle' : row.held ? 'Needs attention' : row.ready ? 'Ready now' : row.childIds.length ? 'Parent closeout' : row.prerequisiteIds.length ? 'After prerequisites' : 'Scheduled'}{node.outsidePrerequisiteCount > 0 ? ` · ${node.outsidePrerequisiteCount} outside view` : ''}{row.conflict ? ' · date conflict' : ''}</span>
               </button>
             </foreignObject>;
           })}

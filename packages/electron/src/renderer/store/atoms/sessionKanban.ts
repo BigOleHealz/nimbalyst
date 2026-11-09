@@ -14,7 +14,7 @@ import { trackerItemsMapAtom } from '@nimbalyst/runtime/plugins/TrackerPlugin/tr
 import { getRecordPrReferences } from '@nimbalyst/runtime/plugins/TrackerPlugin/prReferences';
 import { computeReadiness } from '@nimbalyst/runtime/plugins/TrackerPlugin/models/trackerReadiness';
 import { getRecordStatus } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
-import { prListAtom } from './pullRequests';
+import { prListAtom, prDeliveryEvidenceAtom, prRepositoryPathsAtom } from './pullRequests';
 import { worktreeRecordsAtom } from './worktrees';
 import { worktreeGitStatusAtom, sessionGitStatusAtom } from './sessionFiles';
 import { gitStatusAtom } from './gitOperations';
@@ -93,6 +93,14 @@ export function getCardType(meta: SessionMeta | undefined): KanbanCardType {
 
 const sessionHasActivityAtom = atomFamily((id: string) => atom(get => get(sessionLastActivityAtom(id)) > 0));
 
+function mergeCommitSha(raw: unknown): string | undefined {
+  if (typeof raw === 'string') {
+    try { raw = JSON.parse(raw); } catch { return undefined; }
+  }
+  return raw && typeof raw === 'object' && 'merge_commit_sha' in raw && typeof raw.merge_commit_sha === 'string'
+    ? raw.merge_commit_sha : undefined;
+}
+
 /** Use the full ticket corpus so hidden prerequisites still hold linked work. */
 const trackerBlockedSessionsAtom = atom(get => {
   const records = get(trackerItemsMapAtom);
@@ -126,10 +134,41 @@ function ownState(get: Getter, meta: SessionMeta): { column: SessionBoardColumn;
   if (!meta.isArchived && (get(sessionAwaitingApprovalAtom(meta.id)) || get(sessionHasPendingInteractivePromptAtom(meta.id)))) return { column: 'awaiting-input' };
   if (!meta.isArchived && get(sessionProcessingAtom(meta.id))) return { column: 'implementing' };
 
-  const workspaceGit = meta.workspaceId === get(activeWorkspacePathAtom) ? get(gitStatusAtom) : null;
+  const selectedGit = meta.workspaceId === get(activeWorkspacePathAtom) ? get(gitStatusAtom) : null;
   const worktreeGit = meta.worktreeId ? get(worktreeGitStatusAtom(meta.worktreeId)) : null;
+  const files = Object.values(get(sessionGitStatusAtom(meta.id)));
+  const ownedRepos = new Set(files.flatMap(file => file.repoPath ? [file.repoPath] : []));
+  const records = get(trackerItemsMapAtom);
+  const linked = (meta.linkedTrackerItemIds ?? []).flatMap(id => {
+    const record = records.get(id);
+    return record && (!record.system.workspace || record.system.workspace === meta.workspaceId) ? [record] : [];
+  });
+  const references = linked.flatMap(getRecordPrReferences);
+  // A remote squash delivery may have no local worktree. Match the exact
+  // recorded delivery commit against authoritative cached PR data, not status,
+  // phase, description prose, or the branch selected in another tab.
+  const deliveryCommits = new Set(linked.flatMap(record => typeof record.system.linkedCommitSha === 'string' ? [record.system.linkedCommitSha] : []));
+  const branch = meta.worktreeId ? get(worktreeRecordsAtom).get(meta.worktreeId)?.branch
+    : selectedGit && (selectedGit.repoPath === meta.workspaceId || (selectedGit.repoPath && ownedRepos.has(selectedGit.repoPath))) ? selectedGit.branch : undefined;
+  const cachedPrs = new Map([...get(prDeliveryEvidenceAtom), ...get(prListAtom)].map(pr => [`${pr.workspaceId}:${pr.remote.toLowerCase()}:${pr.number}`, pr]));
+  const prs = [...cachedPrs.values()].filter(pr => {
+    if (pr.workspaceId !== meta.workspaceId) return false;
+    const mergeSha = mergeCommitSha(pr.raw);
+    return (branch && pr.headRef === branch)
+      || references.some(ref => ref.remote === pr.remote.toLowerCase() && ref.number === pr.number)
+      || (pr.headSha && deliveryCommits.has(pr.headSha))
+      || (pr.state === 'merged' && typeof mergeSha === 'string' && deliveryCommits.has(mergeSha));
+  });
+  const workspaceGit = selectedGit && (
+    selectedGit.repoPath === meta.workspaceId
+    || (selectedGit.repoPath && ownedRepos.has(selectedGit.repoPath))
+    || (selectedGit.repoPath && prs.some(pr => pr.headRef === selectedGit.branch && get(prRepositoryPathsAtom).get(pr.remote.toLowerCase())?.includes(selectedGit.repoPath!)))
+    // Retain the legacy single-repo behavior until provenance is hydrated,
+    // but never let an unscoped tab override an explicit remote delivery.
+    || (!selectedGit.repoPath && !references.length && !deliveryCommits.size)
+  ) ? selectedGit : null;
   const dirty = meta.worktreeId ? worktreeGit?.hasUncommittedChanges ?? meta.uncommittedCount > 0
-    : Object.values(get(sessionGitStatusAtom(meta.id))).some(file => file.status !== 'unchanged') || meta.uncommittedCount > 0;
+    : files.length ? files.some(file => file.repoPath !== null && file.status !== 'unchanged') : meta.uncommittedCount > 0;
   if (dirty) return { column: 'git', gitStage: 'ready-for-commit' };
   // Worktree ahead counts compare with the base; only unpushedCommits compares with upstream.
   if (worktreeGit && ((worktreeGit.unpushedCommits ?? 0) > 0 || (worktreeGit.hasUpstream === false && worktreeGit.ahead > 0))) {
@@ -137,15 +176,6 @@ function ownState(get: Getter, meta: SessionMeta): { column: SessionBoardColumn;
   }
   if (!meta.worktreeId && workspaceGit && meta.hasStarted && workspaceGit.ahead > 0) return { column: 'git', gitStage: 'ready-for-push' };
 
-  const records = get(trackerItemsMapAtom);
-  const references = (meta.linkedTrackerItemIds ?? []).flatMap(id => {
-    const record = records.get(id);
-    return record ? getRecordPrReferences(record) : [];
-  });
-  const branch = meta.worktreeId ? get(worktreeRecordsAtom).get(meta.worktreeId)?.branch : workspaceGit?.branch;
-  const prs = get(prListAtom).filter(pr => pr.workspaceId === meta.workspaceId && (
-    (branch && pr.headRef === branch) || references.some(ref => ref.remote === pr.remote.toLowerCase() && ref.number === pr.number)
-  ));
   if (prs.some(pr => pr.state === 'open')) return { column: 'validating' };
   const latestPr = [...prs].sort((a, b) => (b.updatedAt - a.updatedAt) || b.number - a.number)[0];
   const allReferencesMerged = references.every(ref => prs.some(pr => pr.remote.toLowerCase() === ref.remote && pr.number === ref.number && pr.state === 'merged'));
@@ -191,7 +221,7 @@ export const sessionKanbanFilterAtom = atom<SessionKanbanFilter>({
   showComplete: true,
 });
 
-export type SessionKanbanActivityRange = 'hour' | 'day' | 'all';
+export type SessionKanbanActivityRange = 'hour' | '3-hours' | '12-hours' | 'day' | 'all';
 export const sessionKanbanActivityRangeAtom = atom<SessionKanbanActivityRange>('all');
 
 // Only mounted while a time filter is visible. Refresh on mount and every minute
@@ -206,7 +236,8 @@ sessionKanbanNowAtom.onMount = (setNow) => {
 const sessionKanbanRecentRootsAtom = atom(get => {
   const range = get(sessionKanbanActivityRangeAtom);
   if (range === 'all') return null;
-  const cutoff = (get(sessionKanbanNowAtom) || Date.now()) - (range === 'hour' ? 3_600_000 : 86_400_000);
+  const duration = { hour: 3_600_000, '3-hours': 10_800_000, '12-hours': 43_200_000, day: 86_400_000 }[range];
+  const cutoff = (get(sessionKanbanNowAtom) || Date.now()) - duration;
   const registry = get(sessionRegistryAtom);
   const recent = new Set<string>();
   for (const meta of registry.values()) {

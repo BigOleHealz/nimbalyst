@@ -10,6 +10,7 @@ import { sessionRegistryAtom, sessionProcessingAtom, sessionLastActivityAtom, se
 import { trackerItemsMapAtom } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerDataAtoms';
 import { trackerCompletionMetricsAtom } from '../../../store/atoms/completionMetrics';
 import { TrackerCompletionMetrics } from '../CompletionMetrics';
+import { sessionDisplayTitleAtom, sessionPullRequestTitleAtom } from '../../../store/atoms/sessionTicketTitle';
 import { worktreeRecordsAtom } from '../../../store/atoms/worktrees';
 import { worktreeGitStatusAtom } from '../../../store/atoms/sessionFiles';
 import { prListAtom } from '../../../store/atoms/pullRequests';
@@ -37,7 +38,39 @@ const dependencyTicket = (id: string, fields: Record<string, unknown> = {}, link
   fields: { title: id, status: 'to-do', ...fields },
 } as TrackerRecord);
 
-it('filters by rolling hour/day boundaries and restores all sessions while preserving search, tags and Done visibility', () => {
+it('prefixes linked agent titles reactively, including reverse and inherited links, and preserves raw names', () => {
+  const store = createStore();
+  const root = blockedTestSession('linked-root', {title:'Lesson fix', childCount:1});
+  const child = blockedTestSession('linked-child', {title:'Regression checks', parentSessionId:root.id});
+  const ticket = {...dependencyTicket('ticket', {}, [root.id]), issueKey:'DES-79'};
+  store.set(sessionRegistryAtom,new Map([root,child].map(session=>[session.id,session])));
+  store.set(trackerItemsMapAtom,new Map([[ticket.id,ticket]]));
+  render(<Provider store={store}><SessionKanbanBoard /></Provider>);
+  expect(screen.getByText('DES-79: Lesson fix').textContent).toBe('DES-79: Lesson fix');
+  expect(store.get(sessionDisplayTitleAtom(child.id))).toBe('DES-79: Regression checks');
+  expect(store.get(sessionPullRequestTitleAtom(root.id))).toBe('DES-79: ticket');
+  expect(store.get(sessionRegistryAtom).get(root.id)?.title).toBe('Lesson fix');
+  act(()=>store.set(trackerItemsMapAtom,new Map([[ticket.id,{...ticket,issueKey:'ENG-8'}]])));
+  expect(screen.getByText('ENG-8: Lesson fix').textContent).toBe('ENG-8: Lesson fix');
+  act(()=>store.set(trackerItemsMapAtom,new Map([[ticket.id,{...ticket,system:{...ticket.system,workspace:'/another-project'}}]])));
+  expect(screen.getByText('Lesson fix').textContent).toBe('Lesson fix');
+});
+
+it('uses a child ticket for its grouped root and keeps an explicit child ticket first', () => {
+  const store=createStore();
+  const parent=blockedTestSession('group',{title:'Short parent',childCount:1});
+  const child=blockedTestSession('child',{title:'Short child',parentSessionId:parent.id,linkedTrackerItemIds:['ticket']});
+  const ticket={...dependencyTicket('ticket'),issueKey:'DES-79'};
+  const parentTicket={...dependencyTicket('parent-ticket'),issueKey:'ENG-8'};
+  store.set(sessionRegistryAtom,new Map([parent,child].map(session=>[session.id,session])));
+  store.set(trackerItemsMapAtom,new Map([ticket,parentTicket].map(item=>[item.id,item])));
+  expect(store.get(sessionDisplayTitleAtom(parent.id))).toBe('DES-79: Short parent');
+  store.set(sessionRegistryAtom,new Map([[parent.id,{...parent,linkedTrackerItemIds:[parentTicket.id]}],[child.id,child]]));
+  expect(store.get(sessionDisplayTitleAtom(parent.id))).toBe('ENG-8: Short parent');
+  expect(store.get(sessionDisplayTitleAtom(child.id))).toBe('DES-79: Short child');
+});
+
+it('filters by rolling hour/12-hour/day boundaries and restores all sessions while preserving search, tags and Done visibility', () => {
   vi.useFakeTimers();
   const now = Date.now();
   const hour = 3_600_000;
@@ -46,6 +79,8 @@ it('filters by rolling hour/day boundaries and restores all sessions while prese
     blockedTestSession('recent', { updatedAt: now - 1000, tags: ['focus'] }),
     blockedTestSession('hour-boundary', { updatedAt: now - hour }),
     blockedTestSession('past-hour', { updatedAt: now - hour - 1 }),
+    blockedTestSession('half-day-boundary', { updatedAt: now - 12 * hour }),
+    blockedTestSession('past-half-day', { updatedAt: now - 12 * hour - 1 }),
     blockedTestSession('day-boundary', { updatedAt: now - 24 * hour }),
     blockedTestSession('older', { updatedAt: now - 24 * hour - 1 }),
     blockedTestSession('archived', { updatedAt: now, isArchived: true }),
@@ -55,28 +90,54 @@ it('filters by rolling hour/day boundaries and restores all sessions while prese
   const ids = () => screen.queryAllByTestId('session-kanban-card').map(card => card.dataset.sessionId).sort();
   const choose = (name: string) => fireEvent.click(screen.getByRole('radio', { name }));
   expect((screen.getByRole('radio', { name: 'All sessions' }) as HTMLInputElement).checked).toBe(true);
-  expect(ids()).toEqual(['day-boundary', 'hour-boundary', 'older', 'past-hour', 'recent']);
+  expect(ids()).toEqual(['day-boundary', 'half-day-boundary', 'hour-boundary', 'older', 'past-half-day', 'past-hour', 'recent']);
   choose('Within the last hour');
   expect(ids()).toEqual(['hour-boundary', 'recent']);
   expect(store.get(sessionKanbanTotalCountAtom)).toBe(2);
+  choose('Within the last 12 hours');
+  expect(ids()).toEqual(['half-day-boundary', 'hour-boundary', 'past-hour', 'recent']);
+  expect(store.get(sessionKanbanTotalCountAtom)).toBe(4);
   choose('Within the last day');
-  expect(ids()).toEqual(['day-boundary', 'hour-boundary', 'past-hour', 'recent']);
+  expect(ids()).toEqual(['day-boundary', 'half-day-boundary', 'hour-boundary', 'past-half-day', 'past-hour', 'recent']);
   act(() => store.set(sessionKanbanFilterAtom, { search: 'recent', tags: ['focus'], showComplete: false }));
+  choose('Within the last 12 hours');
   expect(ids()).toEqual(['recent']);
   choose('All sessions');
   expect(ids()).toEqual(['recent']);
   expect(store.get(sessionKanbanFilterAtom)).toEqual({ search: 'recent', tags: ['focus'], showComplete: false });
   act(() => store.set(sessionKanbanFilterAtom, { search: '', tags: [], showComplete: true }));
-  expect(ids()).toEqual(['day-boundary', 'hour-boundary', 'older', 'past-hour', 'recent']);
+  expect(ids()).toEqual(['day-boundary', 'half-day-boundary', 'hour-boundary', 'older', 'past-half-day', 'past-hour', 'recent']);
 });
 
-it('reacts to live activity, includes nested child activity on grouped cards, and ages out quiet cards', () => {
+it('includes the exact three-hour boundary and excludes older activity', () => {
+  vi.useFakeTimers();
+  const now = Date.now();
+  const threeHours = 10_800_000;
+  const store = createStore();
+  const sessions = [
+    blockedTestSession('inside', { updatedAt: now - threeHours + 1 }),
+    blockedTestSession('boundary', { updatedAt: now - threeHours }),
+    blockedTestSession('outside', { updatedAt: now - threeHours - 1 }),
+  ];
+  store.set(sessionRegistryAtom, new Map(sessions.map(session => [session.id, session])));
+  render(<Provider store={store}><SessionKanbanBoard /></Provider>);
+  fireEvent.click(screen.getByRole('radio', { name: 'Within the last 3 hours' }));
+  expect(screen.queryAllByTestId('session-kanban-card').map(card => card.dataset.sessionId).sort()).toEqual(['boundary', 'inside']);
+  expect(store.get(sessionKanbanTotalCountAtom)).toBe(2);
+});
+
+it.each([
+  ['Within the last hour', 1],
+  ['Within the last 3 hours', 3],
+  ['Within the last 12 hours', 12],
+  ['Within the last day', 24],
+] as const)('%s reacts to live activity, includes nested child activity on grouped cards, and ages out quiet cards', (label, hours) => {
   vi.useFakeTimers();
   const now = Date.now();
   const hour = 3_600_000;
   const store = createStore();
   const sessions = [
-    blockedTestSession('quiet', { updatedAt: now - hour + 30_000 }),
+    blockedTestSession('quiet', { updatedAt: now - hours * hour + 30_000 }),
     blockedTestSession('live', { updatedAt: now - 48 * hour }),
     blockedTestSession('group', { sessionType: 'workstream', childCount: 1, updatedAt: now - 48 * hour }),
     blockedTestSession('child', { parentSessionId: 'group', childCount: 1, updatedAt: now - 48 * hour }),
@@ -88,7 +149,7 @@ it('reacts to live activity, includes nested child activity on grouped cards, an
   store.set(sessionLastActivityAtom('live'), now);
   render(<Provider store={store}><SessionKanbanBoard /></Provider>);
   const ids = () => screen.queryAllByTestId('session-kanban-card').map(card => card.dataset.sessionId).sort();
-  fireEvent.click(screen.getByRole('radio', { name: 'Within the last hour' }));
+  fireEvent.click(screen.getByRole('radio', { name: label }));
   expect(ids()).toEqual(['live', 'quiet']);
   act(() => store.set(sessionLastActivityAtom('nested'), now));
   expect(ids()).toEqual(['group', 'live', 'quiet']);
@@ -98,7 +159,7 @@ it('reacts to live activity, includes nested child activity on grouped cards, an
   expect(ids()).toEqual(['group', 'live', 'quiet']);
   fireEvent.click(screen.getByRole('radio', { name: 'All sessions' }));
   act(() => vi.advanceTimersByTime(48 * hour));
-  fireEvent.click(screen.getByRole('radio', { name: 'Within the last hour' }));
+  fireEvent.click(screen.getByRole('radio', { name: label }));
   expect(ids()).toEqual([]);
   expect(store.get(sessionKanbanTotalCountAtom)).toBe(0);
 });

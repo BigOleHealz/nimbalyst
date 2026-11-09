@@ -26,7 +26,7 @@ import { trackerItemsByTypeAtom, trackerDataLoadedAtom } from '@nimbalyst/runtim
 import {
   getRecordPriority,
   getRecordStatus,
-  getRecordTitle,
+  getRecordDisplayTitle as getRecordTitle,
   getFieldByRole,
   resolveRoleFieldName,
 } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';

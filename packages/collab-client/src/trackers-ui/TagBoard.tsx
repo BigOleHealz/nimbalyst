@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { MaterialSymbol } from '@nimbalyst/runtime/ui/icons/MaterialSymbol';
 import type { TrackerRecord } from '@nimbalyst/runtime/core/TrackerRecord';
 import {
-  getRecordTitle,
+  getRecordDisplayTitle as getRecordTitle,
   getRecordPriority,
   getFieldByRole,
 } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';

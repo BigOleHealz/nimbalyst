@@ -15,6 +15,27 @@ export function record(id: string, fields: Record<string, unknown> = {}, archive
 }
 
 describe('ticket planning', () => {
+  it('retains completed tickets and their graph links without making them actionable or blocking parent closeout', () => {
+    const items = [
+      record('done', { status: 'done', parentTask: ref('parent'), dueDate: '2020-01-01' }),
+      record('parent'), record('next', { dependsOn: [ref('done')] }),
+      record('inverse done', { status: 'done', blocks: [ref('inverse next')] }), record('inverse next'),
+      record('archived done', { status: 'done' }, true), record('cancelled', { status: 'cancelled' }),
+    ];
+    const rows = buildTrackerPlan(items);
+    expect(rows.find(row => row.item.id === 'done')).toMatchObject({ completed: true, ready: false, held: false, conflict: false });
+    expect(rows.find(row => row.item.id === 'parent')).toMatchObject({ ready: true, childIds: ['done'] });
+    expect(rows.find(row => row.item.id === 'next')).toMatchObject({ ready: true, prerequisiteIds: ['done'] });
+    expect(rows.some(row => row.item.id === 'archived done' || row.item.id === 'cancelled')).toBe(false);
+    const dag = buildTicketDag(rows, new Set(rows.map(row => row.item.id)));
+    expect(dag.edges).toEqual(expect.arrayContaining([
+      expect.objectContaining({ source: 'done', target: 'parent', kind: 'subtask' }),
+      expect.objectContaining({ source: 'done', target: 'next', kind: 'dependency' }),
+      expect.objectContaining({ source: 'inverse done', target: 'inverse next', kind: 'dependency' }),
+    ]));
+    expect(items[0].fields.status).toBe('done');
+  });
+
   it('orders prerequisites and children before parent closeout, propagating urgent deadlines backwards', () => {
     const rows = buildTrackerPlan([
       record('parent', { dueDate: '2026-11-06' }),

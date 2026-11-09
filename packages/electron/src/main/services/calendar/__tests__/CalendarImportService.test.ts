@@ -27,6 +27,38 @@ it('returns event snapshots and client presence without returning credentials', 
   expect(snapshot.clients.google).toEqual({ clientId: 'test.apps.googleusercontent.com', hasClientSecret: true });
 });
 
+it('appends private meeting notes idempotently and preserves them across imports and reloads', async () => {
+  const input = { accountId: 'account', calendarId: 'work', eventId: 'meeting', text: 'Discuss the launch plan', clientMutationId: 'note-1' };
+  await service.addNote(input);
+  await service.addNote(input);
+  await service.addNote({ ...input, text: 'Ask about owners', clientMutationId: 'note-2' });
+  await service.importEvents('account', ['work'], range);
+  const reloaded = new CalendarImportService({ read: () => structuredClone(data), write: next => { data = structuredClone(next); } }, client, oauth);
+  expect(reloaded.snapshot().connections[0].events[0].notes?.map(note => note.text)).toEqual(['Discuss the launch plan', 'Ask about owners']);
+  expect(client.events).toHaveBeenCalledTimes(1);
+  expect(data.accounts[0].events[0].description).toBeUndefined();
+  client.events.mockResolvedValueOnce([]);
+  await service.importEvents('account', ['work'], range);
+  await service.importEvents('account', ['work'], range);
+  expect(service.snapshot().connections[0].events[0].notes).toHaveLength(2);
+});
+
+it('rejects missing meetings, empty notes, and conflicting retry IDs without changing notes', async () => {
+  const input = { accountId: 'account', calendarId: 'work', eventId: 'meeting', text: 'Preparation', clientMutationId: 'note-1' };
+  await expect(service.addNote({ ...input, eventId: 'missing' })).rejects.toThrow('no longer available');
+  await expect(service.addNote({ ...input, text: '  ' })).rejects.toThrow('note');
+  await service.addNote(input);
+  await expect(service.addNote({ ...input, text: 'Different text' })).rejects.toThrow('already used');
+  expect(service.snapshot().connections[0].events[0].notes).toHaveLength(1);
+});
+
+it('isolates meeting notes by account, calendar, and recurring occurrence', async () => {
+  data.accounts[0].events.push({ ...event, calendarId: 'personal' }, { ...event, id: 'next-occurrence' });
+  data.accounts.push({ ...structuredClone(data.accounts[0]), id: 'other' });
+  await service.addNote({ accountId: 'account', calendarId: 'work', eventId: 'meeting', text: 'Only this occurrence', clientMutationId: 'note-1' });
+  expect(service.snapshot().connections.flatMap(account => account.events.map(event => event.notes?.length ?? 0))).toEqual([1, 0, 0, 0, 0, 0]);
+});
+
 it('replaces a successful snapshot so repeat imports do not duplicate events and cancellations disappear', async () => {
   await service.importEvents('account', ['work', 'work'], range);
   expect(data.accounts[0].events).toHaveLength(1);
@@ -59,6 +91,7 @@ it('refreshes once after a 401 and rejects concurrent writes', async () => {
   const importing = service.importEvents('account', ['work'], range);
   await vi.waitFor(() => expect(client.events).toHaveBeenCalled());
   await expect(service.disconnect('account')).rejects.toThrow('already running');
+  await expect(service.addNote({ accountId: 'account', calendarId: 'work', eventId: 'meeting', text: 'Wait for refresh', clientMutationId: 'busy-note' })).rejects.toThrow('already running');
   finish([event]);
   await importing;
   expect(oauth.refresh).toHaveBeenCalledTimes(1);
@@ -82,9 +115,10 @@ it('reconnecting the same account preserves its agenda and avoids a duplicate co
   const first = await service.connect(input);
   const firstId = first.connections.find(account => account.id !== 'account')!.id;
   await service.importEvents(firstId, ['work'], range);
+  await service.addNote({ accountId: firstId, calendarId: 'work', eventId: 'meeting', text: 'Keep through reconnect', clientMutationId: 'reconnect-note' });
   const second = await service.connect(input);
   expect(second.connections).toHaveLength(2);
-  expect(second.connections.find(account => account.id === firstId)!.events).toEqual([event]);
+  expect(second.connections.find(account => account.id === firstId)!.events).toEqual([{ ...event, notes: [{ id: 'reconnect-note', text: 'Keep through reconnect', createdAt: expect.any(String) }] }]);
 });
 
 it('canceling while account metadata loads prevents a late connection from being saved', async () => {

@@ -42,7 +42,9 @@ export class RemoteSessionMirror {
     encryptAttachments?(attachments: ChatAttachment[], workspace: string, key: CryptoKey): Promise<import("@nimbalyst/runtime/sync/types").EncryptedAttachment[]>;
     localSessionIds(workspace: string): Promise<Set<string>>;
     configuredHostIds?(): Set<string>;
+    linkedTrackerItemIds?(workspace: string, sessionId: string): string[] | undefined;
     hasLocalSession(id: string): Promise<boolean>;
+    assertLocalProjectExecution?(id: string): Promise<void>;
     listChanged(workspacePath: string, sessionId: string): void;
   }) {}
 
@@ -96,6 +98,7 @@ export class RemoteSessionMirror {
     return this.isRemoteHost(this.provider?.getCachedIndexEntry?.(sessionId)?.hostDeviceId ?? this.entries.get(sessionId)?.hostDeviceId);
   }
   async assertLocalExecution(sessionId: string): Promise<void> {
+    await this.deps.assertLocalProjectExecution?.(sessionId);
     if (this.isRemote(sessionId) && !await this.deps.hasLocalSession(sessionId)) {
       throw new Error('Use the sandbox controls to send this prompt to its host.');
     }
@@ -150,6 +153,7 @@ export class RemoteSessionMirror {
         createdBySessionId: entry.createdBySessionId ?? null,
         messageCount: entry.messageCount, isArchived: !!entry.isArchived, isPinned: !!entry.isPinned,
         remoteHostDeviceId: entry.hostDeviceId,
+        linkedTrackerItemIds: this.deps.linkedTrackerItemIds?.(workspacePath, entry.sessionId),
       });
     }
     return [...local, ...remote].sort((a, b) => b.updatedAt - a.updatedAt);
@@ -174,6 +178,11 @@ export class RemoteSessionMirror {
       metadata: { remoteHostDeviceId: entry.hostDeviceId },
     };
   }
+  async workspaceForSession(id: string): Promise<string | undefined> {
+    await this.refresh();
+    const entry = this.entries.get(id);
+    return entry && this.isRemoteHost(entry.hostDeviceId) && !await this.deps.hasLocalSession(id) ? entry.projectId : undefined;
+  }
   async get(id: string, workspace: string): Promise<SessionData | null> {
     if (await this.deps.hasLocalSession(id)) return null;
     try { await this.refresh(); } catch { return null; }
@@ -189,7 +198,7 @@ export class RemoteSessionMirror {
     const host = this.provider?.getConnectedDevices?.().find(device => device.deviceId === entry.hostDeviceId);
     // Headless connectedAt is fixed at process startup, including across token
     // refresh/socket reconnects. A new process cannot resume ephemeral sessions.
-    if (host?.type === 'headless' && Number.isFinite(host.connectedAt) && host.connectedAt > entry.createdAt) {
+    if (host?.type === 'headless' && !host.persistentWorkspaces && Number.isFinite(host.connectedAt) && host.connectedAt > entry.createdAt) {
       return 'The sandbox restarted after this session began. Its transcript is available, but start a new sandbox session to continue working.';
     }
     return undefined;
@@ -352,7 +361,7 @@ export class RemoteSessionMirror {
     const provider = this.provider;
     const device = provider?.getConnectedDevices?.().find(device => device.deviceId === host && device.isOnline !== false);
     if (!device || !this.isRemoteHost(host) || !provider?.sendCreateSessionRequest || !provider.onCreateSessionResponse) throw new Error('The selected machine is offline.');
-    if (options.worktree) throw new Error('This remote host does not support creating worktrees yet.');
+    if (options.worktree && !device.persistentWorkspaces) throw new Error('This remote host does not support creating worktrees yet.');
     if (options.parentSessionId && (await this.requireEntry(options.parentSessionId, workspace)).hostDeviceId !== host) throw new Error("The parent session belongs to another machine.");
     if (provider !== this.provider) throw new Error('Session sync changed.');
     const initialPrompt = options.prompt && this.deps.preparePrompt ? await this.deps.preparePrompt(options.prompt, workspace) : options.prompt;
@@ -367,7 +376,7 @@ export class RemoteSessionMirror {
         if (response.success && response.sessionId) { this.refreshedAt = 0; resolve(response.sessionId); }
         else reject(new Error(response.error || 'The remote session could not be created.'));
       });
-      void provider.sendCreateSessionRequest!({requestId, projectId: workspace, targetDeviceId: host, provider: 'claude-code', model: options.model, parentSessionId: options.parentSessionId, initialPrompt, timestamp: Date.now()})
+      void provider.sendCreateSessionRequest!({requestId, projectId: workspace, targetDeviceId: host, provider: options.model?.startsWith('openai-codex:') ? 'openai-codex' : 'claude-code', model: options.model, parentSessionId: options.parentSessionId, initialPrompt, timestamp: Date.now()})
         .catch(error => { clearTimeout(timer); off(); reject(error); });
     });
   }

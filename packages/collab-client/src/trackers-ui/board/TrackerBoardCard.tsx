@@ -1,3 +1,4 @@
+import { clientSessionClass } from '@nimbalyst/runtime/core/clientSessionHighlight';
 /**
  * One card on the tracker board.
  *
@@ -22,7 +23,7 @@ import {
   getFieldByRole,
   getRecordExternalKey,
   getRecordPriority,
-  getRecordTitle,
+  getRecordDisplayTitle as getRecordTitle,
 } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
 import { UserAvatar } from '@nimbalyst/runtime/plugins/TrackerPlugin/components/UserAvatar';
 import { TrackerSwatchBadge } from '../primitives/TrackerSwatchBadge';
@@ -104,7 +105,7 @@ export const TrackerBoardCard: React.FC<TrackerBoardCardProps> = ({
       draggable={draggable}
       onDragStart={onDragStart ? (event) => onDragStart(event, item, columnKey) : undefined}
       onDragEnd={onDragEnd}
-      className={`tracker-kanban-card w-full text-left p-2.5 rounded-md bg-nim hover:bg-nim-tertiary border transition-colors mb-1.5 ${
+      className={`${clientSessionClass(item)} tracker-kanban-card w-full text-left p-2.5 rounded-md bg-nim hover:bg-nim-tertiary border transition-colors mb-1.5 ${
         draggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
       } ${dragging ? 'opacity-40' : ''} ${
         selected || highlighted ? 'border-[var(--nim-primary)]' : 'border-nim'

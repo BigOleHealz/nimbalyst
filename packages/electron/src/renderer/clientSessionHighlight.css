@@ -1,0 +1,10 @@
+.tracker-client-session.tracker-client-session {
+  background: color-mix(in srgb, #3b82f6 17%, var(--nim-bg)) !important;
+  box-shadow: inset 3px 0 0 #3b82f6;
+}
+.tracker-client-session.tracker-client-session:hover {
+  background: color-mix(in srgb, #3b82f6 25%, var(--nim-bg)) !important;
+}
+.tracker-client-session.rgRow .rgCell {
+  background: transparent !important;
+}

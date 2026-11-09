@@ -29,6 +29,7 @@
  */
 
 import { ClaudeCodeProvider } from '@nimbalyst/runtime/ai/server/providers/ClaudeCodeProvider';
+import { OpenAICodexProvider } from '@nimbalyst/runtime/ai/server/providers/OpenAICodexProvider';
 import { resolveClaudeBinary } from './nodeHost.js';
 
 export interface ClaudeCodeHostOptions {
@@ -52,6 +53,9 @@ export function registerClaudeCodeDeps(options: ClaudeCodeHostOptions): void {
   const binaryPath = options.claudeCodePath ?? resolveClaudeBinary();
   ClaudeCodeProvider.setCustomClaudeCodePathLoader(binaryPath ? () => binaryPath : null);
   ClaudeCodeProvider.setMCPConfigLoader(async () => options.mcpServers ?? {});
+  OpenAICodexProvider.setMCPConfigLoader(async () => options.mcpServers as any ?? {});
+  OpenAICodexProvider.setPermissionPatternSaver(async () => {});
+  OpenAICodexProvider.setPermissionPatternChecker(async () => false);
 
   // Configuration validation requires an explicit noninteractive execution policy.
   ClaudeCodeProvider.setTrustChecker(() => ({

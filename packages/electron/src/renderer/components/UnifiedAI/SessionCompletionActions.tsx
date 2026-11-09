@@ -4,6 +4,7 @@ import { buildCommitPrompt, type CommitContext } from '@nimbalyst/runtime/ui/Age
 import { sessionDismissedCompletionAtom, sessionSuccessfulCompletionAtom } from '../../store/atoms/sessionCompletionActions';
 import { sessionGitStatusAtom, worktreeChangedFilesAtom } from '../../store/atoms/sessionFiles';
 import { isClaudeCliTerminalSession } from './claudeCliInputRouting';
+import { sessionPullRequestTitleAtom } from '../../store/atoms/sessionTicketTitle';
 
 const ACTIONS = [
   { id: 'commit', label: 'Commit', instruction: 'Commit only. Do not push or open a pull request.' },
@@ -22,6 +23,7 @@ interface Props {
 
 export function SessionCompletionActions({ sessionId, workspacePath, worktreePath, worktreeId, provider, available }: Props) {
   const completion = useAtomValue(sessionSuccessfulCompletionAtom(sessionId));
+  const pullRequestTitle = useAtomValue(sessionPullRequestTitleAtom(sessionId));
   const gitStatus = useAtomValue(sessionGitStatusAtom(sessionId));
   const worktreeFiles = useAtomValue(worktreeChangedFilesAtom(worktreeId ?? ''));
   const [context, setContext] = useState<CommitContext | null>(null);
@@ -69,6 +71,7 @@ export function SessionCompletionActions({ sessionId, workspacePath, worktreePat
       }
       const message = buildCommitPrompt({ commitContext: fresh, isInWorktree: !!worktreeId }) +
         '\n\nThe user selected: ' + action.label + '. ' + action.instruction +
+        (action.id === 'pr' && pullRequestTitle ? '\nUse this exact pull request title: ' + JSON.stringify(pullRequestTitle) + '.' : '') +
         '\nFollow this repository\'s Git instructions. Continue with push or PR creation only after a successful commit; if approval is cancelled or the commit fails, stop. Report any repository policy or Git error that prevents the requested action.';
       const docContext = { mode: 'agent', inputType: 'user' as const };
       if (isClaudeCliTerminalSession(provider)) {

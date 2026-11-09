@@ -14,6 +14,8 @@ import { atomFamily } from '../debug/atomFamilyRegistry';
 import { activeWorkspacePathAtom } from './openProjects';
 
 export interface GitStatus {
+  /** Repository this snapshot describes, independent of the active workspace/tab. */
+  repoPath?: string;
   branch: string;
   ahead: number;
   behind: number;

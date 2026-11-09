@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { TrackerRecord } from '@nimbalyst/runtime/core/TrackerRecord';
 import { resolveColumnsForType } from '@nimbalyst/runtime/plugins/TrackerPlugin/components/trackerColumns';
 import { globalRegistry, type TrackerDataModel } from '@nimbalyst/tracker-schema';
-import { buildGridSource, ROW_ITEM_ID, ROW_ITEM_TYPE } from '../trackerGridColumns';
+import { buildGridSource, ROW_ITEM_ID, ROW_ITEM_TYPE, ROW_TICKET_KEY } from '../trackerGridColumns';
 
 const gridType = 'headlessGridColumnSpec';
 
@@ -62,10 +62,21 @@ describe('buildGridSource', () => {
     expect(source).toMatchObject({
       [ROW_ITEM_ID]: '1',
       [ROW_ITEM_TYPE]: gridType,
+      [ROW_TICKET_KEY]: 'GCS-1',
       key: 'GCS-1',
       title: 'Alpha',
       points: 8,
       createdBy: { email: 'alice@example.com', displayName: 'Alice Example' },
     });
   });
+});
+
+// A label must follow its record through sorting and disappear when removed.
+it('carries RustDesk tags and imported labels into row styling', () => {
+  const tagged = record({ tags: ['RustDesk'] });
+  const labeled = record({ labels: ['rustdesk'] });
+  const plain = record({ tags: ['other'], labels: [] });
+  expect(buildGridSource([tagged, labeled, plain], []).map(row => row.__clientSessionClass))
+    .toEqual(['tracker-client-session', 'tracker-client-session', '']);
+  expect(buildGridSource([{ ...tagged, fields: { tags: [] } }], [])[0].__clientSessionClass).toBe('');
 });

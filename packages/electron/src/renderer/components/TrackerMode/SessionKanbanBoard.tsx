@@ -1,3 +1,4 @@
+import { clientSessionClass } from '@nimbalyst/runtime/core/clientSessionHighlight';
 /**
  * SessionKanbanBoard - Kanban board view for AI sessions organized by phase.
  *
@@ -70,7 +71,9 @@ import { ArchiveWorktreeDialog } from '../AgentMode/ArchiveWorktreeDialog';
 import { useArchiveWorktreeDialog } from '../../hooks/useArchiveWorktreeDialog';
 import { saveSessionArchived } from '../../utils/saveSessionArchived';
 import { SessionRelativeTime } from '../AgenticCoding/SessionRelativeTime';
-import { trackerItemByIdAtom } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerDataAtoms';
+import { sessionDisplayTitleAtom } from '../../store/atoms/sessionTicketTitle';
+import { getRecordDisplayTitle } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
+import { trackerItemsMapAtom, trackerItemByIdAtom } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerDataAtoms';
 import { worktreeRecordAtom } from '../../store/atoms/worktrees';
 import { gitStatusAtom } from '../../store/atoms/gitOperations';
 import { useFloatingMenu, FloatingPortal, virtualElement } from '../../hooks/useFloatingMenu';
@@ -267,10 +270,9 @@ function CardStatusBadge({ info }: { info: CardStateInfo }) {
 function LinkedTrackerLabel({ itemId }: { itemId: string }) {
   const item = useAtomValue(trackerItemByIdAtom(itemId));
   if (!item) return null;
-  const external = item.system.origin?.kind === 'external' ? item.system.origin.external : undefined;
-  const key = external?.providerId === 'jira' ? external.externalId : item.issueKey;
-  return <div className="session-kanban-tracker text-[10px] text-nim-muted line-clamp-2" title={String(item.fields.title ?? '')}>
-    {key && <span className="font-medium mr-1">{key}</span>}{String(item.fields.title ?? '')}
+  const title = getRecordDisplayTitle(item);
+  return <div className="session-kanban-tracker text-[10px] text-nim-muted line-clamp-2" title={title}>
+    {title}
   </div>;
 }
 
@@ -299,6 +301,12 @@ interface SessionKanbanCardProps {
 }
 
 function SessionKanbanCard({ session, onSelect, onArchive, onRename, phaseColor, isDone, isBlocked = false, isFocused, isSelected, selectedCount = 1, showPeekOverride, onPeekToggle }: SessionKanbanCardProps) {
+  const trackerItems = useAtomValue(trackerItemsMapAtom);
+  const sessionHighlight = (session.linkedTrackerItemIds ?? []).some(id => {
+    const item = trackerItems.get(id);
+    return item && clientSessionClass(item);
+  }) ? 'tracker-client-session' : '';
+  const displayTitle = useAtomValue(sessionDisplayTitleAtom(session.id));
   const cardType = useMemo(() => getCardType(session), [session]);
   const cardState = useCardState(session.id, cardType, isBlocked);
   const stateStyle = CARD_STATE_STYLES[cardState.state];
@@ -386,7 +394,7 @@ function SessionKanbanCard({ session, onSelect, onArchive, onRename, phaseColor,
     <>
       <div
         ref={cardRef}
-        className={`session-kanban-card w-full text-left p-2.5 rounded-md border transition-colors cursor-default ${
+        className={`${sessionHighlight} session-kanban-card w-full text-left p-2.5 rounded-md border transition-colors cursor-default ${
           isFocused
             ? 'border-[var(--nim-primary)] ring-1 ring-[var(--nim-primary)]'
             : isSelected
@@ -422,7 +430,7 @@ function SessionKanbanCard({ session, onSelect, onArchive, onRename, phaseColor,
               />
             ) : (
               <div className="text-xs font-medium text-nim leading-snug line-clamp-2">
-                {session.title}
+                {displayTitle}
               </div>
             )}
           </div>
@@ -921,6 +929,8 @@ function SessionKanbanToolbar({ selectedCount, onClearSelection }: { selectedCou
         <legend className="sr-only">Last activity</legend>
         {([
           ['hour', 'Within the last hour'],
+          ['3-hours', 'Within the last 3 hours'],
+          ['12-hours', 'Within the last 12 hours'],
           ['day', 'Within the last day'],
           ['all', 'All sessions'],
         ] as const).map(([value, label]) => (

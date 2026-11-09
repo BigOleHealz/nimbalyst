@@ -34,7 +34,9 @@ import {
   ROW_ACTIONS,
   ROW_ITEM_ID,
   ROW_ITEM_TYPE,
+  ROW_TICKET_KEY,
 } from '@nimbalyst/collab-client/trackers';
+import { formatTicketTitle } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
 
 export { buildGridSource, ROW_ACTIONS, ROW_ITEM_ID, ROW_ITEM_TYPE };
 
@@ -382,7 +384,9 @@ function buildCellTemplate(
   return (createElement: HyperFunc<VNode>, props: CellTemplateProp): VNode => {
     const value = props.model?.[col.id];
     const rowType = trackerType || String(props.model?.[ROW_ITEM_TYPE] ?? '');
-    const text = formatValue(col, value, rowType, resolveLabel);
+    const rawText = formatValue(col, value, rowType, resolveLabel);
+    const text = col.role === 'title' || col.id === 'title'
+      ? formatTicketTitle(rawText, String(props.model?.[ROW_TICKET_KEY] ?? '')) : rawText;
 
     // The title column carries its inline affordances, so it renders even when
     // the title itself is empty.

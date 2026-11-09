@@ -3610,7 +3610,12 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
       indexAuthBlocked = false;
       clearIndexReady();
       indexReadyListeners.clear();
+      stopPingInterval();
+      stopDeviceAnnounceInterval();
       if (indexWs) {
+        // Explicit teardown must not invoke the network-loss reconnect path.
+        indexWs.onclose = null;
+        indexWs.onerror = null;
         indexWs.close();
         indexWs = null;
         indexConnected = false;

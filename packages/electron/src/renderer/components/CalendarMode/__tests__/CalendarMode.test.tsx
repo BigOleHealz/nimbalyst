@@ -43,6 +43,56 @@ it('opens imported meetings in a month grid and exposes their details and provid
   expect(invoke).toHaveBeenCalledWith('calendar-imports:open-event', { accountId: 'google', calendarId: 'work', eventId: 'meeting' });
 });
 
+it('adds a private note to the selected meeting and displays notes received from a prompt', async () => {
+  const { target } = renderCalendar();
+  fireEvent.click(await screen.findByRole('button', { name: /Pair programming.*me@work.test/ }));
+  const next = structuredClone(snapshot);
+  next.connections[0].events[0].notes = [{ id: 'prompt-note', text: 'Ask about the launch', createdAt: new Date().toISOString() }];
+  await act(async () => { target.set(calendarImportsAtom, next); });
+  expect(screen.getByText('Ask about the launch')).toBeVisible();
+  const saved = structuredClone(next);
+  saved.connections[0].events[0].notes!.push({ id: 'manual-note', text: 'Review owners', createdAt: new Date().toISOString() });
+  invoke.mockResolvedValue(saved);
+  fireEvent.change(screen.getByRole('textbox', { name: 'Add a note' }), { target: { value: 'Review owners' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+  await screen.findByText('Note saved.');
+  expect(invoke).toHaveBeenCalledWith('calendar-imports:add-note', { accountId: 'google', calendarId: 'work', eventId: 'meeting', text: 'Review owners', clientMutationId: expect.any(String) });
+  expect(screen.getByText('Review owners')).toBeVisible();
+  expect(screen.getByText('Ask about the launch')).toBeVisible();
+  expect(screen.getByRole('textbox', { name: 'Add a note' })).toHaveValue('');
+});
+
+it('keeps a failed note draft and reuses its retry ID without duplicating the request on double submit', async () => {
+  renderCalendar();
+  fireEvent.click(await screen.findByRole('button', { name: /Pair programming.*me@work.test/ }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Add a note' }), { target: { value: 'Keep this draft' } });
+  invoke.mockRejectedValueOnce(new Error('Unavailable'));
+  const button = screen.getByRole('button', { name: 'Add note' });
+  fireEvent.click(button); fireEvent.click(button);
+  await screen.findByRole('alert');
+  expect(screen.getByRole('textbox', { name: 'Add a note' })).toHaveValue('Keep this draft');
+  const first = invoke.mock.calls.filter(([channel]) => channel === 'calendar-imports:add-note');
+  expect(first).toHaveLength(1);
+  invoke.mockResolvedValue(snapshot);
+  fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+  await screen.findByText('Note saved.');
+  const requests = invoke.mock.calls.filter(([channel]) => channel === 'calendar-imports:add-note');
+  expect(requests[1][1].clientMutationId).toBe(requests[0][1].clientMutationId);
+});
+
+it('keeps the latest live note snapshot when a delayed save response arrives', async () => {
+  const { target } = renderCalendar();
+  fireEvent.click(await screen.findByRole('button', { name: /Pair programming.*me@work.test/ }));
+  let finish!: (value: CalendarImportsSnapshot) => void;
+  invoke.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Add a note' }), { target: { value: 'My note' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+  const latest = structuredClone(snapshot);
+  latest.connections[0].events[0].notes = [{ id: 'newer', text: 'A newer note from the prompt', createdAt: new Date().toISOString() }];
+  await act(async () => { target.set(calendarImportsAtom, latest); finish(structuredClone(snapshot)); });
+  expect(screen.getByText('A newer note from the prompt')).toBeVisible();
+});
+
 it('navigates months, returns to today, and filters calendars without changing sync selections', async () => {
   const { target } = renderCalendar();
   await screen.findByRole('button', { name: /Pair programming.*me@work.test/ });

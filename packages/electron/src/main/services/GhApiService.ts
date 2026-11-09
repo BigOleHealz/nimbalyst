@@ -746,6 +746,27 @@ export class GhApiService {
     remote: Remote,
     filters: ListFilters = {},
   ): Promise<PullRequestRow[]> {
+    try {
+      return await this.fetchPullRequestList(workspaceId, remote, filters);
+    } catch (error) {
+      // The board requests all states. Previously fetched merge evidence can
+      // survive an unavailable private repository; filtered PR-pane requests
+      // still report refresh errors rather than silently showing stale rows.
+      if (filters.state !== 'all' || filters.awaitingMyReview || filters.createdByMe) throw error;
+      const cached = await this.store.list(workspaceId, { state: 'all' });
+      const rows = cached.filter(row => row.remote.toLowerCase() === remote.toLowerCase()
+        && (!filters.withConflicts || row.mergeable === 'conflicting')
+        && (!filters.search || row.title.toLowerCase().includes(filters.search.toLowerCase()) || String(row.number).includes(filters.search)));
+      if (rows.length) return rows;
+      throw error;
+    }
+  }
+
+  private async fetchPullRequestList(
+    workspaceId: string,
+    remote: Remote,
+    filters: ListFilters,
+  ): Promise<PullRequestRow[]> {
     const state = filters.state ?? 'open';
 
     // awaitingMyReview uses the search endpoint; otherwise list endpoint.

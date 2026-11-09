@@ -11,6 +11,8 @@ import { ProviderIcon } from '@nimbalyst/runtime/ui/icons/ProviderIcons';
 import { getRelativeTimeString } from '../../utils/dateFormatting';
 import { sessionOrChildProcessingAtom, sessionUnreadAtom, sessionPendingPromptAtom, sessionHasPendingInteractivePromptAtom, sessionShareAtom, sessionWakeupAtom, sessionLastActivityAtom } from '../../store';
 import { sessionRegistryAtom } from '../../store/atoms/sessions';
+import { sessionTicketKeyAtom } from '../../store/atoms/sessionTicketTitle';
+import { formatTicketTitle, getTitleTicketKey } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
 import { sessionAwaitingApprovalAtom } from '../../store/atoms/sessionApproval';
 import { SessionContextMenu } from './SessionContextMenu';
 import { FullTitleTooltip } from './FullTitleTooltip';
@@ -303,7 +305,8 @@ export const SessionListItem = memo<SessionListItemProps>(function SessionListIt
     }
   }, [isRenaming]);
 
-  const displayTitle = title || 'Untitled Session';
+  const ticketKey = useAtomValue(sessionTicketKeyAtom(id));
+  const displayTitle = formatTicketTitle(title || 'Untitled Session', ticketKey || getTitleTicketKey(title));
 
   // Per-session live activity. Bumped on every `ai:message-logged`; only
   // this list item re-renders when its own activity ticks, instead of the

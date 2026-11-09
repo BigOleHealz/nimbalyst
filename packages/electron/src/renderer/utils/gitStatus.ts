@@ -14,6 +14,7 @@ export function normalizeGitStatus(value: unknown): GitStatus | null {
   }
 
   return {
+    ...(typeof candidate.repoPath === 'string' ? { repoPath: candidate.repoPath } : {}),
     branch: candidate.branch.trim(),
     ahead: candidate.ahead,
     behind: candidate.behind,

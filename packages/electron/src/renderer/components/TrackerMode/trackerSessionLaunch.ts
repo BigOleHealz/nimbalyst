@@ -5,6 +5,7 @@ import {
   getRecordPriority,
   getRecordStatus,
   getRecordTitle,
+  getRecordPullRequestTitle,
 } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
 
 const MAX_WORKTREE_NAME_LENGTH = 64;
@@ -130,6 +131,10 @@ export function buildTrackerLaunchContext(
   const title = trackerItem ? getRecordTitle(trackerItem) : trackerItemId;
   const itemId = trackerItem?.issueKey || trackerItemId;
   const lines: string[] = [`implement tracker item ${itemId}: ${title}`];
+  const pullRequestTitle = trackerItem ? getRecordPullRequestTitle(trackerItem) : undefined;
+  if (pullRequestTitle) {
+    lines.push(`Keep the session name very brief (2-5 words after the ticket ID) and start it with ${pullRequestTitle.split(':')[0]}: . If you create a pull request, use this exact title: ${JSON.stringify(pullRequestTitle)}. This naming rule does not authorize creating or editing a PR.`);
+  }
 
   if (trackerItem) {
     const status = getRecordStatus(trackerItem);

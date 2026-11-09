@@ -4,9 +4,11 @@ import { describe, expect, it, vi, afterEach } from 'vitest';
 import { applySessionApprovalSnapshotAtom, clearSessionApprovalsAtom, sessionAwaitingApprovalAtom } from '../sessionApproval';
 import { sessionRegistryAtom, sessionProcessingAtom, sessionHasPendingInteractivePromptAtom, type SessionMeta } from '../sessions';
 import { sessionsByPhaseAtom, sessionKanbanFilterAtom, setSessionBoardColumnAtom, observeSessionKanbanStatus, sessionAutomaticBoardStateAtom } from '../sessionKanban';
-import { worktreeGitStatusAtom } from '../sessionFiles';
+import { worktreeGitStatusAtom, sessionGitStatusAtom } from '../sessionFiles';
+import { activeWorkspacePathAtom } from '../openProjects';
+import { gitStatusAtom } from '../gitOperations';
 import { findApprovalMessageIndex } from '../../../../shared/approvalMessageTarget';
-import { prListAtom } from '../pullRequests';
+import { prListAtom, prRepositoryPathsAtom } from '../pullRequests';
 import { worktreeRecordsAtom } from '../worktrees';
 import { trackerItemsMapAtom } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerDataAtoms';
 import type { PullRequestRow } from '../../../../main/services/PullRequestsStore';
@@ -14,6 +16,76 @@ import type { PullRequestRow } from '../../../../main/services/PullRequestsStore
 const session = (id: string, phase?: string, parentSessionId?: string) => ({
   id, phase, parentSessionId, title: id, updatedAt: 1, tags: [], childCount: 0, messageCount: 0,
 } as unknown as SessionMeta);
+
+describe('merged remote delivery ownership', () => {
+  function setup() {
+    const store = createStore();
+    const task = { ...session('remote-delivery', 'complete'), workspaceId: '/workspace', hasStarted: true, linkedTrackerItemIds: ['implementation', 'ocr-acceptance'] };
+    store.set(sessionRegistryAtom, new Map([[task.id, task]]));
+    store.set(activeWorkspacePathAtom, '/workspace');
+    // A different tab's selected branch is not this session's delivery.
+    store.set(gitStatusAtom, { branch: 'other-task', ahead: 4, behind: 0, hasUncommitted: true, repoPath: '/different-checkout' });
+    store.set(sessionGitStatusAtom(task.id), { 'notes/review.md': { status: 'untracked', repoPath: null } });
+    store.set(trackerItemsMapAtom, new Map([
+      ['implementation', { id: 'implementation', primaryType: 'task', fields: { status: 'done' }, system: { workspace: '/workspace', linkedCommitSha: 'squash-merge' } }],
+      ['ocr-acceptance', { id: 'ocr-acceptance', primaryType: 'task', fields: { status: 'in-review' }, system: { workspace: '/workspace', linkedCommitSha: 'other-branch-commit' } }],
+    ] as any));
+    const pr = { id: 'delivery-pr', workspaceId: '/workspace', remote: 'owner/app', number: 1, headRef: 'feature', headSha: 'merged-head', state: 'merged', updatedAt: 20, raw: { merge_commit_sha: 'squash-merge' } } as PullRequestRow;
+    store.set(prListAtom, [pr]);
+    store.set(prRepositoryPathsAtom, new Map([['owner/app', ['/delivery']]]));
+    return { store, task, pr, state: () => store.get(sessionAutomaticBoardStateAtom).get(task.id) };
+  }
+
+  it.each(['object', 'json'] as const)('uses a verified squash merge (%s payload) despite non-Git documents and an unrelated branch', payload => {
+    const { store, task, pr, state } = setup();
+    if (payload === 'json') store.set(prListAtom, [{ ...pr, raw: JSON.stringify(pr.raw) }]);
+    expect(state()?.column).toBe('complete');
+    store.set(gitStatusAtom, { branch: 'feature', ahead: 4, behind: 0, hasUncommitted: true, repoPath: '/different-checkout' });
+    expect(state()?.column).toBe('complete');
+    expect(store.get(sessionGitStatusAtom(task.id))['notes/review.md'].status).toBe('untracked');
+    expect(store.get(trackerItemsMapAtom).get('ocr-acceptance')?.fields.status).toBe('in-review');
+    // Reloading the same persisted metadata does not need a manual Done override.
+    store.set(sessionRegistryAtom, new Map([[task.id, { ...task }]]));
+    expect(store.get(sessionsByPhaseAtom).get('complete')?.map(meta => meta.id)).toEqual([task.id]);
+  });
+
+  it('returns new delivery source edits and unpushed commits to Git while keeping live input/running precedence', () => {
+    const { store, task, state } = setup();
+    expect(state()?.column).toBe('complete');
+    store.set(sessionGitStatusAtom(task.id), { 'src/app.ts': { status: 'modified', repoPath: '/delivery' } });
+    expect(state()).toMatchObject({ column: 'git', gitStage: 'ready-for-commit' });
+    store.set(sessionGitStatusAtom(task.id), {});
+    store.set(gitStatusAtom, { branch: 'feature', ahead: 1, behind: 0, hasUncommitted: false, repoPath: '/delivery' });
+    expect(state()).toMatchObject({ column: 'git', gitStage: 'ready-for-push' });
+    store.set(sessionProcessingAtom(task.id), true);
+    expect(state()?.column).toBe('implementing');
+    store.set(sessionHasPendingInteractivePromptAtom(task.id), true);
+    expect(state()?.column).toBe('awaiting-input');
+  });
+
+  it.each(['open', 'closed', 'missing'] as const)('does not equate completed metadata or an %s PR with a confirmed merge', prState => {
+    const { store, task, pr, state } = setup();
+    store.set(prListAtom, prState === 'missing' ? [] : [{ ...pr, state: prState }]);
+    expect(state()?.column).toBe('validating');
+    store.set(sessionRegistryAtom, new Map([[task.id, { ...task, isArchived: true }]]));
+    expect(state()?.column).toBe('validating');
+  });
+
+  it('requires every actual explicit delivery PR to be merged and respects worktree head changes', () => {
+    const { store, task, pr, state } = setup();
+    const item = store.get(trackerItemsMapAtom).get('implementation')!;
+    store.set(trackerItemsMapAtom, new Map([[item.id, { ...item, system: { ...item.system, linkedPullRequests: [{ remote: 'owner/app', number: 1 }, { remote: 'owner/app', number: 2 }] } }]]));
+    expect(state()?.column).toBe('validating');
+    const second = { ...pr, id: 'other-delivery', number: 2, state: 'open' } as PullRequestRow;
+    store.set(prListAtom, [pr, second]);
+    expect(state()?.column).toBe('validating');
+    store.set(prListAtom, [pr, { ...second, state: 'merged' }]);
+    expect(state()?.column).toBe('complete');
+    store.set(sessionRegistryAtom, new Map([[task.id, { ...task, worktreeId: 'delivery-wt' }]]));
+    store.set(worktreeGitStatusAtom('delivery-wt'), { ahead: 1, behind: 0, hasUncommittedChanges: false, hasUpstream: true, unpushedCommits: 0, headSha: 'new-source-head' });
+    expect(state()?.column).not.toBe('complete');
+  });
+});
 
 describe('approval display state', () => {
   it.each(['claude-code', 'claude-code-cli', 'openai-codex', 'opencode', 'github-copilot', 'grok-build', 'cursor', 'openai-codex-acp'])(

@@ -40,6 +40,12 @@ export const prRemoteAtom = atom<PrRemoteInfo | null>(null);
  */
 export const prListAtom = atom<PullRequestRow[]>([]);
 
+/** All-state delivery evidence, independent of the PR pane's list filters. */
+export const prDeliveryEvidenceAtom = atom<PullRequestRow[]>([]);
+
+/** Actual workspace repositories for each GitHub remote, populated independently of the selected tab. */
+export const prRepositoryPathsAtom = atom<Map<string, string[]>>(new Map());
+
 export const prListLoadingAtom = atom<boolean>(false);
 export const prListErrorAtom = atom<string | null>(null);
 

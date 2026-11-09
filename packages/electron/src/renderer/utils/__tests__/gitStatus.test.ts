@@ -1,7 +1,11 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import { normalizeGitStatus } from '../gitStatus';
 
 describe('normalizeGitStatus', () => {
+  it('keeps the source repository so a selected tab cannot lend its Git requirements to another delivery', () => {
+    expect(normalizeGitStatus({ branch: 'feature', ahead: 1, behind: 0, hasUncommitted: false, repoPath: '/delivery' })).toMatchObject({ repoPath: '/delivery' });
+  });
   it('accepts the bounded status needed by the window top bar', () => {
     expect(normalizeGitStatus({
       branch: ' main ',

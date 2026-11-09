@@ -1,5 +1,5 @@
 import type { TrackerRecord } from '@nimbalyst/runtime/core/TrackerRecord';
-import { globalRegistry, isTerminalStatus } from '@nimbalyst/tracker-schema';
+import { globalRegistry, isDoneStatus, isTerminalStatus } from '@nimbalyst/tracker-schema';
 import { normalizeRelationshipValue } from '@nimbalyst/tracker-core';
 import { getFieldByRole, getRecordPriority, getRecordStatus, getRecordTitle } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
 import { computeReadiness } from '@nimbalyst/runtime/plugins/TrackerPlugin/models/trackerReadiness';
@@ -15,6 +15,7 @@ export interface PlanRow {
   deadlineSourceId: string;
   start: string | null;
   depth: number;
+  completed: boolean;
   ready: boolean;
   held: boolean;
   conflict: boolean;
@@ -48,14 +49,14 @@ export function buildTrackerPlan(items: readonly TrackerRecord[], now = new Date
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const byId = new Map(items.map(item => [item.id, item]));
   const readiness = computeReadiness([...items], getRecordStatus);
-  const active = items.filter(item => !item.archived && !isTerminalStatus(item.primaryType, getRecordStatus(item)));
+  const active = items.filter(item => !item.archived && (!isTerminalStatus(item.primaryType, getRecordStatus(item)) || isDoneStatus(item.primaryType, getRecordStatus(item))));
   const rows = new Map<string, PlanRow>(active.map(item => {
     const due = planDate(getFieldByRole(item, 'dueDate'));
     return [item.id, {
       item, childIds: [], prerequisiteIds: [], unresolvedIds: [], due,
       effectiveDue: due, deadlineSourceId: item.id,
       start: planDate(item.fields.scheduledDate ?? item.fields.startDate),
-      depth: 0, ready: false, held: false, conflict: false,
+      depth: 0, completed: isDoneStatus(item.primaryType, getRecordStatus(item)), ready: false, held: false, conflict: false,
     }];
   }));
 
@@ -107,16 +108,34 @@ export function buildTrackerPlan(items: readonly TrackerRecord[], now = new Date
     }
   }
 
+  // Keep satisfied relationships in the DAG as delivery history. Readiness
+  // below counts only unfinished prerequisites, independently of these links.
+  for (const item of items) {
+    const row = rows.get(item.id);
+    if (row) row.prerequisiteIds.push(...relationIds(item, 'depends-on').filter(id => rows.has(id)));
+    for (const dependentId of relationIds(item, 'blocks')) {
+      if (row) rows.get(dependentId)?.prerequisiteIds.push(item.id);
+    }
+  }
+
+  const unfinishedPrerequisites = (row: PlanRow) => row.completed ? [] : row.prerequisiteIds.filter(id => {
+    const prerequisite = byId.get(id);
+    return !prerequisite || !isTerminalStatus(prerequisite.primaryType, getRecordStatus(prerequisite));
+  });
   const dependents = new Map<string, string[]>();
-  for (const row of rows.values()) for (const id of row.prerequisiteIds) {
-    dependents.set(id, [...(dependents.get(id) ?? []), row.item.id]);
+  for (const row of rows.values()) {
+    row.prerequisiteIds = [...new Set(row.prerequisiteIds)];
+    if (row.completed) row.held = false;
+    for (const id of unfinishedPrerequisites(row)) {
+      dependents.set(id, [...(dependents.get(id) ?? []), row.item.id]);
+    }
   }
   // Monotone relaxation terminates even on malformed cyclic relationships.
   const deadlines = [...rows.values()];
   for (let i = 0; i < deadlines.length; i++) {
     const row = deadlines[i];
-    if (!row.effectiveDue) continue;
-    for (const id of row.prerequisiteIds) {
+    if (!row.effectiveDue || row.completed) continue;
+    for (const id of unfinishedPrerequisites(row)) {
       const prerequisite = rows.get(id);
       if (prerequisite && (!prerequisite.effectiveDue || row.effectiveDue < prerequisite.effectiveDue)) {
         prerequisite.effectiveDue = row.effectiveDue;
@@ -130,9 +149,9 @@ export function buildTrackerPlan(items: readonly TrackerRecord[], now = new Date
     (a.effectiveDue ?? '9999').localeCompare(b.effectiveDue ?? '9999')
     || (priority[getRecordPriority(a.item)] ?? 4) - (priority[getRecordPriority(b.item)] ?? 4)
     || getRecordTitle(a.item).localeCompare(getRecordTitle(b.item)) || a.item.id.localeCompare(b.item.id);
-  const remaining = new Map([...rows].map(([id, row]) => [id, row.prerequisiteIds.length]));
-  const available = [...rows.values()].filter(row => !remaining.get(row.item.id) && !row.unresolvedIds.length && !row.held);
-  for (const row of available) row.ready = !row.start || row.start <= today;
+  const remaining = new Map([...rows].map(([id, row]) => [id, unfinishedPrerequisites(row).length]));
+  const available = [...rows.values()].filter(row => row.completed || (!remaining.get(row.item.id) && !row.unresolvedIds.length && !row.held));
+  for (const row of available) row.ready = !row.completed && (!row.start || row.start <= today);
   const ordered: PlanRow[] = [];
   while (available.length) {
     available.sort(compare);
@@ -148,7 +167,7 @@ export function buildTrackerPlan(items: readonly TrackerRecord[], now = new Date
   const held = [...rows.values()].filter(row => !emitted.has(row.item.id)).sort(compare);
   for (const row of held) row.held = true;
   for (const row of rows.values()) {
-    row.conflict = Boolean((row.due && row.effectiveDue && row.due > row.effectiveDue)
+    row.conflict = !row.completed && Boolean((row.due && row.effectiveDue && row.due > row.effectiveDue)
       || (row.start && row.effectiveDue && row.start > row.effectiveDue));
   }
   return [...ordered, ...held];

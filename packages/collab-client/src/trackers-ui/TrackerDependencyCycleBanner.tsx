@@ -13,7 +13,7 @@
 import React, { useMemo, useState } from 'react';
 import { MaterialSymbol } from '@nimbalyst/runtime/ui/icons/MaterialSymbol';
 import type { TrackerRecord } from '@nimbalyst/runtime/core/TrackerRecord';
-import { getRecordTitle } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
+import { getRecordDisplayTitle as getRecordTitle } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
 import { isLocalKeyReference, resolveDisplayIssueKey } from '@nimbalyst/runtime/plugins/TrackerPlugin/models/localIssueKey';
 import {
   TRACKER_DEPENDENCY_CYCLE_MESSAGE,

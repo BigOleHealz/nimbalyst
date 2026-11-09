@@ -29,12 +29,14 @@ import {
   sessionUnreadAtom,
   sessionProcessingAtom,
   sessionHasPendingInteractivePromptAtom,
+  sessionRegistryAtom,
 } from '../../../store/atoms/sessions';
+import { trackerItemsMapAtom } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerDataAtoms';
 
 import { sessionApprovalSnapshotAtom } from '../../../store/atoms/sessionApproval';
 
 vi.mock('../SessionContextMenu', () => ({ SessionContextMenu: () => null }));
-vi.mock('../FullTitleTooltip', () => ({ FullTitleTooltip: () => null }));
+vi.mock('../FullTitleTooltip', () => ({ FullTitleTooltip: ({className,children}: {className?:string;children:React.ReactNode}) => <span className={className}>{children}</span> }));
 
 const SESSION_IDS = ['s1', 's2', 's3', 's4', 's5'];
 
@@ -66,6 +68,15 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe('session list render budget', () => {
+  it('shows the ticket ID before the brief session name and follows ticket link updates', () => {
+    const store=createStore();
+    store.set(sessionRegistryAtom,new Map([['s1',{id:'s1',workspaceId:'/repo',title:'Lesson fix',linkedTrackerItemIds:['ticket']} as any]]));
+    store.set(trackerItemsMapAtom,new Map([['ticket',{id:'ticket',primaryType:'task',issueKey:'DES-79',fields:{title:'Lesson navigation'},system:{workspace:'/repo'}} as any]]));
+    const view=render(<Provider store={store}><SessionListItem id="s1" title="Lesson fix" createdAt={1} isActive={false} onClick={()=>{}} /></Provider>);
+    expect(view.container.querySelector('.session-list-item-title')?.textContent).toBe('DES-79: Lesson fix');
+    act(()=>store.set(trackerItemsMapAtom,new Map()));
+    expect(view.container.querySelector('.session-list-item-title')?.textContent).toBe('Lesson fix');
+  });
   it('repaints one row when one session streams, not the list', async () => {
     const store = createStore();
     render(<Provider store={store}><SessionList /></Provider>);

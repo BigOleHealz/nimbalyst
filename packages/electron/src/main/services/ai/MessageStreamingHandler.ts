@@ -1,3 +1,4 @@
+import { assertProjectAllowsLocalExecution } from './projectExecution';
 import { claimExternalSessionForLocalExecution } from '../externalSessions/ExternalSessionService';
 import { warnIfUnpublished } from '@nimbalyst/runtime/sync/pushOutcome';
 import type { SessionChange } from '@nimbalyst/runtime/sync/types';
@@ -428,6 +429,8 @@ export class MessageStreamingHandler {
       trackSendBlocked('no_workspace');
       throw new Error('No workspace path available - AI operations require an open workspace');
     }
+
+    assertProjectAllowsLocalExecution(workspacePath);
 
     const loadStartTime = Date.now();
     const session = await this.svc.sessionManager.loadSession(sessionId, workspacePath);

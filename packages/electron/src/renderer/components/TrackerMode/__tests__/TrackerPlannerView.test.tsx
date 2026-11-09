@@ -10,6 +10,38 @@ beforeAll(() => loadBuiltinTrackers());
 const record = (id: string, fields: Record<string, unknown> = {}) => ({ id, primaryType: 'task', typeTags: ['task'], source: 'native', archived: false, syncStatus: 'local', system: { workspace: '/test', createdAt: '2026-11-01', updatedAt: '2026-11-01' }, fields: { title: id, status: 'to-do', ...fields } }) as TrackerRecord;
 
 describe('planner interactions', () => {
+  it('keeps completed tickets selectable in every view and excludes them from ready navigation', () => {
+    const done = record('Finished privacy', { status: 'done', dueDate: '2020-01-01' });
+    const next = record('Live acceptance', { dependsOn: [{ itemId: done.id }] });
+    const open = vi.fn();
+    render(<TrackerPlannerView items={[done, next]} allItems={[done, next]} onItemSelect={open} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Open ticket Finished privacy, Done' }));
+    expect(open).toHaveBeenLastCalledWith(done.id);
+    fireEvent.click(screen.getByRole('button', { name: 'Next ready ticket' }));
+    expect(open).toHaveBeenLastCalledWith(next.id);
+    expect(screen.getByText('1 open · 1 completed · 1 ready · 0 on hold').textContent).toContain('1 completed');
+    fireEvent.click(screen.getByRole('tab', { name: 'Suggested order' }));
+    fireEvent.click(screen.getByRole('button', { name: /^— Finished privacy$/ }));
+    expect(open).toHaveBeenLastCalledWith(done.id);
+    expect(screen.queryByText(/Overdue/)).toBeNull();
+    fireEvent.click(screen.getByRole('tab', { name: 'Hierarchy timeline' }));
+    fireEvent.click(screen.getAllByRole('button', { name: /^Finished privacy$/ })[0]);
+    expect(open).toHaveBeenLastCalledWith(done.id);
+    fireEvent.click(screen.getByLabelText('Ready now only'));
+    expect(screen.queryByText('Completed. This ticket satisfies its dependent work.')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /^Live acceptance$/ }));
+    expect(open).toHaveBeenLastCalledWith(next.id);
+  });
+
+  it('leads graph, queue and timeline card titles with the ticket identity', () => {
+    const item = {...record('Lesson navigation'),issueKey:'DES-79'};
+    render(<TrackerPlannerView items={[item]} allItems={[item]} onItemSelect={vi.fn()} />);
+    expect(screen.getByRole('button',{name:'Open ticket DES-79: Lesson navigation, To Do'}).textContent).toContain('DES-79: Lesson navigation');
+    fireEvent.click(screen.getByRole('tab',{name:'Suggested order'}));
+    expect(screen.getByRole('button',{name:/DES-79: Lesson navigation/}).textContent).toContain('DES-79: Lesson navigation');
+    fireEvent.click(screen.getByRole('tab',{name:'Hierarchy timeline'}));
+    expect(screen.getByRole('button',{name:'DES-79: Lesson navigation'}).textContent).toContain('DES-79: Lesson navigation');
+  });
   it('cancels the first sidebar open when a pointer double-click requests the menu', async () => {
     vi.useFakeTimers();
     try {

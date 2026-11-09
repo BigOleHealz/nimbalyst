@@ -31,6 +31,8 @@ export interface FileEditWithSession {
 }
 
 export interface FileGitStatus {
+  /** null distinguishes non-Git workspace documents from source changes. */
+  repoPath?: string | null;
   status: 'modified' | 'staged' | 'untracked' | 'unchanged' | 'deleted';
   gitStatusCode?: string;
 }

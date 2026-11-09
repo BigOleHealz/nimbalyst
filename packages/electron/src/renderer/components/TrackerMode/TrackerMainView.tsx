@@ -276,6 +276,7 @@ export const TrackerMainView: React.FC<TrackerMainViewProps> = ({
   const modeLayout = useAtomValue(trackerModeLayoutAtom);
   const setModeLayout = useSetAtom(setTrackerModeLayoutAtom);
   const plannerOpen = modeLayout.plannerOpen;
+  const [plannerStatusScope, setPlannerStatusScope] = useState<typeof modeLayout.statusScope>('all');
   useEffect(() => {
     if (previousPlannerViewMode.current !== viewMode) setModeLayout({ plannerOpen: false });
     previousPlannerViewMode.current = viewMode;
@@ -300,7 +301,7 @@ export const TrackerMainView: React.FC<TrackerMainViewProps> = ({
   const openItemAsDocument = useSetAtom(openTrackerItemAsDocumentAtom);
   const selectedItemId = modeLayout.selectedItemId;
   const inboxScope = modeLayout.inboxScope;
-  const statusScope = modeLayout.statusScope;
+  const statusScope = plannerOpen ? plannerStatusScope : modeLayout.statusScope;
   const detailPanelWidth = modeLayout.detailPanelWidth;
   const sortBy = viewSettings.sortBy as TrackerSortColumn;
   const sortDirection = viewSettings.sortDirection as TrackerSortDirection;
@@ -1218,7 +1219,7 @@ export const TrackerMainView: React.FC<TrackerMainViewProps> = ({
           openFiltersToken={openFiltersToken}
           filterAnchor={filterAnchor}
           statusScope={statusScope}
-          onStatusScopeChange={scope => setModeLayout({ statusScope: scope })}
+          onStatusScopeChange={scope => plannerOpen ? setPlannerStatusScope(scope) : setModeLayout({ statusScope: scope })}
           viewMode={viewSettings.viewMode}
           groupBy={viewSettings.groupBy}
           ordering={viewSettings.ordering}

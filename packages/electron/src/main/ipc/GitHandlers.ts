@@ -171,6 +171,7 @@ export function resolveGitDiffTarget(
 }
 
 interface GitStatusResult {
+  repoPath?: string;
   branch: string;
   ahead: number;
   behind: number;
@@ -343,6 +344,7 @@ export async function readBranchStatus(repoPath: string): Promise<GitStatusResul
   const git: SimpleGit = simpleGitReadOnly(repoPath);
   const status = await git.status();
   return {
+    repoPath,
     branch: normalizeCurrentBranch(status.current) || 'HEAD',
     ahead: status.ahead || 0,
     behind: status.behind || 0,

@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * Tests for `findGitRootForFile` - the helper that backs the nested-repo
  * fix in `GitStatusService` (#122). Builds real on-disk directory trees
@@ -9,11 +10,11 @@
  * and real `path` modules across platforms.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
-import { findGitRootForFile } from '../GitStatusService';
+import { findGitRootForFile, GitStatusService } from '../GitStatusService';
 
 let tmpRoot: string;
 
@@ -22,7 +23,23 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await fs.rm(tmpRoot, { recursive: true, force: true });
+});
+
+it('preserves non-Git documents in Edited Files while distinguishing their ownership from repository changes', async () => {
+  const workspace = path.join(tmpRoot, 'workspace');
+  const repo = path.join(workspace, 'app');
+  await makeGitRepo(repo);
+  await touchFile(path.join(workspace, 'notes', 'review.md'));
+  await touchFile(path.join(repo, 'source.ts'));
+  const service = new GitStatusService();
+  vi.spyOn(service as unknown as { executeGitStatus: (root: string) => Promise<string> }, 'executeGitStatus').mockResolvedValue(' M source.ts\n');
+  const status = await service.getFileStatus(workspace, ['notes/review.md', 'app/source.ts']);
+  expect(status['notes/review.md']).toMatchObject({ status: 'untracked', repoPath: null });
+  expect(status['app/source.ts']).toMatchObject({ status: 'modified', repoPath: repo });
+  const documentsOnly = await service.getFileStatus(workspace, ['notes/review.md']);
+  expect(documentsOnly['notes/review.md']).toMatchObject({ status: 'untracked', repoPath: null });
 });
 
 async function mkdirp(p: string): Promise<void> {

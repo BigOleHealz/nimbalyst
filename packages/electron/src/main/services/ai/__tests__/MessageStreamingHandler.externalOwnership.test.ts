@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   claim: vi.fn(),
+  executionMachineId: "",
   pushChange: vi.fn(),
   providerFactory: {
     getProvider: vi.fn(),
@@ -192,6 +193,7 @@ vi.mock("../../MetaAgentService", () => ({
 vi.mock("../wikiSkillAvailability", () => ({ isWikiSkillAvailable: () => false }));
 
 vi.mock("../../../utils/store", () => ({
+  getWorkspaceState: () => ({executionMachineId: mocks.executionMachineId}),
   isSessionReviewNotificationsEnabled: () => true,
   getDefaultEffortLevel: vi.fn(() => undefined),
   getDefaultThinkingMode: vi.fn(() => undefined),
@@ -317,6 +319,7 @@ async function runTurn(options: {
 describe("MessageStreamingHandler external ownership", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.executionMachineId = "";
     mocks.providerFactory.getProvider.mockReturnValue(null);
     mocks.claim.mockResolvedValue(undefined);
   });
@@ -363,4 +366,14 @@ describe("MessageStreamingHandler external ownership", () => {
     await running;
     expect(addMessage).toHaveBeenCalledOnce();
   });
+});
+
+it('rejects direct wakeup and queued local turns for a project routed to Coder before provider or transcript writes', async () => {
+  vi.clearAllMocks();
+  mocks.executionMachineId = 'coder-foss';
+  const provider = new RecordingProvider(); const addMessage = vi.fn();
+  await expect(runTurn({session: openCodeSession(), provider, sessionManager: {addMessage}})).rejects.toThrow(/remote machine/);
+  expect(addMessage).not.toHaveBeenCalled();
+  expect(mocks.providerFactory.createProvider).not.toHaveBeenCalled();
+  expect(provider.requestConfigs).toHaveLength(0);
 });

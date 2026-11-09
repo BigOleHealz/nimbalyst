@@ -5,6 +5,7 @@ import { calendarImportsAtom, loadCalendarImportsAtom } from '../../store/atoms/
 import { localCalendarDate } from '../GlobalSettings/panels/calendarAgenda';
 import { calendarEntries, calendarEventTime, calendarViewKey, entriesForDay, type CalendarViewEntry } from './calendarView';
 import './CalendarMode.css';
+import { CalendarMeetingNotes } from './CalendarMeetingNotes';
 
 interface CalendarModeProps {
   onManageAccounts: () => void;
@@ -106,7 +107,7 @@ export function CalendarMode({ onManageAccounts }: CalendarModeProps): React.JSX
           }} /><span>{calendar.name}</span><span className="text-nim-muted">{account.label}</span></label>;
         }))}
       </div>
-      <p className="mt-1 text-xs text-nim-muted">{Intl.DateTimeFormat().resolvedOptions().timeZone} · Read-only · Account selections and automatic refresh are managed in settings.</p>
+      <p className="mt-1 text-xs text-nim-muted">{Intl.DateTimeFormat().resolvedOptions().timeZone} · Events are read-only; notes are private in Nimbalyst. Account selections and automatic refresh are managed in settings.</p>
       {snapshot.connections.map(account => account.syncError && <p key={account.id} className="mt-1 text-xs text-nim-error" role="alert">{account.label}: {account.syncError}</p>)}
     </div>
     {error && <p className="calendar-mode-error border-b border-nim px-4 py-2 text-sm text-nim-error" role="alert">{error}</p>}
@@ -137,6 +138,7 @@ export function CalendarMode({ onManageAccounts }: CalendarModeProps): React.JSX
           {selected.event.location && <p className="text-sm">{selected.event.location}</p>}
           {selected.event.description && <p className="whitespace-pre-wrap break-words text-sm">{selected.event.description}</p>}
           {selected.event.url && <button type="button" className="calendar-mode-control" onClick={() => void openOriginal(selected)}>Open original event</button>}
+          <CalendarMeetingNotes key={selected.key} meeting={{ accountId: selected.account.id, calendarId: selected.event.calendarId, eventId: selected.event.id }} notes={selected.event.notes ?? []} />
         </section>}
       </aside>
     </div>

@@ -1,7 +1,8 @@
+import { clientSessionClass } from '@nimbalyst/runtime/core/clientSessionHighlight';
 import React from 'react';
 import { getTrackerTypeLabel } from '@nimbalyst/runtime/plugins/TrackerPlugin/models/trackerGrouping';
 import type { TrackerRecord } from '@nimbalyst/runtime/core/TrackerRecord';
-import { getFieldByRole, getRecordStatus, getRecordTitle } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
+import { getFieldByRole, getRecordStatus, getRecordDisplayTitle as getRecordTitle } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
 import { getStatusColor } from '@nimbalyst/runtime/plugins/TrackerPlugin/components/trackerColumns';
 import { TrackerSwatchBadge } from './primitives/TrackerSwatchBadge';
 
@@ -12,7 +13,7 @@ export function TrackerStackedRow({ item, selected, showType, onOpen }: {
   const progress = getFieldByRole(item, 'progress');
   const updated = item.system.updatedAt ? new Date(item.system.updatedAt) : null;
   return (
-    <button type="button" className={`tracker-stacked-row${selected ? ' is-selected' : ''}`} data-testid="tracker-list-row" data-item-id={item.id} onClick={onOpen}>
+    <button type="button" className={`${clientSessionClass(item)} tracker-stacked-row${selected ? ' is-selected' : ''}`} data-testid="tracker-list-row" data-item-id={item.id} onClick={onOpen}>
       <span className="tracker-stacked-title">{getRecordTitle(item)}</span>
       <span className="tracker-stacked-meta">
         {status ? <TrackerSwatchBadge label={status} color={getStatusColor(status, item.primaryType)} /> : null}

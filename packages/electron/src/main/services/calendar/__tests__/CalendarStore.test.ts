@@ -39,6 +39,7 @@ it('preserves automatic refresh preferences and failure status across encrypted 
   const data: CalendarData = { version: 1, clients: {}, accounts: [{
     id: 'account', provider: 'google', label: 'me@example.test', clientId: 'client', accessToken: 'access', refreshToken: 'refresh', expiresAt: 1,
     calendars: [], selectedCalendarIds: [], events: [], autoRefresh: false, syncError: 'Reconnect this account.',
+    meetingNotes: [{ calendarId: 'work', eventId: 'meeting', id: 'note-1', text: 'Private preparation', createdAt: '2026-11-07T12:00:00Z' }],
   }] };
   new CalendarStore().write(data);
   expect(new CalendarStore().read()).toEqual(data);

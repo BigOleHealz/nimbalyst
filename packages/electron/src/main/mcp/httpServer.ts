@@ -1,4 +1,5 @@
 import { handleConsumeSessionInbox } from './tools/consumeSessionInbox';
+import { calendarToolSchemas, handleCalendarAddNote, handleCalendarListMeetings } from './tools/calendarToolHandlers';
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -472,6 +473,7 @@ function createSharedMcpServer(
       ...getInteractiveToolSchemas(sessionId),
       ...trackerToolSchemas,
       ...feedbackToolSchemas,
+      ...calendarToolSchemas,
       // Host surface (settings + session-context + meta-agent) on `/mcp/host`;
       // update_session_meta on the eager core. The topology reverse index routes
       // each schema to its endpoint via selectFirstPartyToolsForEndpoint.
@@ -522,6 +524,10 @@ function createSharedMcpServer(
 
     try {
       switch (toolName) {
+        case 'calendar_list_meetings':
+          return handleCalendarListMeetings(args);
+        case 'calendar_add_note':
+          return await handleCalendarAddNote(args);
         case 'consume_session_inbox':
           if (extra.requestId === undefined) throw new Error('Inbox request identity is required');
           return handleConsumeSessionInbox(sessionId, request);

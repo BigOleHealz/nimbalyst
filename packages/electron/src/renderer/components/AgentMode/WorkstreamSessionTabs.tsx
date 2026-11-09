@@ -16,6 +16,8 @@ import { MaterialSymbol } from '@nimbalyst/runtime/ui/icons/MaterialSymbol';
 import { ProviderIcon } from '@nimbalyst/runtime/ui/icons/ProviderIcons';
 import { store } from '@nimbalyst/runtime/store';
 import { sessionArchivedAtom, sessionRegistryAtom } from '../../store/atoms/sessions';
+import { sessionTicketKeyAtom } from '../../store/atoms/sessionTicketTitle';
+import { formatTicketTitle, getTitleTicketKey } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
 import { AgentSessionPanel } from './AgentSessionPanel';
 import {
   sessionTitleAtom,
@@ -62,6 +64,8 @@ export const SessionTab: React.FC<{
   onRename?: (newName: string) => void;
 }> = React.memo(({ sessionId, isActive, onClick, onClose, onArchive, onUnarchive, onRename }) => {
   const title = useAtomValue(sessionTitleAtom(sessionId));
+  const ticketKey = useAtomValue(sessionTicketKeyAtom(sessionId));
+  const displayTitle = formatTicketTitle(title || 'Untitled', ticketKey || getTitleTicketKey(title || ''));
   const provider = useAtomValue(sessionProviderAtom(sessionId));
   const isProcessing = useAtomValue(sessionProcessingAtom(sessionId));
   const hasUnread = useAtomValue(sessionUnreadAtom(sessionId));
@@ -143,7 +147,7 @@ export const SessionTab: React.FC<{
           />
         ) : (
           <span className={`session-tab-title max-w-[150px] overflow-hidden text-ellipsis ${hasUnread ? 'font-semibold' : ''}`}>
-            {title || 'Untitled'}
+            {displayTitle}
           </span>
         )}
         {hasUnread && !isRenaming && (

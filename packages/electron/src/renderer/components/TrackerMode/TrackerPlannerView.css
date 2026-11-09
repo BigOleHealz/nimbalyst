@@ -10,6 +10,7 @@
 .tracker-planner-scroll { flex: 1; overflow: auto; min-height: 0; }
 .tracker-planner-dag-panel { display: flex; flex: 1; min-height: 0; overflow: hidden; }
 .tracker-planner-row { border-bottom: 1px solid var(--nim-border); }
+.tracker-planner-row-completed { outline: 2px solid var(--nim-success); outline-offset: -2px; }
 .tracker-planner-row:hover { background: var(--nim-bg-hover); }
 .tracker-planner-selected { background: var(--nim-bg-selected); }
 .tracker-planner-ticket { display: flex; padding: 12px; gap: 6px; }

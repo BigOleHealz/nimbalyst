@@ -6,12 +6,12 @@ import {activeFileRepoPathAtom} from '../atoms/workspaceRepos';
 import {defaultAgentModelAtom, worktreesFeatureAvailableAtom} from '../atoms/appSettings';
 import {selectedMachineAtom} from '../atoms/remoteMachines';
 
-it('uses the host default for New Session while preserving an explicitly requested model', async () => {
+it('preserves the configured Codex model when creating a remote session', async () => {
   const invoke = vi.fn(async (_channel: string, ..._args: unknown[]) => 'remote-new');
   (window as any).electronAPI = {invoke};
   const get = ((key: unknown) => key === activeWorkspacePathAtom || key === activeFileRepoPathAtom ? '/repo' : key === worktreesFeatureAvailableAtom ? true : key === defaultAgentModelAtom ? 'openai-codex:gpt-6-astra' : key === selectedMachineAtom('/repo') ? 'sandbox-one' : undefined) as any;
   await createNewSessionActionAtom.write(get, vi.fn(), {selectSession: false});
-  expect(invoke).toHaveBeenCalledWith('ai:createRemoteSession', '/repo', 'sandbox-one', {model: undefined});
+  expect(invoke).toHaveBeenCalledWith('ai:createRemoteSession', '/repo', 'sandbox-one', {model: 'openai-codex:gpt-6-astra'});
   await createNewSessionActionAtom.write(get, vi.fn(), {selectSession: false, model: 'openai-codex:gpt-6-astra'});
   expect(invoke).toHaveBeenLastCalledWith('ai:createRemoteSession', '/repo', 'sandbox-one', {model: 'openai-codex:gpt-6-astra'});
   expect(invoke.mock.calls.every(([channel]) => channel === 'ai:createRemoteSession')).toBe(true);
@@ -23,6 +23,7 @@ it.each([
   { isRepo: true, launchSource: 'commit_flow', useCurrentCheckout: true, worktreeId: undefined },
 ] as const)('creates a session for $launchSource with worktree $worktreeId', async ({ isRepo, launchSource, useCurrentCheckout, worktreeId }) => {
   const invoke = vi.fn(async (channel: string, ..._args: unknown[]) => {
+    if (channel === 'workspace:get-state') return {};
     if (channel === 'git:is-repo') return { success: true, isRepo };
     if (channel === 'worktree:create') return { success: true, worktree: { id: 'wt-1' } };
     if (channel === 'sessions:create') return { success: true, id: 'test-session' };
@@ -45,7 +46,7 @@ it.each([
   expect(result).toBe('test-session');
   if (worktreeId) {
     expect(invoke.mock.calls.map(([channel]) => channel)).toEqual([
-      'git:is-repo', 'worktree:create', 'sessions:create',
+      'workspace:get-state', 'git:is-repo', 'worktree:create', 'sessions:create',
     ]);
     expect(invoke).toHaveBeenCalledWith('git:is-repo', '/repo/attached');
     expect(invoke).toHaveBeenCalledWith('worktree:create', '/repo', { sourceFolderPath: '/repo/attached' });
@@ -62,6 +63,7 @@ it.each([
 
 it('does not launch in the current checkout when worktree creation fails', async () => {
   const invoke = vi.fn(async (channel: string) => {
+    if (channel === 'workspace:get-state') return {};
     if (channel === 'git:is-repo') return { success: true, isRepo: true };
     if (channel === 'worktree:create') return { success: false, error: 'Git worktree add failed' };
     throw new Error('Unexpected IPC channel: ' + channel);
@@ -71,5 +73,5 @@ it('does not launch in the current checkout when worktree creation fails', async
     : key === worktreesFeatureAvailableAtom ? true : undefined) as any;
 
   expect(await createNewSessionActionAtom.write(get, vi.fn())).toBeUndefined();
-  expect(invoke.mock.calls.map(([channel]) => channel)).toEqual(['git:is-repo', 'worktree:create']);
+  expect(invoke.mock.calls.map(([channel]) => channel)).toEqual(['workspace:get-state', 'git:is-repo', 'worktree:create']);
 });

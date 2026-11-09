@@ -240,3 +240,31 @@ export async function ensureCheckout(
   await runGit(['checkout', '-B', branch, 'FETCH_HEAD'], checkoutDir);
   return 'updated';
 }
+
+
+/** Persistent hosts use the existing checkout only as a worktree source; never fetch or reset it. */
+export async function prepareSessionWorkspace(
+  mapping: WorkspaceMapping,
+  requestId: string,
+  deps: CheckoutDeps = {},
+): Promise<string> {
+  if (!mapping.sessionWorktrees) {
+    await ensureCheckout(mapping, deps);
+    return confineCheckout(mapping, deps);
+  }
+  if (!/^[A-Za-z0-9-]{1,100}$/.test(requestId)) fail('invalid request id for a session worktree');
+  const source = confineCheckout(mapping, deps);
+  if (!(deps.exists ?? existsSync)(source)) fail('session worktrees require an existing checkout');
+  const name = `nimbalyst-${requestId}`;
+  const checkoutDir = confineCheckout({...mapping, checkoutDir: path.join(source, 'worktrees', name)}, deps);
+  const repositories = mapping.repositoryPaths ?? [source];
+  if (!repositories.length) fail('session worktrees require at least one repository');
+  const paths = repositories.map(repository => confineCheckout({...mapping, checkoutDir: repository}, deps));
+  if (new Set(paths.map(repository => path.basename(repository))).size !== paths.length) fail('session repository names must be unique');
+  for (const repository of paths) {
+    const target = mapping.repositoryPaths ? path.join(checkoutDir, path.basename(repository)) : checkoutDir;
+    (deps.makeDirectory ?? (directory => mkdirSync(directory, {recursive: true})))(path.dirname(target));
+    await (deps.runGit ?? runGitCommand)(['worktree', 'add', '-b', `codex/${name}`, target, 'HEAD'], repository);
+  }
+  return checkoutDir;
+}

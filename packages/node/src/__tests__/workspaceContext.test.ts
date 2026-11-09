@@ -25,3 +25,21 @@ it('lists the selected checkout and expands only its bounded explicit command ca
     expect(await expandRemoteCommand('Ordinary text', root)).toBe('Ordinary text');
   } finally {await rm(directory, {recursive: true, force: true});}
 });
+
+
+it('lists files and namespaced commands from the session worktrees in a multi-repo folder', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'remote-multi-context-'));
+  try {
+    for (const name of ['Website', 'App']) {
+      const repo = join(root, name);
+      await mkdir(join(repo, '.claude', 'commands'), {recursive:true});
+      execFileSync('git', ['init', '--quiet'], {cwd:repo});
+      await writeFile(join(repo, 'README.md'), name);
+      await writeFile(join(repo, '.claude', 'commands', 'review.md'), 'Review $ARGUMENTS');
+    }
+    const context = await readWorkspaceContext(root);
+    expect(context.files).toEqual(expect.arrayContaining(['Website/README.md', 'App/README.md']));
+    expect(context.commands.map(command => command.name)).toEqual(expect.arrayContaining(['Website:review', 'App:review']));
+    expect(await expandRemoteCommand('/Website:review README', root)).toContain('Review README');
+  } finally {await rm(root,{recursive:true,force:true});}
+});

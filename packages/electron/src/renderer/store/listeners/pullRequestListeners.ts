@@ -21,8 +21,13 @@ import {
   prRemoteAtom,
   prListUpdatedAtom,
   prListAtom,
+  prDeliveryEvidenceAtom,
+  prRepositoryPathsAtom,
 } from '../atoms/pullRequests';
 import { activeWorkspacePathAtom } from '../atoms/openProjects';
+import { workspaceRepoPathsAtom } from '../atoms/workspaceRepos';
+import { trackerItemsMapAtom } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerDataAtoms';
+import { getRecordPrReferences } from '@nimbalyst/runtime/plugins/TrackerPlugin/prReferences';
 import { getGhCliService } from '../../services/RendererGhCliService';
 import { getPullRequestService } from '../../services/RendererPullRequestService';
 
@@ -33,14 +38,21 @@ export function initPullRequestListeners(): () => void {
 
   const ghService = getGhCliService();
   const prService = getPullRequestService();
-  const pollingWorkspaces = new Set<string>();
+  const pollingWorkspaces = new Map<string, string>();
   let listRequest = 0;
-  const refreshList = async (workspacePath: string, remote: string) => {
+  let generation = 0;
+  const listRequests = new Map<string, number>();
+  let discovered = new Map<string, string[]>();
+  const refreshList = async (workspacePath: string, remote: string, epoch = generation) => {
     const request = ++listRequest;
+    listRequests.set(remote, request);
     try {
       const rows = await prService.list(workspacePath, remote, { state: 'all' });
-      if (!disposed && request === listRequest && store.get(activeWorkspacePathAtom) === workspacePath) {
-        store.set(prListAtom, rows);
+      if (!disposed && epoch === generation && request === listRequests.get(remote) && store.get(activeWorkspacePathAtom) === workspacePath) {
+        const others = store.get(prListAtom).filter(row => row.workspaceId === workspacePath && row.remote.toLowerCase() !== remote);
+        store.set(prListAtom, [...others, ...rows]);
+        const otherEvidence = store.get(prDeliveryEvidenceAtom).filter(row => row.workspaceId === workspacePath && row.remote.toLowerCase() !== remote);
+        store.set(prDeliveryEvidenceAtom, [...otherEvidence, ...rows]);
       }
     } catch (error) {
       console.error('[pullRequestListeners] Failed to refresh PR status:', error);
@@ -70,31 +82,64 @@ export function initPullRequestListeners(): () => void {
       if (disposed) return;
       listUpdatedVersion += 1;
       store.set(prListUpdatedAtom, { version: listUpdatedVersion, payload });
-      if (store.get(activeWorkspacePathAtom) === payload.workspacePath) void refreshList(payload.workspacePath, payload.remote);
+      const active = store.get(activeWorkspacePathAtom);
+      if (active && (active === payload.workspacePath || pollingWorkspaces.get(payload.workspacePath) === active)) {
+        // A cloud-only reference can share the workspace's existing poll clock.
+        for (const remote of discovered.keys()) void refreshList(active, remote);
+      }
     }),
   );
 
   // Detect the GitHub remote for a workspace and publish it to prRemoteAtom.
   const detectRemoteFor = async (workspacePath: string | null): Promise<void> => {
-    listRequest++;
-    store.set(prListAtom, []);
+    const epoch = ++generation;
+    listRequests.clear();
+    store.set(prListAtom, store.get(prListAtom).filter(row => row.workspaceId === workspacePath));
+    store.set(prDeliveryEvidenceAtom, store.get(prDeliveryEvidenceAtom).filter(row => row.workspaceId === workspacePath));
+    discovered = new Map();
+    store.set(prRepositoryPathsAtom, new Map());
     if (!workspacePath) {
       store.set(prRemoteAtom, null);
       return;
     }
     try {
-      const result = await prService.detectRemote(workspacePath);
-      if (disposed) return;
+      const paths = [...new Set([workspacePath, ...store.get(workspaceRepoPathsAtom)])];
+      const results = await Promise.all(paths.map(async path => ({ path, result: await prService.detectRemote(path).catch(() => null) })));
+      if (disposed || epoch !== generation) return;
       // Guard against a stale resolve after the user switched projects.
       if (store.get(activeWorkspacePathAtom) !== workspacePath) return;
-      store.set(prRemoteAtom, result ? { workspacePath, ...result } : null);
-      if (result) {
-        pollingWorkspaces.add(workspacePath);
-        await prService.startPolling(workspacePath, workspacePath, result.remote)
+      const primary = results.find(result => result.path === workspacePath)?.result;
+      store.set(prRemoteAtom, primary ? { workspacePath, ...primary } : null);
+      const remotes = new Map<string, string[]>();
+      for (const { path, result } of results) {
+        if (!result) continue;
+        const remote = result.remote.toLowerCase();
+        remotes.set(remote, [...(remotes.get(remote) ?? []), path]);
+      }
+      for (const record of store.get(trackerItemsMapAtom).values()) {
+        if (record.system.workspace !== workspacePath) continue;
+        for (const ref of getRecordPrReferences(record)) if (!remotes.has(ref.remote)) remotes.set(ref.remote, []);
+      }
+      discovered = remotes;
+      store.set(prRepositoryPathsAtom, new Map(remotes));
+      const wantedPaths = new Set([...remotes.values()].map(paths => paths[0] ?? workspacePath));
+      for (const path of pollingWorkspaces.keys()) {
+        if (!wantedPaths.has(path) || pollingWorkspaces.get(path) !== workspacePath) {
+          pollingWorkspaces.delete(path);
+          void prService.stopPolling(path).catch(error => console.error('[pullRequestListeners] Failed to stop polling:', error));
+        }
+      }
+      const started = new Set<string>();
+      for (const [remote, repoPaths] of remotes) {
+        if (disposed || epoch !== generation || store.get(activeWorkspacePathAtom) !== workspacePath) return;
+        const sourcePath = repoPaths[0] ?? workspacePath;
+        void refreshList(workspacePath, remote, epoch);
+        if (started.has(sourcePath)) continue;
+        started.add(sourcePath);
+        pollingWorkspaces.set(sourcePath, workspacePath);
+        await prService.startPolling(sourcePath, workspacePath, remote)
           .catch(error => console.error('[pullRequestListeners] Failed to start polling:', error));
-        if (disposed) { await prService.stopPolling(workspacePath); return; }
-        if (store.get(activeWorkspacePathAtom) !== workspacePath) return;
-        void refreshList(workspacePath, result.remote);
+        if (disposed) { await prService.stopPolling(sourcePath); return; }
       }
     } catch {
       if (!disposed) store.set(prRemoteAtom, null);
@@ -108,11 +153,21 @@ export function initPullRequestListeners(): () => void {
     void detectRemoteFor(store.get(activeWorkspacePathAtom));
   });
   cleanups.push(unsubscribeActivePath);
+  cleanups.push(store.sub(workspaceRepoPathsAtom, () => { void detectRemoteFor(store.get(activeWorkspacePathAtom)); }));
+  let referenceRemotes = '';
+  cleanups.push(store.sub(trackerItemsMapAtom, () => {
+    const workspacePath = store.get(activeWorkspacePathAtom);
+    const next = [...new Set([...store.get(trackerItemsMapAtom).values()]
+      .filter(record => record.system.workspace === workspacePath).flatMap(getRecordPrReferences).map(ref => ref.remote))].sort().join(',');
+    if (next === referenceRemotes) return;
+    referenceRemotes = next;
+    void detectRemoteFor(workspacePath);
+  }));
 
   return () => {
     disposed = true;
     cleanups.forEach((cleanup) => cleanup());
-    for (const workspacePath of pollingWorkspaces) {
+    for (const workspacePath of pollingWorkspaces.keys()) {
       void prService.stopPolling(workspacePath).catch(error => console.error('[pullRequestListeners] Failed to stop polling:', error));
     }
   };

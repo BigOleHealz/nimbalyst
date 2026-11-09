@@ -19,6 +19,9 @@ const dataSchema = z.object({
     accessToken: z.string(), refreshToken: z.string(), expiresAt: z.number(),
     calendars: z.array(z.object({ id: z.string(), name: z.string(), primary: z.boolean() })),
     selectedCalendarIds: z.array(z.string()), events: z.array(eventSchema),
+    meetingNotes: z.array(z.object({
+      calendarId: z.string(), eventId: z.string(), id: z.string(), text: z.string(), createdAt: z.string(),
+    })).optional(),
     importedAt: z.string().optional(), range: z.object({ start: z.string(), end: z.string() }).optional(),
     autoRefresh: z.boolean().optional(), syncError: z.string().optional(),
   })),

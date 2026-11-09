@@ -53,7 +53,7 @@ import { ensureIndexSynced } from './indexEligibility.js';
 import { createRefreshLoop, shutdownServe } from './lifecycle.js';
 import { createStderrLogger, type Logger } from './log.js';
 import { createQueuedPromptStore } from './queuedPrompts.js';
-import { DEFAULT_CHECKOUT_ROOT, confineCheckout, ensureCheckout } from './repoCheckout.js';
+import { DEFAULT_CHECKOUT_ROOT, confineCheckout, ensureCheckout, prepareSessionWorkspace } from './repoCheckout.js';
 import { createServeRuntime } from './serveRuntime.js';
 import {
   createSyncedAgentMessagesStore,
@@ -232,6 +232,12 @@ export async function serve(options: ServeOptions): Promise<ServeResult> {
     queue,
     loadWorkspaces: () => loadWorkspaces(workspacesPath),
     ensureCheckout: (mapping) => ensureCheckout(mapping, { checkoutRoot }),
+    prepareWorkspace: (mapping, requestId) => prepareSessionWorkspace(mapping, requestId, {checkoutRoot}),
+    getSessionWorkspacePath: async sessionId => {
+      const session = await node.store.get(sessionId);
+      const value = session?.metadata?.remoteWorkspacePath;
+      return typeof value === "string" ? value : null;
+    },
     confineCheckout: (mapping) => confineCheckout(mapping, { checkoutRoot }),
     connectionGeneration,
     flushTranscripts: (timeoutMs) => transcripts?.flushPending(timeoutMs) ?? Promise.resolve(0),
@@ -279,6 +285,9 @@ export async function serve(options: ServeOptions): Promise<ServeResult> {
         undefined,
         undefined,
         (input.agentRole ?? 'standard') as AgentRole,
+        undefined,
+        {hostDeviceId: input.hostDeviceId, remoteWorkspacePath: input.workspacePath},
+        input.parentSessionId,
       );
 
       // Host attribution, through the synced store so it reaches the index.
@@ -287,7 +296,7 @@ export async function serve(options: ServeOptions): Promise<ServeResult> {
       try {
         await node.store.updateMetadata(session.id, {
           ...(input.parentSessionId ? { parentSessionId: input.parentSessionId } : {}),
-          metadata: { hostDeviceId: input.hostDeviceId },
+          metadata: { hostDeviceId: input.hostDeviceId, remoteWorkspacePath: input.workspacePath },
         });
       } catch (error) {
         log('host-attribution-failed', {

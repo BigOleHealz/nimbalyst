@@ -20,11 +20,27 @@ export async function readWorkspaceContext(
   workspace: string
 ): Promise<WorkspaceContext> {
   const root = await realpath(workspace);
-  const { stdout } = await exec(
-    "git",
-    ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
-    { cwd: root, maxBuffer: 2 * 1024 * 1024 }
-  );
+  let stdout: string;
+  try {
+    ({stdout} = await exec(
+      "git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+      {cwd: root, maxBuffer: 2 * 1024 * 1024},
+    ));
+  } catch (error) {
+    // A persistent multi-repo session root contains Git worktrees, rather than being a repo itself.
+    const children = await readdir(root, {withFileTypes: true});
+    const repositories: string[] = [];
+    for (const child of children) {
+      if (!child.isDirectory() || child.isSymbolicLink()) continue;
+      if (await stat(join(root, child.name, '.git')).catch(() => null)) repositories.push(child.name);
+    }
+    if (!repositories.length) throw error;
+    const contexts = await Promise.all(repositories.map(async name => ({name, context: await readWorkspaceContext(join(root, name))})));
+    return {
+      files: contexts.flatMap(({name, context}) => context.files.map(file => `${name}/${file}`)).slice(0,2000),
+      commands: contexts.flatMap(({name, context}) => context.commands.map(command => ({...command, name: `${name}:${command.name}`, content: `Run this project command from ${join(root, name)}.\n\n${command.content}`}))).slice(0,100),
+    };
+  }
   const files = [...new Set(stdout.split("\0").filter(Boolean))].slice(0, 2000);
   const commands: WorkspaceContext["commands"] = [];
   let total = 0;

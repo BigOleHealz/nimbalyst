@@ -32,7 +32,7 @@ export interface HeadlessDeviceOptions {
  * eventually render the node as stale.
  */
 export function createHeadlessDeviceInfo(
-  sync: Pick<NodeSyncConfig, 'deviceId' | 'deviceName'>,
+  sync: Pick<NodeSyncConfig, 'deviceId' | 'deviceName' | 'persistentWorkspaces'>,
   options: HeadlessDeviceOptions = {},
 ): () => DeviceInfo {
   const now = options.now ?? Date.now;
@@ -48,6 +48,7 @@ export function createHeadlessDeviceInfo(
     deviceId: sync.deviceId,
     name: sync.deviceName || 'Nimbalyst node',
     type: 'headless',
+    ...(sync.persistentWorkspaces ? {persistentWorkspaces: true} : {}),
     platform,
     appVersion: options.appVersion,
     connectedAt,

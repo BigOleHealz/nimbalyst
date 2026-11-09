@@ -1,5 +1,5 @@
 import { atom } from 'jotai';
-import type { CalendarImportsSnapshot } from '../../../shared/calendarImports';
+import type { CalendarAddNoteInput, CalendarImportsSnapshot } from '../../../shared/calendarImports';
 
 export const calendarImportsAtom = atom<CalendarImportsSnapshot>({ connections: [], clients: {} });
 
@@ -7,5 +7,11 @@ export const calendarImportsAtom = atom<CalendarImportsSnapshot>({ connections: 
 export const loadCalendarImportsAtom = atom(null, async (get, set) => {
   const before = get(calendarImportsAtom);
   const snapshot: CalendarImportsSnapshot = await window.electronAPI.invoke('calendar-imports:get');
+  if (get(calendarImportsAtom) === before) set(calendarImportsAtom, snapshot);
+});
+
+export const addCalendarMeetingNoteAtom = atom(null, async (get, set, input: CalendarAddNoteInput) => {
+  const before = get(calendarImportsAtom);
+  const snapshot: CalendarImportsSnapshot = await window.electronAPI.invoke('calendar-imports:add-note', input);
   if (get(calendarImportsAtom) === before) set(calendarImportsAtom, snapshot);
 });

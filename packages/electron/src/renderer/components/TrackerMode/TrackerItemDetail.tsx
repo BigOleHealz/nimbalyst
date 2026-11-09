@@ -26,7 +26,7 @@ import { isFileBackedRecord, isNativeItem } from './trackerContentMode';
 import { globalRegistry } from '@nimbalyst/runtime/plugins/TrackerPlugin/models';
 import { TrackerReferenceSourceProvider } from '@nimbalyst/runtime/plugins/TrackerLinkPlugin';
 import type { FieldDefinition } from '@nimbalyst/tracker-schema';
-import { getRecordTitle, getRecordStatus, getRecordPriority, getRecordField, getItemPublicationState, type TrackerItemPublicationState } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
+import { getRecordTitle, getRecordDisplayTitle, getRecordStatus, getRecordPriority, getRecordField, getItemPublicationState, type TrackerItemPublicationState } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
 import { TrackerPublicationChip } from '@nimbalyst/runtime/plugins/TrackerPlugin/components/TrackerPublicationChip';
 import { resolveTrackerWriteAccess, TRACKER_LOCAL_ISSUE_KEY_MESSAGE, TRACKER_UNASSIGNED_ISSUE_KEY_MESSAGE } from '@nimbalyst/runtime/plugins/TrackerPlugin/models/trackerLifecycle';
 import { isLocalIssueKey } from '../../../shared/localIssueKey';
@@ -670,7 +670,7 @@ export const TrackerItemDetail: React.FC<TrackerItemDetailProps> = ({
               data-testid="tracker-detail-title"
             />
           ) : (
-            <h3 className="text-base font-semibold text-nim m-0 leading-snug break-words">{getRecordTitle(item)}</h3>
+            <h3 className="text-base font-semibold text-nim m-0 leading-snug break-words">{getRecordDisplayTitle(item)}</h3>
           )}
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             <span

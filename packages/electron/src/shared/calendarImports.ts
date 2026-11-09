@@ -21,6 +21,24 @@ export interface ImportedCalendarEvent {
   location?: string;
   description?: string;
   url?: string;
+  notes?: CalendarMeetingNote[];
+}
+
+export interface CalendarMeetingNote {
+  id: string;
+  text: string;
+  createdAt: string;
+}
+
+export interface CalendarMeetingReference {
+  accountId: string;
+  calendarId: string;
+  eventId: string;
+}
+
+export interface CalendarAddNoteInput extends CalendarMeetingReference {
+  text: string;
+  clientMutationId: string;
 }
 
 export interface CalendarImportRange {

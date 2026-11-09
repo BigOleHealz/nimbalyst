@@ -25,7 +25,7 @@ nimbalyst-node --config ./nimbalyst-node.config.json \
                --prompt "list the files in this directory"
 ```
 
-Creates (or resumes) a session, runs one Claude Code turn against the workspace, streams the output, and persists the transcript to `ai_agent_messages` in a SQLite database with the same schema the desktop app uses.
+Creates (or resumes) a session, runs one agent turn against the workspace, streams the output, and persists the transcript to `ai_agent_messages` in a SQLite database with the same schema the desktop app uses.
 
 Add `--session <id>` to continue an existing session. The `providerSessionId` is persisted at the end of every turn and handed back to the SDK on the next one, so a second process resumes the same conversation rather than starting a fresh one.
 
@@ -35,7 +35,7 @@ Add `--session <id>` to continue an existing session. The `providerSessionId` is
 nimbalyst-node serve --config ./nimbalyst-node.config.json
 ```
 
-Long-running. Joins the user's personal index room as a device of type `headless`, claims create-session requests addressed to its `deviceId`, checks out the mapped repository branch, runs Claude Code turns, streams the transcript back through the session room, and drains queued prompts. `SIGTERM` exits 0; a revoked credential exits 3; a missing argument exits 2.
+Long-running. Joins the user's personal index room as a device of type `headless`, claims create-session requests addressed to its `deviceId`, checks out the mapped repository branch, runs Claude Code or Codex turns, streams the transcript back through the session room, and drains queued prompts. `SIGTERM` exits 0; a revoked credential exits 3; a missing argument exits 2.
 
 The one-turn CLI above is untouched and needs none of this configuration.
 
@@ -83,6 +83,16 @@ It is re-read on **every** request, so the desktop can map a new project without
 
 `checkoutDir` is the agent's working directory and nothing else. The session published to the index carries the requester's `projectId`, so the desktop groups it under the project the user actually has open. git runs once, when the session is created (`clone --depth 1`, or `fetch` + `checkout -B <branch> FETCH_HEAD`); a queued follow-up turn reuses the tree as the previous turn left it, because resetting to the branch head between turns would discard work the agent has not committed.
 
+### Persistent hosts such as Coder
+
+Set `sessionWorktrees: true` on a mapping to use an existing checkout as the source for new session worktrees. The runner creates a unique `codex/nimbalyst-<request-id>` branch from its current HEAD and does not fetch or reset the source checkout. The session stores its execution directory at creation so follow-up prompts and runner restarts reuse the same worktree. An absent saved path fails closed.
+
+For a multi-repository project, set `checkoutDir` to the project folder and `repositoryPaths` to an array of existing repository directories. Each session receives a directory containing a separate worktree for every named repository. All source and destination directories must stay under `checkoutRoot`. These worktrees are retained; the runner does not remove them.
+
+Set `sync.persistentWorkspaces: true` only for a host whose session directories and database survive restarts. The desktop then permits continuing those sessions after the runner reconnects. Leave it unset for ephemeral sandboxes.
+
+Codex sessions use the `openai-codex` provider and the remote operating-system user's existing Codex login. Claude sessions use the existing Claude login. The launcher should pass only OS/runtime environment values so ambient provider API keys cannot override the intended login. Interactive remote questions and permission responses remain unsupported; the config still requires an explicit noninteractive execution policy.
+
 ### Five things that are load-bearing and not obvious
 
 **The refresh token rotates on every use, and presenting a superseded one destroys the credential.** The dangerous window is not the write, it is the gap between the server rotating and the node learning it did — a crash there leaves the old token on disk and the next start replays it into a permanent revocation. So a rotation is a three-phase durable transaction: fsync a `refreshInFlightAt` marker *before* presenting the token, fsync the replacement on the response, and only then hand the access token out. A token that is not on disk is never used.
@@ -110,7 +120,7 @@ A refresh has three outcomes, and the line between them is **whether the request
 ### Not implemented yet
 
 - **Interactive prompt answers.** `prompt_response` / `question_response` control messages are logged and dropped. Under `trust.mode: bypass-all` tool permissions never prompt, but an `AskUserQuestion` from an MCP server will sit unanswered until the turn's own timeout.
-- **Worktree requests.** `onCreateWorktreeRequest` is not subscribed; the desktop is still the only worktree host.
+- **Standalone worktree requests.** `onCreateWorktreeRequest` is not subscribed. Persistent mappings can create an isolated worktree automatically for each new session, as described below.
 - **Durable replay of unpublished transcript rows.** A publication covers the whole send (`onMessageCreated` awaits the provider's `pushChange`, so encryption and transport are included) and reports what happened rather than throwing — a failed connect or a withheld write comes back as `{ published: false }`, which is *not* success, and treating it as such meant a node that had never connected reported zero failures while sending nothing. Shutdown waits up to 10s for in-flight publications and 15s for everything, and a row that did not publish is held and retried on **every** reconnect via `onConnectionGenerationChange`, not just the twelve-minute rotation. But that buffer is memory only and capped at 500 rows: a row still unsent when the process exits stays correct in the local database and invisible to every other device. Durable replay needs a published-watermark per session and is deferred.
 
 ## Configuration

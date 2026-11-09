@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { globalRegistry } from '@nimbalyst/tracker-schema';
 import { TrackerListView } from '../TrackerListView';
+import { TrackerBoardCard } from '../board/TrackerBoardCard';
 import type { TrackerRecord } from "@nimbalyst/runtime/core/TrackerRecord";
 import type { TrackerDataModel } from "@nimbalyst/runtime/plugins/TrackerPlugin/models";
 import {
@@ -47,6 +48,20 @@ function record(
     },
   } as unknown as TrackerRecord;
 }
+
+it('uses the canonical ID and title in both list rows and board cards', () => {
+  const item = {...record('ticket',{title:'DES-79 Lesson navigation'}),issueKey:'DES-79'};
+  const view=render(<>
+    <TrackerListView rows={[item]} groupBy="none" loaded onOpenItem={()=>{}} />
+    <TrackerBoardCard item={item} columnKey="to-do" cardIndex={0} selected={false} highlighted={false} dragging={false} onSelect={()=>{}} onToggleSelected={()=>{}} />
+  </>);
+  const row=within(screen.getByTestId('tracker-list-row'));
+  expect(row.getByText('DES-79: Lesson navigation').textContent).toBe('DES-79: Lesson navigation');
+  const card=within(screen.getByTestId('tracker-kanban-card'));
+  expect(card.getByText('DES-79: Lesson navigation').textContent).toBe('DES-79: Lesson navigation');
+  expect(item.fields.title).toBe('DES-79 Lesson navigation');
+  view.unmount();
+});
 
 function SearchCompositionProbe() {
   const definition: SavedViewDefinition = {

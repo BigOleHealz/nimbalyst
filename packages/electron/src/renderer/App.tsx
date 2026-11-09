@@ -1,3 +1,4 @@
+import './clientSessionHighlight.css';
 // Side-effect: patch window.addEventListener to guard text inputs from extension key handlers.
 // MUST be the very first import so it patches before any listeners are registered.
 import './hooks/useExtensionInputGuard';
