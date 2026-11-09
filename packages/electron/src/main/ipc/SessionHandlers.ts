@@ -1,3 +1,5 @@
+import {tryRemoteSessionLifecycle} from '../services/ai/remoteSessionLifecycle';
+import {sessionLifecycleWorkspace} from './sessionLifecycleWorkspace';
 import { registerSessionPromptResponseHandler } from './sessionPromptResponseHandler';
 import { remoteSessions } from '../services/ai/remoteSessions';
 import { projectExecutionMachine } from '../services/ai/projectExecution';
@@ -301,7 +303,8 @@ export async function registerSessionHandlers() {
     });
 
     // Delete session
-    safeHandle('session:delete', async (event, sessionId: string) => {
+    safeHandle('session:delete', async (event, sessionId: string, workspacePath?: string) => {
+        if (await tryRemoteSessionLifecycle(remoteSessions, sessionId, sessionLifecycleWorkspace(event, workspacePath), {type: 'delete'})) return;
         ProviderFactory.destroyProvider(sessionId);
         await sessionManager.deleteSession(sessionId);
     });
@@ -330,8 +333,10 @@ export async function registerSessionHandlers() {
     });
 
     // Update session metadata (including mode, isArchived, etc.)
-    safeHandle('sessions:update-metadata', async (event, sessionId: string, updates: UpdateSessionMetadataPayload) => {
+    safeHandle('sessions:update-metadata', async (event, sessionId: string, updates: UpdateSessionMetadataPayload, workspacePath?: string) => {
         try {
+            if (typeof updates.isArchived === 'boolean' && Object.keys(updates).every(key => key === 'isArchived') &&
+                await tryRemoteSessionLifecycle(remoteSessions, sessionId, sessionLifecycleWorkspace(event, workspacePath), {type: 'archive', isArchived: updates.isArchived})) return {success: true};
             const currentSession = await AISessionsRepository.get(sessionId);
             if (!currentSession) {
                 throw new Error('Session not found');
@@ -796,8 +801,9 @@ export async function registerSessionHandlers() {
     });
 
     // Delete session
-    safeHandle('sessions:delete', async (event, sessionId: string) => {
+    safeHandle('sessions:delete', async (event, sessionId: string, workspacePath?: string) => {
         try {
+            if (await tryRemoteSessionLifecycle(remoteSessions, sessionId, sessionLifecycleWorkspace(event, workspacePath), {type: 'delete'})) return {success: true};
             // Destroy any active provider (aborts lead query and kills all teammates)
             ProviderFactory.destroyProvider(sessionId);
 

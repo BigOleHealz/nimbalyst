@@ -1051,6 +1051,7 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
   // Listeners receive decrypted data (CachedSessionIndex format)
   const indexChanges = createIndexChangeSubscriptions(sessionIndexCache, () => personalSyncWriteGate.snapshot().state === 'verified');
   const { listeners: indexChangeListeners, hierarchyListeners: indexHierarchyListeners } = indexChanges;
+  const indexDeleteListeners = new Set<(sessionId: string) => void>();
   const hierarchySnapshots = createHierarchySnapshotDispatch(() => indexConnected && personalSyncWriteGate.snapshot().state === 'verified');
 
   // Listeners for session creation requests (from mobile)
@@ -1568,16 +1569,23 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
    * the existing index-change callbacks now come from. Bootstrap reconciles
    * hierarchy and execution queues after verification opens the write gate.
    */
+  async function removeIndexSession(id: string): Promise<void> {
+    sessionIndexCache.delete(id);
+    sessionQueueReconciler.delete(id);
+    pendingMetadataUpdates.delete(id);
+    indexPublicationGate.invalidate(id);
+    await Promise.all([...indexDeleteListeners].map(async listener => {
+      try { await listener(id); }
+      catch (error) { console.error('[CollabV3] Error in index deletion listener:', error); }
+    }));
+  }
+
   async function applyIndexChangesLocally(
     applied: PreparedIndexChange[],
     cacheEntries: Map<string, CachedSessionIndex>,
     options: { notifyListeners: boolean },
   ): Promise<void> {
-    await applyReplicatedSessionRows(applied, cacheEntries, id => {
-      sessionIndexCache.delete(id);
-      sessionQueueReconciler.delete(id);
-      indexPublicationGate.invalidate(id);
-    }, async entry => {
+    await applyReplicatedSessionRows(applied, cacheEntries, removeIndexSession, async entry => {
       sessionIndexCache.set(entry.sessionId, sessionQueueReconciler.merge(entry));
       indexPublicationGate.recordPublished(entry.sessionId, indexPatchSignatureForEntry(entry));
       if (!options.notifyListeners) return;
@@ -2254,6 +2262,10 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
         );
 
         switch (message.type) {
+          case 'indexDeleteBroadcast': {
+            await removeIndexSession(message.sessionId);
+            break;
+          }
           case 'indexSyncResponse': {
             const totalCount = (message as any).totalSessionCount;
             if (totalCount !== undefined && totalCount !== message.sessions.length) {
@@ -3906,6 +3918,11 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
     onHierarchySnapshot: hierarchySnapshots.subscribe,
 
     onIndexChange: indexChanges.subscribe,
+
+    onIndexDelete(callback: (sessionId: string) => void): () => void {
+      indexDeleteListeners.add(callback);
+      return () => { indexDeleteListeners.delete(callback); };
+    },
 
     /** Get cached metadata for a session (from sync_response and metadata_broadcast) */
     getCachedMetadata(sessionId: string): Partial<SessionMetadata> | undefined {

@@ -9,28 +9,165 @@ function fixture() {
   let changes: ((change: SessionChange) => void) | undefined;
   let status: (() => void) | undefined;
   let index: ((id: string) => void) | undefined;
+  let deletion: ((id: string) => void) | undefined;
   const offChange = vi.fn(); const offStatus = vi.fn();
+  let deleted = false;
   const provider = {
-    fetchIndex: vi.fn(async () => ({ sessions: [entry], projects: [] })),
-    getCachedIndexEntry: vi.fn(() => entry),
+    fetchIndex: vi.fn(async () => ({ sessions: deleted ? [] : [entry], projects: [] })),
+    getCachedIndexEntry: vi.fn(() => deleted ? undefined : entry),
     getLocalDeviceInfo: () => ({ deviceId: 'desktop' }),
     getConnectedDevices: vi.fn(() => [{ deviceId: 'sandbox-1', isOnline: true }]),
     getStatus: () => ({ connected: true, syncing: false }),
+    onIndexDelete: (cb: typeof deletion) => { deletion = cb; return vi.fn(); },
     onIndexChange: (cb: typeof index) => { index = cb; return vi.fn(); },
     onRemoteChange: vi.fn((_id, cb) => { changes = cb; return offChange; }),
     onStatusChange: vi.fn((_id, cb) => { status = cb; return offStatus; }),
     connect: vi.fn(async () => {}), disconnect: vi.fn(),
-    pushChange: vi.fn(async (_id: string, _change: SessionChange) => ({ published: true })), sendSessionControlMessage: vi.fn(async () => {}),
+    pushChange: vi.fn(async (_id: string, change: SessionChange) => {
+      if (change.type === 'session_deleted') deleted = true;
+      if (change.type === 'metadata_updated') Object.assign(entry, change.metadata);
+      return {published: true};
+    }), sendSessionControlMessage: vi.fn(async () => {}),
   };
   const deps = { localSessionIds: vi.fn(async () => new Set<string>()), hasLocalSession: vi.fn(async () => false), listChanged: vi.fn() };
   const mirror = new RemoteSessionMirror(deps);
   mirror.setProvider(provider as unknown as SyncProvider);
   return { mirror, entry, deps, provider, offChange, offStatus,
-    change: (change: SessionChange) => changes?.(change), status: () => status?.(), index: () => index?.('remote') };
+    change: (change: SessionChange) => changes?.(change), status: () => status?.(), index: () => index?.('remote'), deletion: () => deletion?.('remote') };
 }
 
 afterEach(() => vi.useRealTimers());
 describe('remote desktop mirrors', () => {
+
+  it('disconnects a watched session on deletion and keeps later unsubscribe harmless', async () => {
+    const f = fixture();
+    const stop = await f.mirror.watch('remote', '/repo', vi.fn());
+    f.deletion();
+    expect(f.provider.disconnect).toHaveBeenCalledWith('remote');
+    expect(f.offChange).toHaveBeenCalled();
+    expect(f.offStatus).toHaveBeenCalled();
+    stop();
+    expect(f.provider.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+
+  it('does not queue a child while its parent archive is publishing', async () => {
+    const f = fixture();
+    const entries: any[] = [f.entry, {...f.entry, sessionId: 'child', parentSessionId: 'remote'}];
+    f.provider.fetchIndex.mockResolvedValue({sessions: entries, projects: []});
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => {release = resolve;});
+    f.provider.pushChange.mockImplementation(async (id, change) => {
+      if (id === 'remote' && change.type === 'metadata_updated' && change.metadata.isArchived) await gate;
+      if (change.type === 'metadata_updated') Object.assign(entries.find(entry => entry.sessionId === id), change.metadata);
+      return {published: true};
+    });
+    const archive = f.mirror.setArchived('remote', '/repo', true);
+    await vi.waitFor(() => expect(f.provider.pushChange).toHaveBeenCalledWith('remote', expect.anything()));
+    const queued = f.mirror.queue('child', '/repo', 'Do not hide this work').then(() => 'queued', error => error.message);
+    release();
+    await archive;
+    expect(await queued).toMatch(/restore|archived/i);
+    expect(entries[1].queuedPrompts).toBeUndefined();
+  });
+
+
+  it.each(['archive', 'delete'] as const)('keeps the session when the server has not confirmed %s', async action => {
+    const f = fixture();
+    f.provider.pushChange.mockResolvedValue({published: true});
+    await expect(action === 'archive' ? f.mirror.setArchived('remote', '/repo', true) : f.mirror.delete('remote', '/repo')).rejects.toThrow(/confirmed/);
+    expect((await f.mirror.list('/repo', []))[0].id).toBe('remote');
+  });
+
+
+  it('refreshes other windows when a remote session disappears from the synced index', async () => {
+    const f = fixture();
+    await f.mirror.list('/repo', []);
+    f.provider.getCachedIndexEntry.mockReturnValue(undefined as any);
+    f.deletion();
+    expect(await f.mirror.list('/repo', [])).toEqual([]);
+    expect(f.deps.listChanged).toHaveBeenCalledWith('/repo', 'remote');
+  });
+
+  it('leaves normal local lifecycle operations usable while remote sync is offline', async () => {
+    const f = fixture();
+    f.deps.hasLocalSession.mockResolvedValue(true);
+    f.provider.fetchIndex.mockRejectedValue(new Error('offline'));
+    expect(await f.mirror.workspaceForSession('local')).toBeUndefined();
+    expect(f.provider.fetchIndex).not.toHaveBeenCalled();
+  });
+
+  it('keeps a remote session when its transcript cannot connect for deletion', async () => {
+    const f = fixture(); f.provider.connect.mockRejectedValue(new Error('transcript unavailable'));
+    await expect(f.mirror.delete('remote', '/repo')).rejects.toThrow('transcript unavailable');
+    expect(f.provider.pushChange).not.toHaveBeenCalled();
+    expect((await f.mirror.list('/repo', []))[0].id).toBe('remote');
+  });
+
+  it('refuses deleting a workstream that still contains child sessions', async () => {
+    const f = fixture();
+    f.provider.fetchIndex.mockResolvedValue({sessions: [f.entry, {...f.entry, sessionId: 'child', parentSessionId: 'remote'}], projects: []} as any);
+    await expect(f.mirror.delete('remote', '/repo')).rejects.toThrow(/child sessions/);
+    expect(f.provider.pushChange).not.toHaveBeenCalled();
+  });
+
+
+  it('archives and restores remote descendants without requiring desktop execution rows', async () => {
+    const f = fixture();
+    const entries = [f.entry,
+      {...f.entry, sessionId: 'child', parentSessionId: 'remote'},
+      {...f.entry, sessionId: 'leaf', parentSessionId: 'child'},
+      {...f.entry, sessionId: 'other-workspace', parentSessionId: 'remote', projectId: '/other'},
+      {...f.entry, sessionId: 'other-host', parentSessionId: 'remote', hostDeviceId: 'sandbox-2'},
+    ];
+    f.provider.fetchIndex.mockResolvedValue({sessions: entries, projects: []} as any);
+    f.provider.pushChange.mockImplementation(async (id, change) => {
+      if (change.type === 'metadata_updated') Object.assign(entries.find(entry => entry.sessionId === id)!, change.metadata);
+      return {published: true};
+    });
+    await f.mirror.setArchived('remote', '/repo', true);
+    expect(f.provider.pushChange.mock.calls.map(([id]) => id)).toEqual(['remote', 'child', 'leaf']);
+    expect(f.provider.pushChange).toHaveBeenCalledWith('leaf', {type: 'metadata_updated', metadata: {isArchived: true}});
+    expect((await f.mirror.list('/repo', [])).filter(row => ['remote', 'child', 'leaf'].includes(row.id)).every(row => row.isArchived)).toBe(true);
+    await f.mirror.setArchived('remote', '/repo', false);
+    expect(f.provider.pushChange).toHaveBeenLastCalledWith('leaf', {type: 'metadata_updated', metadata: {isArchived: false}});
+    expect(f.deps.listChanged).toHaveBeenCalledWith('/repo', 'remote');
+  });
+
+  it('keeps a remote conversation visible when lifecycle publication fails', async () => {
+    const f = fixture();
+    f.provider.pushChange.mockResolvedValue({published: false, reason: 'disconnected'} as any);
+    await expect(f.mirror.setArchived('remote', '/repo', true)).rejects.toThrow(/disconnected/);
+    expect((await f.mirror.list('/repo', []))[0].isArchived).toBe(false);
+    await expect(f.mirror.delete('remote', '/repo')).rejects.toThrow(/disconnected/);
+    expect((await f.mirror.list('/repo', []))[0].id).toBe('remote');
+  });
+
+  it('deletes the synced remote conversation and removes its cached sidebar entry', async () => {
+    const f = fixture();
+    await f.mirror.delete('remote', '/repo');
+    expect(f.provider.connect).toHaveBeenCalledWith('remote');
+    expect(f.provider.pushChange).toHaveBeenCalledWith('remote', {type: 'session_deleted'});
+    expect(f.provider.disconnect).toHaveBeenCalledWith('remote');
+    expect(await f.mirror.list('/repo', [])).toEqual([]);
+    expect(f.deps.listChanged).toHaveBeenCalledWith('/repo', 'remote');
+  });
+
+  it.each([{isExecuting: true}, {queuedPrompts: [{id: 'queued', prompt: 'work', timestamp: 1}]}])('refuses to delete or archive remote work that is running or queued: %j', async state => {
+    const f = fixture(); Object.assign(f.entry, state);
+    await expect(f.mirror.delete('remote', '/repo')).rejects.toThrow(/running|queued/);
+    await expect(f.mirror.setArchived('remote', '/repo', true)).rejects.toThrow(/running|queued/);
+    expect(f.provider.pushChange).not.toHaveBeenCalled();
+  });
+
+  it('rejects lifecycle writes in a different workspace and never touches the local collision', async () => {
+    const f = fixture();
+    await expect(f.mirror.delete('remote', '/other')).rejects.toThrow(/not available/);
+    f.deps.hasLocalSession.mockResolvedValue(true);
+    await expect(f.mirror.setArchived('remote', '/repo', true)).rejects.toThrow(/not available/);
+    expect(f.provider.pushChange).not.toHaveBeenCalled();
+  });
+
   it('counts descendants recursively without crossing workspace or host boundaries', async () => {
     const f = fixture();
     f.provider.fetchIndex.mockResolvedValue({ sessions: [f.entry,
