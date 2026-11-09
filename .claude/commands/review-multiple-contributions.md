@@ -44,16 +44,16 @@ Map common shorthand to provider-prefixed identifiers. If the input already cont
 
 If a model was given but does not match any of the above and has no `:`, stop and use the `AskUserQuestion` tool to confirm the resolved identifier before spawning anything. Do not guess.
 
-If **no model was given**, omit the `model` field on `spawn_session` and set `inheritModel: true`. This makes the spawned reviews use the same model as this dispatcher session, which is the behavior the user expects.
+For each PR, follow [AI-assisted review](../rules/ai-assisted-review.md) and compare the requested review model with every code-generation model attributed in its body. Do not dispatch a known generation model to review that PR. If the user selected a conflicting model, report the conflict and request a different model for that PR. If **no model was given**, select an available model different from every attributed generation model for each PR and pass it explicitly; do not blindly inherit the dispatcher model. If attribution or a suitable model is unavailable, report the limitation and leave the independent review incomplete.
 
 ## Workflow
 
-### 1. Fetch PR titles up front
+### 1. Fetch PR titles and model attribution up front
 
-Before spawning anything, fetch the title of every PR **in parallel** so session names are scannable in the sidebar:
+Before spawning anything, fetch the title and body of every PR **in parallel** so session names are scannable and review models can be checked against generation attribution:
 
 ```bash
-gh pr view <pr> --json title -q .title
+gh pr view <pr> --json title,body
 ```
 
 Run all `gh pr view` calls in a single message as parallel `Bash` tool calls. Cache the results.
@@ -73,7 +73,7 @@ Launch up to `concurrency` sessions immediately. For each PR, call `mcp__nimbaly
 - **`title`** -- `"Review PR <#> - <pr title>"`, e.g. `"Review PR 256 - github marketplace install"`. Use the title you fetched in step 1.
 - **`isolated`** -- `true`. Each review is its own top-level session in the sidebar, not parented under this dispatcher.
 - **`notifyOnComplete`** -- `true`. You will be woken when each spawned session terminates, which is how you know to launch the next one from the queue.
-- **`model`** -- the resolved `provider:model` string from parsing, OR omit it and set `inheritModel: true` if the user did not specify a model.
+- **`model`** -- the explicit `provider:model` selected for this PR after checking its generation attribution. Do not set `inheritModel: true`. The invoked `/review-contribution` command supplies the required non-sycophantic directives to the reviewer and its sub-agents.
 
 Spawn requests within a batch can be issued as parallel tool calls in a single message.
 
@@ -122,6 +122,6 @@ If any session failed to produce a verdict, surface that explicitly:
 
 - **Never** write a prompt that describes the slash command. The spawned session's prompt must start with the literal characters `/review-contribution `.
 - **Never** spawn more than `concurrency` sessions in flight at once.
-- **Never** touch the working directory or invoke `gh pr checkout`, `git checkout`, `git fetch`, or any write operation. The dispatcher only runs `gh pr view <pr> --json title -q .title` (read-only) and the spawned sessions inherit `/review-contribution`'s own no-touch rules.
+- **Never** touch the working directory or invoke `gh pr checkout`, `git checkout`, `git fetch`, or any write operation. The dispatcher only runs `gh pr view <pr> --json title,body` (read-only) and the spawned sessions inherit `/review-contribution`'s own no-touch rules.
 - **Never** post comments, approvals, or review decisions on GitHub from either the dispatcher or the spawned sessions.
 - **Never** review a PR inline yourself by reading its diff. The whole point of dispatching is to let parallel sessions do the work. Your job is parse + spawn + throttle + summarize.
