@@ -4,6 +4,8 @@ description: Review a community-contributed PR for safety, correctness, and adhe
 ---
 Review a community-contributed PR and answer one question: **is there anything that blocks merging?** Non-blocking improvements get a brief mention so the maintainer can clean them up post-merge -- they do not belong in the response to the contributor.
 
+Follow [AI-assisted review](../rules/ai-assisted-review.md). Read model attribution in the PR body before analysis and use a review model different from every generation model. Include the required non-sycophantic prompt in this review and every sub-agent request. Report the generation/review models and reviewed scope; missing attribution means independence is unverified. If the current model generated the code, route review to a suitable different model rather than reviewing it yourself. Do not claim the required independent review is complete when model identity or access is unavailable.
+
 ## CRITICAL: Do NOT touch the working directory
 
 This review runs **entirely from the GitHub API** via `gh`. The user's current working directory is off-limits.
