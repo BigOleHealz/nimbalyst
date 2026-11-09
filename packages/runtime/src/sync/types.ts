@@ -374,6 +374,9 @@ export interface SyncProvider {
     draftUpdatedAt?: number;
   }) => void, options?: { replayHierarchy?: boolean }): () => void;
 
+  /** Authoritative session removals from the personal sync index. */
+  onIndexDelete?(callback: (sessionId: string) => void): () => void;
+
   /** Get cached metadata for a session (populated from syncResponse and metadataBroadcast) */
   getCachedMetadata?(sessionId: string): {
     queuedPrompts?: Array<{

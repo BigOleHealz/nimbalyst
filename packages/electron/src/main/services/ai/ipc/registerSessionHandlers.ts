@@ -1,3 +1,5 @@
+import {tryRemoteSessionLifecycle} from '../remoteSessionLifecycle';
+import {sessionLifecycleWorkspace} from '../../../ipc/sessionLifecycleWorkspace';
 import { warnIfUnpublished } from '@nimbalyst/runtime/sync/pushOutcome';
 import { TrayManager } from '../../../tray/TrayManager';
 import { safeHandle } from '../../../utils/ipcRegistry';
@@ -499,6 +501,7 @@ export function registerSessionHandlers(ctx: AIServiceContext): void {
 
   // Delete session
   safeHandle('ai:deleteSession', async (event, sessionId: string, workspacePath?: string) => {
+    if (await tryRemoteSessionLifecycle(remoteSessions, sessionId, sessionLifecycleWorkspace(event, workspacePath), {type: 'delete'})) return {success: true};
     const success = await ctx.sessionManager.deleteSession(sessionId, workspacePath);
 
     // Clean up provider if it exists

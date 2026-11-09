@@ -33,10 +33,11 @@ export class RemoteSessionMirror {
   private entries = new Map<string, IndexEntry>();
   private observations = new Map<string, Observation>();
   private unlistenIndex?: () => void;
+  private unlistenIndexDelete?: () => void;
   private unlistenDevices?: () => void;
   private refreshInFlight?: Promise<void>;
   private refreshedAt = 0;
-  private queueWrites = new Map<string, Promise<unknown>>();
+  private writeQueue: Promise<unknown> = Promise.resolve();
   constructor(private readonly deps: {
     preparePrompt?(prompt: string, workspace: string): Promise<string>;
     encryptAttachments?(attachments: ChatAttachment[], workspace: string, key: CryptoKey): Promise<import("@nimbalyst/runtime/sync/types").EncryptedAttachment[]>;
@@ -52,6 +53,7 @@ export class RemoteSessionMirror {
     this.encryptionKey = encryptionKey;
     if (provider === this.provider) return;
     this.unlistenIndex?.();
+    this.unlistenIndexDelete?.();
     this.unlistenDevices?.();
     for (const [id, observation] of this.observations) {
       observation.dispose();
@@ -69,7 +71,8 @@ export class RemoteSessionMirror {
     this.unlistenIndex = provider?.onIndexChange?.((id) => {
       if (this.provider !== provider) return;
       const cached = provider.getCachedIndexEntry?.(id);
-      if (!cached || !this.isRemoteHost(cached.hostDeviceId)) return;
+      if (!cached) { this.removeEntry(id); return; }
+      if (!this.isRemoteHost(cached.hostDeviceId)) return;
       const entry = { ...this.entries.get(id), ...cached, sessionId: id } as IndexEntry;
       if (!entry.projectId) return;
       this.entries.set(id, entry);
@@ -83,6 +86,9 @@ export class RemoteSessionMirror {
         this.schedule(id, observation);
       }
       this.deps.listChanged(entry.projectId, id);
+    });
+    this.unlistenIndexDelete = provider?.onIndexDelete?.(id => {
+      if (this.provider === provider) this.removeEntry(id);
     });
     this.unlistenDevices = provider?.onDeviceStatusChange?.(() => {
       for (const [id, observation] of this.observations) this.schedule(id, observation);
@@ -109,6 +115,7 @@ export class RemoteSessionMirror {
     const provider = this.provider;
     const attempt = (async () => {
       const index = await provider.fetchIndex!();
+      if (index.complete === false) throw new Error('The remote session index is incomplete. Reconnect and retry.');
       if (this.provider !== provider) return;
       const next = new Map(index.sessions.filter(entry => this.isRemoteHost(entry.hostDeviceId)).map(entry => [entry.sessionId, entry]));
       this.entries = next;
@@ -179,6 +186,7 @@ export class RemoteSessionMirror {
     };
   }
   async workspaceForSession(id: string): Promise<string | undefined> {
+    if (await this.deps.hasLocalSession(id)) return undefined;
     await this.refresh();
     const entry = this.entries.get(id);
     return entry && this.isRemoteHost(entry.hostDeviceId) && !await this.deps.hasLocalSession(id) ? entry.projectId : undefined;
@@ -283,19 +291,15 @@ export class RemoteSessionMirror {
   }
   queue(id: string, workspace: string, prompt: string, attachments: ChatAttachment[] = [], options?: import("@nimbalyst/runtime/sync/types").RemoteTurnOptions): Promise<{promptId: string}> {
     const provider = this.provider;
-    const previous = this.queueWrites.get(id) ?? Promise.resolve();
-    const next = previous.catch(() => {}).then(() => {
+    return this.serializeWrite(id, () => {
       if (provider !== this.provider) throw new Error('Session sync changed. Keep the draft and retry.');
       return this.queueNow(id, workspace, prompt, attachments, options);
-    }).finally(() => {
-      if (this.queueWrites.get(id) === next) this.queueWrites.delete(id);
     });
-    this.queueWrites.set(id, next);
-    return next;
   }
   private async queueNow(id: string, workspace: string, prompt: string, attachments: ChatAttachment[] = [], options?: import("@nimbalyst/runtime/sync/types").RemoteTurnOptions): Promise<{ promptId: string }> {
     if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 100000) throw new Error('Enter a prompt of at most 100,000 characters.');
     const entry = await this.requireEntry(id, workspace);
+    if (entry.isArchived) throw new Error('Restore this archived remote session before sending a prompt.');
     const provider = this.provider;
     if (!provider || !this.hostOnline(entry)) throw new Error('The sandbox is offline. Your prompt has not been sent.');
     const readOnlyReason = this.readOnlyReason(entry);
@@ -387,5 +391,105 @@ export class RemoteSessionMirror {
     const readOnlyReason = this.readOnlyReason(entry);
     if (readOnlyReason) throw new Error(readOnlyReason);
     await this.provider.sendSessionControlMessage({ sessionId: id, type: 'cancel', targetDeviceId: entry.hostDeviceId, timestamp: Date.now(), sentBy: 'desktop' });
+  }
+
+  private serializeWrite<T>(_id: string, write: () => Promise<T>): Promise<T> {
+    // A parent lifecycle write also touches descendants. One short publication
+    // queue prevents any window from slipping a child prompt into that write.
+    const next = this.writeQueue.catch(() => {}).then(write);
+    this.writeQueue = next;
+    return next;
+  }
+
+  private removeEntry(id: string): void {
+    const entry = this.entries.get(id);
+    const observation = this.observations.get(id);
+    if (observation) {
+      observation.dispose(); this.observations.delete(id);
+      this.provider?.disconnect(id);
+      for (const listener of observation.listeners) listener({
+        session: this.sessionData(observation.entry, []), connected: false, hostOnline: false,
+        syncing: false, executing: false, queuedPrompts: [], error: 'This remote session was deleted.',
+      });
+    }
+    this.entries.delete(id);
+    if (entry) this.deps.listChanged(entry.projectId, id);
+  }
+
+  private assertIdle(entry: IndexEntry): void {
+    if (entry.isExecuting || entry.queuedPrompts?.length) {
+      throw new Error('This remote session has running or queued work. Stop it and clear its queue before archiving or deleting it.');
+    }
+  }
+
+  private async publishLifecycle(id: string, change: import('@nimbalyst/runtime/sync/types').SessionChange): Promise<void> {
+    const provider = this.provider;
+    if (!provider || provider.isIndexReady?.() === false) throw new Error('Session sync is disconnected. Reconnect and retry.');
+    const outcome = await provider.pushChange(id, change);
+    if (provider !== this.provider) throw new Error('Session sync changed. Reopen the session and retry.');
+    if (!outcome?.published) throw new Error(`The remote session change was not published: ${outcome?.reason ?? 'sync disconnected'}`);
+    const confirmed = await provider.fetchIndex?.();
+    if (provider !== this.provider || !confirmed || confirmed.complete === false) throw new Error('The remote session change could not be confirmed. Reconnect and retry.');
+    const entry = confirmed.sessions.find(session => session.sessionId === id);
+    if (change.type === 'session_deleted' ? !!entry : change.type === 'metadata_updated' && entry?.isArchived !== change.metadata.isArchived) {
+      throw new Error('The remote session change has not been confirmed by the sync server. Retry after reconnecting.');
+    }
+  }
+
+  setArchived(id: string, workspace: string, isArchived: boolean): Promise<void> {
+    return this.serializeWrite(id, () => this.setArchivedNow(id, workspace, isArchived));
+  }
+
+  private async setArchivedNow(id: string, workspace: string, isArchived: boolean): Promise<void> {
+    if (typeof isArchived !== 'boolean') throw new Error('An archive state is required.');
+    this.refreshedAt = 0;
+    const root = await this.requireEntry(id, workspace);
+    const selected = new Set([id]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const entry of this.entries.values()) {
+        if (entry.projectId === workspace && entry.hostDeviceId === root.hostDeviceId && entry.parentSessionId && selected.has(entry.parentSessionId) && !selected.has(entry.sessionId)) {
+          selected.add(entry.sessionId); grew = true;
+        }
+      }
+    }
+    const entries = [...selected].map(sessionId => this.entries.get(sessionId)!);
+    if (isArchived) for (const entry of entries) this.assertIdle(entry);
+    for (const entry of entries) {
+      this.refreshedAt = 0;
+      const current = await this.requireEntry(entry.sessionId, workspace);
+      if (isArchived) this.assertIdle(current);
+      await this.publishLifecycle(entry.sessionId, {type: 'metadata_updated', metadata: {isArchived}});
+      this.entries.set(entry.sessionId, {...entry, isArchived});
+      const observation = this.observations.get(entry.sessionId);
+      if (observation) { observation.entry = {...observation.entry, isArchived}; this.schedule(entry.sessionId, observation); }
+      this.deps.listChanged(workspace, entry.sessionId);
+    }
+  }
+
+  delete(id: string, workspace: string): Promise<void> {
+    return this.serializeWrite(id, () => this.deleteNow(id, workspace));
+  }
+
+  private async deleteNow(id: string, workspace: string): Promise<void> {
+    this.refreshedAt = 0;
+    const entry = await this.requireEntry(id, workspace);
+    this.assertIdle(entry);
+    if ([...this.entries.values()].some(child => child.parentSessionId === id && child.projectId === workspace && child.hostDeviceId === entry.hostDeviceId)) {
+      throw new Error('Archive this workstream, or delete its child sessions first.');
+    }
+    const provider = this.provider!;
+    try {
+      // The transcript room and index must both receive deletion. The host's
+      // retained execution record remains available for recovery; its checkout
+      // and linked tracker tickets are never deleted by a mirror operation.
+      await provider.connect(id);
+      if (provider !== this.provider) throw new Error('Session sync changed. Reopen the session and retry.');
+      await this.publishLifecycle(id, {type: 'session_deleted'});
+      this.removeEntry(id);
+    } finally {
+      provider.disconnect(id);
+    }
   }
 }
