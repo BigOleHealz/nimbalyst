@@ -12,7 +12,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 it("loads the personal preference, persists a move, and follows other windows without echoing writes", async () => {
   let listener: (payload: { key: string; value: unknown }) => void = () => {};
-  const invoke = vi.fn().mockResolvedValue("right");
+  const invoke = vi.fn().mockResolvedValue("above");
   const subscribe = vi.fn((fn: typeof listener) => {
     listener = fn;
     return vi.fn();
@@ -25,17 +25,17 @@ it("loads the personal preference, persists a move, and follows other windows wi
   await initAgentFilePlacement();
   await initAgentFilePlacement();
   expect(subscribe).toHaveBeenCalledTimes(1);
-  expect(store.get(agentFilePlacementAtom)).toBe("right");
-  store.set(setAgentFilePlacementAtom, "above");
+  expect(store.get(agentFilePlacementAtom)).toBe("above");
+  store.set(setAgentFilePlacementAtom, "right");
   expect(invoke).toHaveBeenCalledWith(
     "app-settings:set",
     AGENT_FILE_PLACEMENT_KEY,
-    "above"
+    "right"
   );
   invoke.mockClear();
-  listener({ key: AGENT_FILE_PLACEMENT_KEY, value: "right" });
-  expect(store.get(agentFilePlacementAtom)).toBe("right");
+  listener({ key: AGENT_FILE_PLACEMENT_KEY, value: "above" });
+  expect(store.get(agentFilePlacementAtom)).toBe("above");
   expect(invoke).not.toHaveBeenCalled();
   listener({ key: AGENT_FILE_PLACEMENT_KEY, value: "invalid" });
-  expect(store.get(agentFilePlacementAtom)).toBe("above");
+  expect(store.get(agentFilePlacementAtom)).toBe("right");
 });
