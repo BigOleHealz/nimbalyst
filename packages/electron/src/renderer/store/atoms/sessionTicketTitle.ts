@@ -3,7 +3,7 @@ import { atomFamily } from '../debug/atomFamilyRegistry';
 import { sessionRegistryAtom } from './sessions';
 import { trackerItemsMapAtom } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerDataAtoms';
 import type { TrackerRecord } from '@nimbalyst/runtime/core/TrackerRecord';
-import { formatTicketTitle, getRecordPullRequestTitle, getRecordTicketKey, getTitleTicketKey } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
+import { formatTicketTitle, getRecordPullRequestTitle, getRecordTicketKey, getTitleTicketKey, getRecordTitle, getRecordStatus, getStatusOptions } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
 
 /** Resolve both durable link directions once for the whole registry. */
 const linkedTicketsAtom = atom(get => {
@@ -62,9 +62,33 @@ export const sessionTicketKeyAtom = atomFamily((id: string) => atom(get => {
   return item ? getRecordTicketKey(item) : undefined;
 }));
 
+/** Keep meaningful session names; use the ticket description while naming is pending. */
+export function formatSessionDisplayTitle(title: string, key?: string, ticketTitle?: string): string {
+  const formatted = formatTicketTitle(title, key);
+  const brief = key ? formatted.slice(key.length).replace(/^:\s*/, '') : formatted;
+  if (ticketTitle?.trim() && /^(?:new conversation|new session|untitled(?: session| conversation)?)?$/i.test(brief.trim())) {
+    return formatTicketTitle(ticketTitle, key);
+  }
+  return formatted || 'Untitled Session';
+}
+
+export const sessionTicketDescriptionAtom = atomFamily((id: string) => atom(get => {
+  const item = get(sessionTicketAtom(id));
+  return item ? getRecordTitle(item) : undefined;
+}));
+
+export const sessionTicketStatusLabelAtom = atomFamily((id: string) => atom(get => {
+  const item = get(sessionTicketAtom(id));
+  if (!item) return undefined;
+  const status = getRecordStatus(item);
+  if (!status) return undefined;
+  return getStatusOptions(item.primaryType).find(option => option.value === status)?.label
+    || status.replace(/[-_]+/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+}));
+
 export const sessionDisplayTitleAtom = atomFamily((id: string) => atom(get => {
   const title = get(sessionRegistryAtom).get(id)?.title || 'Untitled Session';
-  return formatTicketTitle(title, get(sessionTicketKeyAtom(id)) || getTitleTicketKey(title));
+  return formatSessionDisplayTitle(title, get(sessionTicketKeyAtom(id)) || getTitleTicketKey(title), get(sessionTicketDescriptionAtom(id)));
 }));
 
 export const sessionPullRequestTitleAtom = atomFamily((id: string) => atom(get => {

@@ -11,8 +11,8 @@ import { ProviderIcon } from '@nimbalyst/runtime/ui/icons/ProviderIcons';
 import { getRelativeTimeString } from '../../utils/dateFormatting';
 import { sessionOrChildProcessingAtom, sessionUnreadAtom, sessionPendingPromptAtom, sessionHasPendingInteractivePromptAtom, sessionShareAtom, sessionWakeupAtom, sessionLastActivityAtom } from '../../store';
 import { sessionRegistryAtom } from '../../store/atoms/sessions';
-import { sessionTicketKeyAtom } from '../../store/atoms/sessionTicketTitle';
-import { formatTicketTitle, getTitleTicketKey } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
+import { sessionTicketKeyAtom, sessionTicketDescriptionAtom, sessionTicketStatusLabelAtom, formatSessionDisplayTitle } from '../../store/atoms/sessionTicketTitle';
+import { getTitleTicketKey } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
 import { sessionAwaitingApprovalAtom } from '../../store/atoms/sessionApproval';
 import { SessionContextMenu } from './SessionContextMenu';
 import { FullTitleTooltip } from './FullTitleTooltip';
@@ -164,6 +164,19 @@ const SessionPhaseBadge = memo<{ phase: string }>(({ phase }) => {
   );
 });
 
+const SessionTicketStatusBadge = memo(function SessionTicketStatusBadge({ sessionId }: { sessionId: string }) {
+  const label = useAtomValue(sessionTicketStatusLabelAtom(sessionId));
+  if (!label) return null;
+  return (
+    <span
+      className="session-list-item-ticket-status shrink-0 text-[0.5625rem] leading-tight px-1 py-px rounded font-medium whitespace-nowrap bg-[var(--nim-bg-hover)] text-[var(--nim-text-muted)]"
+      title={`Ticket status: ${label}`}
+    >
+      {label}
+    </span>
+  );
+});
+
 interface SessionListItemProps {
   id: string;
   treeContext?: boolean;
@@ -306,7 +319,8 @@ export const SessionListItem = memo<SessionListItemProps>(function SessionListIt
   }, [isRenaming]);
 
   const ticketKey = useAtomValue(sessionTicketKeyAtom(id));
-  const displayTitle = formatTicketTitle(title || 'Untitled Session', ticketKey || getTitleTicketKey(title));
+  const ticketDescription = useAtomValue(sessionTicketDescriptionAtom(id));
+  const displayTitle = formatSessionDisplayTitle(title, ticketKey || getTitleTicketKey(title), ticketDescription);
 
   // Per-session live activity. Bumped on every `ai:message-logged`; only
   // this list item re-renders when its own activity ticks, instead of the
@@ -444,6 +458,7 @@ export const SessionListItem = memo<SessionListItemProps>(function SessionListIt
             >
               {displayTitle}
             </FullTitleTooltip>
+            <SessionTicketStatusBadge sessionId={id} />
             {treeDetails}
             <span className="session-list-item-datetime shrink-0 text-[0.6875rem] text-[var(--nim-text-faint)] whitespace-nowrap" title={fullDateTime}>{relativeTime}</span>
             {hint && <span className="session-tree-drop-hint text-xs text-[var(--nim-primary)]" role="status">{hint.label}</span>}
@@ -461,6 +476,7 @@ export const SessionListItem = memo<SessionListItemProps>(function SessionListIt
             <div className="session-list-item-meta flex gap-1.5 text-[0.6875rem] text-[var(--nim-text-faint)] items-center mt-0.5">
               <span className="session-list-item-datetime text-[0.6875rem] text-[var(--nim-text-faint)] whitespace-nowrap transition-colors duration-150" title={fullDateTime}>{relativeTime}</span>
               {displayModel && <span className="session-list-item-model overflow-hidden text-ellipsis whitespace-nowrap">{displayModel}</span>}
+              <SessionTicketStatusBadge sessionId={id} />
               {(awaitingApproval || phase) && <SessionPhaseBadge phase={awaitingApproval ? 'awaiting-approval' : phase!} />}
               <SessionExternalMarker sessionId={id} />
               {treeDetails}

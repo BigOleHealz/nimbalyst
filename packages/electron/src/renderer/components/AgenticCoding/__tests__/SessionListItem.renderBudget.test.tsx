@@ -20,7 +20,7 @@ import { measureRenders } from '../../../devtools/renderBudget';
 import React from 'react';
 import { Provider, createStore } from 'jotai';
 import { act, cleanup, render, screen, fireEvent } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SessionListItem } from '../SessionListItem';
 import { SessionTree } from '../SessionTree';
@@ -32,6 +32,9 @@ import {
   sessionRegistryAtom,
 } from '../../../store/atoms/sessions';
 import { trackerItemsMapAtom } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerDataAtoms';
+
+import { sessionDisplayTitleAtom, formatSessionDisplayTitle } from '../../../store/atoms/sessionTicketTitle';
+import { loadBuiltinTrackers } from '@nimbalyst/runtime/plugins/TrackerPlugin/models/ModelLoader';
 
 import { sessionApprovalSnapshotAtom } from '../../../store/atoms/sessionApproval';
 
@@ -58,6 +61,8 @@ function SessionList() {
   );
 }
 
+beforeAll(() => loadBuiltinTrackers());
+
 beforeEach(() => {
   Object.defineProperty(window, 'electronAPI', {
     configurable: true,
@@ -68,6 +73,15 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe('session list render budget', () => {
+  it.each(['New conversation', 'New Session', 'Untitled Session', 'DES-81: New conversation', '', 'DES-81'])('uses the ticket description for the placeholder %j', (title) => {
+    expect(formatSessionDisplayTitle(title, 'DES-81', 'DES-81: Repair lesson navigation')).toBe('DES-81: Repair lesson navigation');
+  });
+
+  it('preserves meaningful custom names and leaves unlinked placeholders alone', () => {
+    expect(formatSessionDisplayTitle('Regression checks', 'DES-81', 'Repair lesson navigation')).toBe('DES-81: Regression checks');
+    expect(formatSessionDisplayTitle('New conversation')).toBe('New conversation');
+  });
+
   it('shows the ticket ID before the brief session name and follows ticket link updates', () => {
     const store=createStore();
     store.set(sessionRegistryAtom,new Map([['s1',{id:'s1',workspaceId:'/repo',title:'Lesson fix',linkedTrackerItemIds:['ticket']} as any]]));
@@ -77,6 +91,24 @@ describe('session list render budget', () => {
     act(()=>store.set(trackerItemsMapAtom,new Map()));
     expect(view.container.querySelector('.session-list-item-title')?.textContent).toBe('Lesson fix');
   });
+  it.each([false, true])('replaces placeholder names and follows ticket status changes (compact=%s)', (compact) => {
+    const store = createStore();
+    const session = { id: 's1', workspaceId: '/repo', title: 'DES-81: New conversation', linkedTrackerItemIds: ['ticket'] } as any;
+    const ticket = { id: 'ticket', primaryType: 'task', issueKey: 'DES-81', fields: { title: 'DES-81: Repair lesson navigation', status: 'in-progress' }, system: { workspace: '/repo' } } as any;
+    store.set(sessionRegistryAtom, new Map([[session.id, session]]));
+    store.set(trackerItemsMapAtom, new Map([[ticket.id, ticket]]));
+    const view = render(<Provider store={store}><SessionListItem id="s1" title={session.title} compact={compact} createdAt={1} phase="validating" isActive={false} onClick={() => {}} /></Provider>);
+    expect(view.container.querySelector('.session-list-item-title')?.textContent).toBe('DES-81: Repair lesson navigation');
+    expect(store.get(sessionDisplayTitleAtom('s1'))).toBe('DES-81: Repair lesson navigation');
+    expect(screen.getByTitle('Ticket status: In Progress').textContent).toBe('In Progress');
+    act(() => store.set(trackerItemsMapAtom, new Map([[ticket.id, { ...ticket, fields: { title: 'Updated lesson navigation', status: 'in-review' } }]])));
+    expect(view.container.querySelector('.session-list-item-title')?.textContent).toBe('DES-81: Updated lesson navigation');
+    expect(screen.getByTitle('Ticket status: In Review').textContent).toBe('In Review');
+    expect(screen.queryByTitle('Ticket status: In Progress')).toBeNull();
+    act(() => store.set(trackerItemsMapAtom, new Map()));
+    expect(screen.queryByTitle('Ticket status: In Review')).toBeNull();
+  });
+
   it('repaints one row when one session streams, not the list', async () => {
     const store = createStore();
     render(<Provider store={store}><SessionList /></Provider>);
