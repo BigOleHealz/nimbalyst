@@ -23,10 +23,25 @@ describe("Agent file placement", () => {
     initWorkstreamState("/placement-test");
   });
 
-  it("defaults old or malformed preferences to above", () => {
+  it("defaults to files on the right while preserving saved placement choices", () => {
+    expect(store.get(agentFilePlacementAtom)).toBe("right");
     for (const value of [undefined, null, {}, "sideways"])
-      expect(normalizeAgentFilePlacement(value)).toBe("above");
+      expect(normalizeAgentFilePlacement(value)).toBe("right");
     expect(normalizeAgentFilePlacement("right")).toBe("right");
+    expect(normalizeAgentFilePlacement("above")).toBe("above");
+  });
+
+  it("opens the file viewer beside the transcript by default on explicit navigation", () => {
+    store.set(workstreamStateAtom("a"), {
+      layoutMode: "transcript",
+      filesSidebarVisible: false,
+    });
+    store.set(revealWorkstreamEditorAtom, "a");
+    expect(store.get(workstreamStateAtom("a"))).toMatchObject({
+      layoutMode: "split",
+      rightPanelMode: "file-viewer",
+      filesSidebarVisible: true,
+    });
   });
 
   it("moves the tab group globally, preserves other pane selections, and restores the previous mode", () => {
