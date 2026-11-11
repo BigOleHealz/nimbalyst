@@ -1,6 +1,54 @@
 /* Decorative chrome belongs to this theme only. Palette values stay in its
    runtime manifest; editor content and semantic status indicators keep their
    own styles. No animated effects or extra compositing layers. */
+
+/* Primary blue is a filled-action color. Use cyan for small accent labels.
+   Keep these in the utility layer with zero-specificity theme scope so hover,
+   disabled and semantic color utilities retain their normal precedence. */
+@layer utilities {
+  :where(html[data-theme='neon-orbit-dark']) :is(
+    .text-nim-primary,
+    [class~='text-[var(--nim-primary)]'],
+    [class~='[&]:text-[var(--nim-primary)]']
+  ),
+  :where(html[data-theme='neon-orbit-dark']) [class~='[&_svg]:text-[var(--nim-primary)]'] svg {
+    color: var(--nim-link);
+  }
+
+  :where(html[data-theme='neon-orbit-dark']) :is(
+    [class~='hover:text-nim-primary'],
+    [class~='hover:text-[var(--nim-primary)]']
+  ):hover,
+  :where(html[data-theme='neon-orbit-dark']) .group:hover [class~='group-hover:text-[var(--nim-primary)]'],
+  :where(html[data-theme='neon-orbit-dark']) [class~='data-[selected=true]:text-nim-primary'][data-selected='true'],
+  :where(html[data-theme='neon-orbit-dark']) [class~='data-[collapsed=false]:text-nim-primary'][data-collapsed='false'],
+  :where(html[data-theme='neon-orbit-dark']) .group[data-collapsed='false'] [class~='group-data-[collapsed=false]:text-nim-primary'] {
+    color: var(--nim-link);
+  }
+
+  :where(html[data-theme='neon-orbit-dark']) [class~='data-[collapsed=false]:hover:text-nim-primary'][data-collapsed='false']:hover {
+    color: var(--nim-link);
+  }
+
+  :where(html[data-theme='neon-orbit-dark']) [class~='!text-[var(--nim-primary)]'] {
+    color: var(--nim-link) !important;
+  }
+}
+
+html[data-theme='neon-orbit-dark'] :is(
+  .command-pill,
+  .window-menu-bar__item-check,
+  .tracker-planner-controls [aria-selected='true']
+) {
+  color: var(--nim-link);
+}
+
+/* Planning badges have an inline foreground and an independent tinted
+   background. Other phases use their own status tokens. */
+html[data-theme='neon-orbit-dark'] .session-list-item-phase {
+  --nim-primary: var(--nim-link);
+}
+
 html[data-theme='neon-orbit-dark'] .window-top-bar {
   background-image: linear-gradient(110deg,
     color-mix(in srgb, var(--nim-primary) 12%, var(--nim-bg-secondary)),
