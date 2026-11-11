@@ -189,10 +189,26 @@ it('preserves supported multi-repository continuation containers', async () => {
   }
   const mapping = {...f.mapping, repositoryPaths};
   await expect(validateSessionContinuation(f.entry as any, mapping, f.directory, f.options)).resolves.toBeUndefined();
+  await expect(validateSessionContinuation({...f.entry, remoteWorkspacePath: f.mapping.checkoutDir} as any, mapping, f.directory, f.options)).resolves.toBeUndefined();
+  // Existing conversations retain the repositories they originally isolated;
+  // adding another repository to the project must not invalidate their cwd.
+  const laterSource = join(f.mapping.checkoutDir, 'later-added');
+  await mkdir(laterSource);
+  execFileSync('git', ['init', '--quiet', laterSource]);
+  execFileSync('git', ['-C', laterSource, 'config', 'remote.origin.url', 'https://example.test/later-added.git']);
+  await expect(validateSessionContinuation(f.entry as any, {...mapping, repositoryPaths: [...repositoryPaths, laterSource]}, f.directory, f.options)).resolves.toBeUndefined();
   const single = {...f.entry, remoteWorkspacePath: join(f.entry.remoteWorkspacePath, 'app')};
   await expect(validateSessionContinuation(single as any, mapping, f.directory, f.options)).resolves.toBeUndefined();
+  const foreign = join(f.entry.remoteWorkspacePath, 'foreign-repo');
+  await mkdir(foreign);
+  execFileSync('git', ['init', '--quiet', foreign]);
+  await expect(validateSessionContinuation(f.entry as any, mapping, f.directory, f.options)).rejects.toThrow(/repository|project/);
+  await rm(foreign, {recursive: true});
   execFileSync('git', ['-C', join(f.entry.remoteWorkspacePath, 'website'), 'config', 'remote.origin.url', 'https://example.test/unrelated.git']);
   await expect(validateSessionContinuation(f.entry as any, mapping, f.directory, f.options)).rejects.toThrow(/repository|project/);
+  const empty = join(f.mapping.checkoutDir, 'empty-container');
+  await mkdir(empty);
+  await expect(validateSessionContinuation({...f.entry, remoteWorkspacePath: empty} as any, mapping, f.directory, f.options)).rejects.toThrow(/repository/);
 });
 
 it('rejects a verified Codex file outside the running provider state', async () => {
@@ -202,6 +218,24 @@ it('rejects a verified Codex file outside the running provider state', async () 
   await expect(validateSessionContinuation(f.entry as any, f.mapping, f.directory, {
     nativeEnvironment: {HOME: home, CODEX_HOME: home, PATH: process.env.PATH},
   })).rejects.toThrow(/discover|native|conversation/i);
+});
+
+it.each(['at-root', 'ancestor'])('rejects an unmapped effective Git root for a repository container (%s)', async location => {
+  const f = await nativeFixture();
+  const repositoryPaths = ['app', 'website'].map(name => join(f.mapping.checkoutDir, name));
+  for (const source of repositoryPaths) {
+    await mkdir(source);
+    execFileSync('git', ['init', '--quiet', source]);
+    execFileSync('git', ['-C', source, 'config', 'remote.origin.url', `https://example.test/${source.split('/').pop()}.git`]);
+  }
+  const foreign = location === 'at-root' ? f.entry.remoteWorkspacePath : join(f.mapping.checkoutDir, 'worktrees');
+  execFileSync('git', ['init', '--quiet', foreign]);
+  execFileSync('git', ['-C', foreign, 'config', 'remote.origin.url', 'https://example.test/foreign.git']);
+  const validChild = join(f.entry.remoteWorkspacePath, 'app');
+  await mkdir(validChild);
+  execFileSync('git', ['init', '--quiet', validChild]);
+  execFileSync('git', ['-C', validChild, 'config', 'remote.origin.url', 'https://example.test/app.git']);
+  await expect(validateSessionContinuation(f.entry as any, {...f.mapping, repositoryPaths}, f.directory, f.options)).rejects.toThrow(/repository|project/);
 });
 
 it('requires a unique Claude UUID file in the effective runner projects store', async () => {

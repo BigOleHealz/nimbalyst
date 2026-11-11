@@ -1,4 +1,4 @@
-import {createReadStream, realpathSync, statSync, openSync, closeSync, fstatSync} from 'node:fs';
+import {createReadStream, realpathSync, statSync, openSync, closeSync, fstatSync, readdirSync, existsSync} from 'node:fs';
 import type {Stats} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {createInterface} from 'node:readline';
@@ -62,15 +62,29 @@ export function confineContinuationWorkspace(workspacePath: string, mapping: Wor
     // than the multi-repository container. Preserve that exact execution cwd.
     let workspaceRepository: ReturnType<typeof repositoryIdentity> | undefined;
     try { workspaceRepository = repositoryIdentity(workspace); } catch { /* Container root. */ }
-    if (workspaceRepository?.root === workspace && sources.some(({canonical}) => {
+    const matchesMappedRepository = workspaceRepository && sources.some(({canonical}) => {
       const mapped = repositoryIdentity(canonical);
       return workspaceRepository!.common === mapped.common || (!!mapped.origin && workspaceRepository!.origin === mapped.origin);
-    })) return workspace;
-    for (const {source, canonical} of sources) {
-      const target = realpathSync(path.join(workspace, path.basename(source)));
+    });
+    if (workspaceRepository?.root === workspace) {
+      if (matchesMappedRepository) return workspace;
+      if (workspace !== project) throw new Error('Continuation repository does not belong to the mapped project.');
+    }
+    if (workspaceRepository && !matchesMappedRepository) {
+      let projectRepository: ReturnType<typeof repositoryIdentity> | undefined;
+      try {projectRepository = repositoryIdentity(project);} catch { /* Non-Git project container. */ }
+      if (workspaceRepository.common !== projectRepository?.common) throw new Error('Continuation container is inside an unmapped repository.');
+    }
+    const byName = new Map(sources.map(source => [path.basename(source.source), source]));
+    const repositories = readdirSync(workspace).filter(name => byName.has(name) || existsSync(path.join(workspace, name, '.git')));
+    if (!repositories.length) throw new Error('Continuation workspace has no mapped repository checkouts.');
+    for (const name of repositories) {
+      const source = byName.get(name);
+      if (!source) throw new Error('Continuation repository does not belong to the mapped project.');
+      const target = realpathSync(path.join(workspace, name));
       const targetRelative = path.relative(workspace, target);
       if (targetRelative === '..' || targetRelative.startsWith(`..${path.sep}`) || path.isAbsolute(targetRelative)) throw new Error('Continuation repository is outside its workspace.');
-      assertMappedRepository(target, canonical, undefined, true);
+      assertMappedRepository(target, source.canonical, undefined, true);
     }
   } else assertMappedRepository(workspace, project, mapping.repoUrl);
   return workspace;
