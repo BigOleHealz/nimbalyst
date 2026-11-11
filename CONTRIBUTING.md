@@ -40,6 +40,8 @@ Run a script in one package with `pnpm --filter <package> run <script>`. Run foc
 
 ## Review and merge
 
+For AI-assisted code generation, list every generation model in the PR description, with its provider and model/version when available. Before pushing your feature branch and opening the PR, have a different model review the full diff, address actionable findings, and re-review substantive fixes. Any AI used for code review must differ from the models that generated the code; changing sessions or reasoning settings on the same model does not count. Tell reviewers explicitly to avoid sycophancy, challenge assumptions, and report evidence-backed defects without praise or invented findings. Record the review model, scope, and outcome in the PR description. If model identity or access is unavailable, report the limitation and leave the independent review marked incomplete. See [AI-assisted review](./.claude/rules/ai-assisted-review.md) for the workflow and reusable prompt.
+
 Every change to `main` arrives through a pull request, and merges need an approving review alongside green required checks and resolved review conversations. [MAINTAINERS.md](./MAINTAINERS.md) describes the roles and who currently holds them.
 
 A small set of release and security-sensitive paths carries an additional ownership requirement, listed in [`.github/CODEOWNERS`](./.github/CODEOWNERS).

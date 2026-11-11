@@ -10,6 +10,7 @@ Guidance for agents working in this repository. Each rule is one line; the linke
 - One-sentence commit subject. One CHANGELOG bullet per feature, user-facing, no internal names. `Fixes #123` and `Fixes NIM-123` trailers close issues and tracker items.
 - The only push is `git push origin main`. Land contributions with [/land-contribution](./.claude/commands/land-contribution.md). Never push to a contributor branch, approve or merge a PR on GitHub, force-push, or use `--no-verify`. The pre-push hook refuses other destinations, test-fixture authors, oversized commits, and local-only files.
 - No `git stash`, `git reset`, `git add -A`, or amend without asking. No `Co-Authored-By` lines.
+- AI-assisted PRs name all code-generation models and the review model in the description. Before pushing your own AI-assisted feature branch and opening its PR, obtain review from a different model with an explicitly non-sycophantic prompt, address findings, and re-review substantive fixes. All AI code reviewers follow [AI-assisted review](./.claude/rules/ai-assisted-review.md); existing push restrictions still apply.
 - Never commit `nimbalyst-local/` or `agent-mistakes.md`. The pre-commit hook refuses them.
 
 ### Tests and the gate

@@ -5,8 +5,10 @@ export type AgentFilePlacement = "above" | "right";
 export const AGENT_FILE_PLACEMENT_KEY = "agentFilePlacement";
 export const normalizeAgentFilePlacement = (
   value: unknown
-): AgentFilePlacement => (value === "right" ? "right" : "above");
-export const agentFilePlacementAtom = atom<AgentFilePlacement>("above");
+): AgentFilePlacement => (value === "above" ? "above" : "right");
+export const agentFilePlacementAtom = atom<AgentFilePlacement>(
+  normalizeAgentFilePlacement(undefined)
+);
 export const agentFilePlacementNoticeAtom = atom("");
 
 export const setAgentFilePlacementAtom = atom(

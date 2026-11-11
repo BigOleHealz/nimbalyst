@@ -130,6 +130,24 @@ async function createConnectedProvider(encryptionKey?: CryptoKey) {
 }
 
 describe('CollabV3 v2 index replication client', () => {
+
+  it('notifies deletion subscribers after applying a real v2 tombstone', async () => {
+    const {provider, indexSocket} = await createConnectedProvider();
+    const deleted = vi.fn((id: string) => expect(provider.getCachedIndexEntry?.(id)).toBeUndefined());
+    try {
+      provider.onIndexDelete!(deleted);
+      const first = provider.fetchIndex!();
+      const bootstrap = await pageRequest(indexSocket, 0);
+      indexSocket.receive(pageResponse(bootstrap.requestId, {complete: true, cursor: 1, entries: [sessionChange('removed', 1)]}));
+      await first;
+      const next = provider.fetchIndex!();
+      const delta = await pageRequest(indexSocket, 1);
+      indexSocket.receive(pageResponse(delta.requestId, {mode: 'delta', complete: true, cursor: 2, entries: [deleteChange('removed', 2)]}));
+      await next;
+      expect(deleted).toHaveBeenCalledWith('removed');
+    } finally {provider.disconnectAll();}
+  });
+
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(10000);

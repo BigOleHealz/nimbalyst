@@ -34,6 +34,8 @@ Once resolved, decide which of the two reviews you're doing. A session can be ei
 - **Design review** — the target is a plan, design doc, or a planning session whose deliverable is a document. Review the *thinking*.
 - **Implementation review** — the target is code, or a session that wrote code. Review the *code*, and if there is a governing plan, review the code **against** that plan.
 
+For implementation reviews, follow [AI-assisted review](../rules/ai-assisted-review.md): identify the generation models, use a different review model, and include its required non-sycophantic prompt in this review and any sub-agent requests. Report model identities and scope; if independence cannot be established, label it unverified and do not claim the required review is complete.
+
 If a session has both (planned then implemented), do the implementation review and include a "plan fidelity" section.
 
 State at the top of your output which review you're doing and what you read to do it.

@@ -4,6 +4,8 @@ description: Review all changes in current branch (read-only analysis)
 ---
 Perform a comprehensive read-only review of code changes.
 
+First follow [AI-assisted review](../rules/ai-assisted-review.md): identify every code-generation model and use a different review model. Include its required non-sycophantic prompt in this review and every sub-agent request. Report generation/review model identities and the reviewed scope with the findings. If independence cannot be established, label it unverified and do not claim the required review is complete.
+
 **Scope:** By default, review the current git branch changes using the command below. However, if the user specifies a different scope (e.g., specific files, a directory, a PR, or a commit range), respect that and adjust your review accordingly.
 
 **CRITICAL: This is a READ-ONLY review. Do NOT:**

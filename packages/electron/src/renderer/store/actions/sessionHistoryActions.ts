@@ -244,7 +244,7 @@ export const deleteSessionActionAtom = atom(null, async (get, set, sessionId: st
   if (!workspacePath || typeof window === 'undefined' || !window.electronAPI) return;
 
   try {
-    const result = await window.electronAPI.invoke('sessions:delete', sessionId);
+    const result = await window.electronAPI.invoke('sessions:delete', sessionId, workspacePath);
     if (result.success) {
       set(removeSessionFullAtom, sessionId);
       const selected = get(selectedWorkstreamAtom(workspacePath));

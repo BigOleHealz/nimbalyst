@@ -88,12 +88,12 @@ export function createIndexChangeSubscriptions(cache: Map<string, CachedSessionI
 export async function applyReplicatedSessionRows(
   applied: Iterable<{entity: string; id: string; revision: number; deleted?: boolean}>,
   entries: ReadonlyMap<string, CachedSessionIndex>,
-  remove: (id: string) => void,
+  remove: (id: string) => void | Promise<void>,
   accept: (entry: CachedSessionIndex) => void | Promise<void>,
 ) {
   for (const change of applied) {
     if (change.entity !== 'session') continue;
-    if (change.deleted) { remove(change.id); continue; }
+    if (change.deleted) { await remove(change.id); continue; }
     const entry = entries.get(`${change.id}:${change.revision}`);
     if (entry) await accept(entry);
   }
