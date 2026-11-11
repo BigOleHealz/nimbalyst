@@ -483,6 +483,8 @@ data class DeviceInfo(
     val lastSeenAt: Long? = null,
     /** Server-set: the user hid this installation from their device list. */
     val inventoryHidden: Boolean? = null,
+    /** Whether this execution host retains mapped workspaces across restarts. */
+    val persistentWorkspaces: Boolean? = null,
 )
 
 data class ServerErrorMessage(

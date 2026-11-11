@@ -209,10 +209,10 @@ if (nodeProgramConfig.errors.length) {
 }
 export const HEADLESS_ENTRY_POINTS = nodeProgramConfig.fileNames.map(file => path.relative(repoRoot, file));
 
-// Headroom over the measured 143 so ordinary growth does not trip the gate. A
+// Headroom over the measured 215 so ordinary growth does not trip the gate. A
 // re-introduced barrel cycle lands at 600+, so this catches the failure mode
 // without policing every added module.
-export const HEADLESS_CLOSURE_FILE_BUDGET = 200;
+export const HEADLESS_CLOSURE_FILE_BUDGET = 250;
 
 export function measureHeadlessClosure() {
   const configPath = path.join(repoRoot, 'packages/runtime/tsconfig.json');

@@ -516,6 +516,7 @@ describe('archiveTrackerItem sync integration', () => {
 describe('createTrackerItem sync status policy', () => {
   it('stores local sync_status for personal tracker items', async () => {
     mockGlobalRegistryGet.mockReturnValue({
+      fields: [],
       sharing: 'personal',
       draftByDefault: false,
     });
@@ -542,6 +543,7 @@ describe('createTrackerItem sync status policy', () => {
 
   it('stores pending sync_status for published team tracker items', async () => {
     mockGlobalRegistryGet.mockReturnValue({
+      fields: [],
       sharing: 'team',
       draftByDefault: false,
     });
@@ -572,7 +574,7 @@ describe('createTrackerItem sync status policy', () => {
   // optimistically, so without a sweep here it renders "No key yet" until the
   // next full re-list (NIM.2842).
   it('numbers a newly created personal item before returning it', async () => {
-    mockGlobalRegistryGet.mockReturnValue({ sharing: 'personal', draftByDefault: false, localNumbers: true });
+    mockGlobalRegistryGet.mockReturnValue({ sharing: 'personal', draftByDefault: false, localNumbers: true, fields: [] });
     mockIsTrackerSyncActive.mockReturnValue(false);
     mockAssignLocalKeysToRows.mockResolvedValue(new Map([['bug-local', 'NIM.42']]));
 
@@ -602,7 +604,7 @@ describe('createTrackerItem sync status policy', () => {
 
   // Local numbers are opt-in per type; a type that says nothing gets none.
   it('leaves a new item of a type without localNumbers unnumbered', async () => {
-    mockGlobalRegistryGet.mockReturnValue({ sharing: 'personal', draftByDefault: false });
+    mockGlobalRegistryGet.mockReturnValue({ sharing: 'personal', draftByDefault: false, fields: [] });
     mockIsTrackerSyncActive.mockReturnValue(false);
 
     mockQuery.mockResolvedValueOnce({ rows: [{ min_key: null }] }); // kanbanSortOrder MIN

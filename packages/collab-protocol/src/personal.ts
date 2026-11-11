@@ -788,6 +788,8 @@ export interface ErrorMessage {
  * Used for device awareness/presence in the PersonalIndexRoom.
  */
 export interface DeviceInfo {
+  /** Whether this execution host retains mapped workspaces across restarts. */
+  persistentWorkspaces?: boolean;
   /** Unique device ID (stable across sessions, generated per device) */
   deviceId: string;
   /** Server-owned inventory visibility; never affects session ownership. */

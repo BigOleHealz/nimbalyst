@@ -310,6 +310,8 @@ struct ProjectBroadcast: Codable {
 
 /// Device info for presence.
 public struct DeviceInfo: Codable {
+    /// Whether this execution host retains mapped workspaces across restarts.
+    public var persistentWorkspaces: Bool?
     /// Personal inventory visibility; does not affect execution ownership.
     public var inventoryHidden: Bool?
     public let deviceId: String

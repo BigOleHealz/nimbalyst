@@ -15,6 +15,7 @@ vi.mock('../../../store', () => ({
   sessionProcessingAtom: () => false, sessionUnreadAtom: () => false, createChildSessionAtom: null,
 }));
 vi.mock('../../../store/atoms/appSettings', () => ({ defaultAgentModelAtom: null }));
+vi.mock('../../../store/atoms/sessionTicketTitle', () => ({sessionTicketKeyAtom: () => undefined}));
 vi.mock('../../../store/atoms/workstreamState', () => ({ workstreamHasChildrenAtom: () => true }));
 vi.mock('../AgentSessionPanel', () => ({ AgentSessionPanel: () => null }));
 vi.mock('../../AgenticCoding/SessionContextMenu', () => ({ SessionContextMenu: () => null }));

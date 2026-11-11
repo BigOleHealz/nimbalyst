@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   FIRST_PARTY_TOOL_TO_SERVER,
   MCP_EAGER_CONFIG_KEYS,
@@ -6,10 +6,12 @@ import {
   MCP_TRACKERS,
   MCP_SITUATIONAL,
   CORE_ALWAYS_LOAD_TOOLS,
+} from '@nimbalyst/runtime/ai/server/services/mcpTopology';
+import {
   buildToolBudgetReport,
   formatToolBudgetReport,
   type MeasurableToolSchema,
-} from '@nimbalyst/runtime/ai/server';
+} from '@nimbalyst/runtime/ai/server/services/mcpTokenBudget';
 
 import { getInteractiveToolSchemas } from '../tools/interactiveToolHandlers';
 import { displayToolSchemas } from '../tools/displayToolHandler';
@@ -21,6 +23,9 @@ import { voiceToolSchemas } from '../tools/voiceToolHandlers';
 import { getCollabIndexToolSchemas } from '../tools/collabIndexToolHandlers';
 import { getCollabReadToolSchemas } from '../tools/collabReadToolHandlers';
 import { getRequestFeedbackToolSchemas } from '../tools/requestFeedbackToolHandler';
+import {calendarToolSchemas} from '../tools/calendarToolHandlers';
+
+vi.mock('../../ipc/CalendarImportHandlers', () => ({addCalendarMeetingNote: vi.fn(), getCalendarImportsSnapshot: vi.fn()}));
 
 /**
  * Phase 0 characterization harness for the MCP server consolidation.
@@ -46,6 +51,7 @@ describe('MCP tool budget characterization (current first-party surface)', () =>
       ...trackerToolSchemas,
       ...feedbackToolSchemas,
       ...voiceToolSchemas,
+      ...calendarToolSchemas,
     ];
   }
 

@@ -32,6 +32,7 @@ vi.mock('../../file/GitWatcherLifecycle', () => ({ isGitRepositoryInUse: () => m
 vi.mock('../../services/workspaceRepos', () => ({ listReposForRoot: () => [], resolveDefaultRepo: () => null }));
 vi.mock('../../services/GitOperationLock', () => ({ gitOperationLock: {} }));
 vi.mock('../../services/ai/archiveSessionProviderLifecycle', () => ({ archiveSessionsAndDestroyProviders: vi.fn() }));
+vi.mock('../../services/ai/projectExecution', () => ({assertProjectAllowsLocalExecution: vi.fn()}));
 import { registerWorktreeHandlers } from '../WorktreeHandlers';
 
 beforeEach(() => {

@@ -9,6 +9,7 @@ import { sessionLaunchPopupRequestAtom } from '../../../store/atoms/appCommands'
 import { selectedWorkstreamAtom } from '../../../store/atoms/sessions';
 import { initWorkstreamState } from '../../../store/atoms/workstreamState';
 import { windowModeAtom } from '../../../store/atoms/windowMode';
+import {selectedMachineAtom} from '../../../store/atoms/remoteMachines';
 import { SessionLaunchPopup, launchSessionPrompt } from '../SessionLaunchPopup';
 
 vi.mock('../AIInput', () => ({
@@ -83,6 +84,7 @@ describe('SessionLaunchPopup', () => {
 
   it('preserves a draft across dismiss/reopen and launches without changing modes', async () => {
     const testStore = createStore();
+    await testStore.set(selectedMachineAtom('/workspace'), '');
     testStore.set(activeWorkspacePathAtom, '/workspace');
     initWorkstreamState('/workspace');
     testStore.set(selectedWorkstreamAtom('/workspace'), { type: 'session', id: 'existing-session' });
@@ -171,6 +173,7 @@ describe('SessionLaunchPopup', () => {
 
   it('stamps the app-wide extended-thinking default onto a new session (#1034)', async () => {
     const testStore = createStore();
+    await testStore.set(selectedMachineAtom('/workspace'), '');
     testStore.set(activeWorkspacePathAtom, '/workspace');
     initWorkstreamState('/workspace');
     testStore.set(agentModeSettingsAtom, {

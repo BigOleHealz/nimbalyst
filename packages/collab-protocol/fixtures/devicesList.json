@@ -13,6 +13,7 @@
       "status": "active",
       "isOnline": true,
       "lastSeenAt": 1789232413000,
+      "persistentWorkspaces": false,
       "inventoryHidden": false
     }
   ]

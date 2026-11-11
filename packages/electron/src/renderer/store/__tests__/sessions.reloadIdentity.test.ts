@@ -120,8 +120,11 @@ describe('preserveReloadIdentity', () => {
 
 
 describe('machine-scoped session lists', () => {
-  it('keeps the local and remote session groups separate for the same project', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it('keeps the local and remote session groups separate for the same project', async () => {
+    vi.stubGlobal('window', {electronAPI: {invoke: vi.fn(async () => ({}))}});
     const store = createStore();
+    await store.set(selectedMachineAtom('/repo'), '');
     store.set(sessionListWorkspaceAtom, '/repo');
     store.set(sessionRegistryAtom, new Map([
       ['local', {id: 'local', createdAt: 1, updatedAt: 1}],
@@ -129,9 +132,9 @@ describe('machine-scoped session lists', () => {
       ['other', {id: 'other', createdAt: 3, updatedAt: 3, remoteHostDeviceId: 'another-machine'}],
     ]) as any);
     expect(store.get(sessionListRootAtom).map(session => session.id)).toEqual(['local']);
-    store.set(selectedMachineAtom('/repo'), 'sandbox');
+    await store.set(selectedMachineAtom('/repo'), 'sandbox');
     expect(store.get(sessionListRootAtom).map(session => session.id)).toEqual(['remote']);
-    store.set(selectedMachineAtom('/repo'), '');
+    await store.set(selectedMachineAtom('/repo'), '');
     expect(store.get(sessionListRootAtom).map(session => session.id)).toEqual(['local']);
   });
 });
