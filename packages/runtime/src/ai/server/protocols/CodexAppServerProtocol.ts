@@ -118,6 +118,12 @@ export interface CodexAppServerProtocolOptions {
   clientInfo?: { name: string; version: string };
   /** Injectable exact-tree terminator for deterministic lifecycle tests. */
   terminateProcessTreeOverride?: (child: ChildProcessWithoutNullStreams) => void;
+  /** Host-owned, per-launch credentials. Returned env replaces ambient inheritance and is never sent over JSON-RPC. */
+  prepareLaunch?: (workspacePath: string) => Promise<{
+    workspacePath: string;
+    env: Record<string, string>;
+    shellEnvironmentPolicy: Record<string, unknown>;
+  }>;
 }
 
 interface AppServerSessionRaw {
@@ -147,12 +153,14 @@ export class CodexAppServerProtocol implements AgentProtocol {
   private readonly host: CodexAppServerHostBindings;
   private readonly clientInfo: { name: string; version: string };
   private readonly terminateProcessTree: (child: ChildProcessWithoutNullStreams) => void;
+  private readonly prepareLaunch?: CodexAppServerProtocolOptions['prepareLaunch'];
 
   constructor(options: CodexAppServerProtocolOptions = {}) {
     this.apiKey = options.apiKey ?? '';
     this.resolveCodexPathOverride = options.resolveCodexPathOverride ?? (() => undefined);
     this.host = options.host ?? {};
     this.clientInfo = options.clientInfo ?? { name: 'nimbalyst', version: '0.0.0' };
+    this.prepareLaunch = options.prepareLaunch;
     this.terminateProcessTree = options.terminateProcessTreeOverride
       ?? ((child) => terminateOwnedProcessTree(child));
   }
@@ -480,8 +488,15 @@ export class CodexAppServerProtocol implements AgentProtocol {
 
   private async spawnAndInit(options: SessionOptions): Promise<AppServerSessionRaw> {
     const binary = resolveCodexBinaryPath(this.resolveCodexPathOverride);
+    const launch = await this.prepareLaunch?.(options.workspacePath);
+    if (launch) {
+      options = { ...options, workspacePath: launch.workspacePath, raw: { ...options.raw, codexConfigOverrides: {
+        ...(options.raw?.codexConfigOverrides as Record<string, unknown> | undefined),
+        shell_environment_policy: launch.shellEnvironmentPolicy,
+      } } };
+    }
     const tracking = await prepareCodexShellTracking(options);
-    const env = this.buildEnv(options, binary);
+    const env = this.buildEnv(options, binary, launch?.env);
     Object.assign(env, tracking?.registration.env);
     const cwd = options.workspacePath || process.cwd();
     // console.log('[CODEX][APPSERVER] spawning child:', {
@@ -494,7 +509,10 @@ export class CodexAppServerProtocol implements AgentProtocol {
       cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
-    const stderrTail = captureCodexStderr(child.stderr);
+    // Native configuration errors may echo secret values. Credential-bearing
+    // children must neither log nor retain raw stderr for later error tails.
+    const stderrTail: string[] = launch ? [] : captureCodexStderr(child.stderr);
+    if (launch) child.stderr.resume();
     const client = new JsonRpcClient(child, {
       logger: {
         log: (m, ...a) => console.log('[CODEX][APPSERVER]', m, ...a),
@@ -510,6 +528,7 @@ export class CodexAppServerProtocol implements AgentProtocol {
         capabilities: { experimentalApi: true },
       });
       client.notify('initialized', {});
+      if (launch) await this.validateGitHubEnvironmentPolicy(client, cwd);
       if (tracking) {
         try {
           const trust = await tracking.trust(client);
@@ -526,6 +545,11 @@ export class CodexAppServerProtocol implements AgentProtocol {
       try { client.close('init failed'); } catch { /* noop */ }
       this.terminateProcessTree(child);
       tracking?.registration.dispose();
+      if (launch) {
+        // Native config/RPC errors can contain configured values. Never include
+        // stderr or an untrusted response in a credential-bearing launch error.
+        throw new Error('[CodexAppServer] Could not validate Coder GitHub authentication: remove GH_TOKEN/GITHUB_TOKEN shell_environment_policy.set overrides from applicable Codex configuration and check config/read support');
+      }
       const tail = stderrTail.join('').slice(-2000);
       const rawError = `${err instanceof Error ? err.message : String(err)}${tail ? `\nstderr tail: ${tail}` : ''}`;
       const configHint = describeCodexConfigError(rawError);
@@ -546,6 +570,28 @@ export class CodexAppServerProtocol implements AgentProtocol {
     };
     observeCodexShellTracking(client, raw.shellTracking, () => raw.threadId, () => raw.activeTurnId);
     return raw;
+  }
+  private async validateGitHubEnvironmentPolicy(client: JsonRpcClient, cwd: string): Promise<void> {
+    const result = await client.request<{
+      config: Record<string, any>;
+      layers: Array<{ config: Record<string, any> }>;
+    }>('config/read', { cwd, includeLayers: true });
+    const isObject = (value: unknown): value is Record<string, any> => value !== null && typeof value === 'object' && !Array.isArray(value);
+    if (!isObject(result?.config) || !Array.isArray(result.layers) || result.layers.some(layer => !isObject(layer?.config))) {
+      throw new Error('Incomplete credential policy configuration');
+    }
+    // Codex can activate a disabled project layer when the writable thread is
+    // attached. An empty `set` override does not delete lower-layer entries.
+    for (const config of [result.config, ...result.layers.map(layer => layer.config)]) {
+      const policy = config.shell_environment_policy;
+      if (policy != null && !isObject(policy)) throw new Error('Invalid credential policy configuration');
+      const overrides = policy?.set;
+      if (overrides != null && !isObject(overrides)) throw new Error('Invalid credential overrides');
+      const keys = Object.keys(overrides ?? {});
+      if (keys.some(key => ['GH_TOKEN', 'GITHUB_TOKEN'].includes(key.toUpperCase()))) {
+        throw new Error('Conflicting GitHub credential configuration');
+      }
+    }
   }
   /**
    * Point codex at Nimbalyst's exported skills (#1253).
@@ -596,13 +642,13 @@ export class CodexAppServerProtocol implements AgentProtocol {
     return raw.filter((t): t is DynamicToolSpec => !!t && typeof (t as { name?: unknown }).name === 'string');
   }
 
-  private buildEnv(options: SessionOptions, binaryPath?: string): NodeJS.ProcessEnv {
+  private buildEnv(options: SessionOptions, binaryPath?: string, launchEnv?: Record<string, string>): NodeJS.ProcessEnv {
     const baseEnv: NodeJS.ProcessEnv = {};
-    for (const [k, v] of Object.entries(process.env)) {
+    for (const [k, v] of Object.entries(launchEnv ?? process.env)) {
       if (v !== undefined) baseEnv[k] = v;
     }
     const rawEnv = options.raw?.codexEnv;
-    if (rawEnv && typeof rawEnv === 'object' && !Array.isArray(rawEnv)) {
+    if (!launchEnv && rawEnv && typeof rawEnv === 'object' && !Array.isArray(rawEnv)) {
       for (const [k, v] of Object.entries(rawEnv as Record<string, string>)) {
         baseEnv[k] = v;
       }

@@ -41,9 +41,9 @@ The one-turn CLI above is untouched and needs none of this configuration.
 
 ### What it does not do
 
-Only the desktop performs the device-authorization handshake (`/auth/device/code`, `/approve`, `/token`). This process only ever **refreshes** an already-issued credential. It also never reads a credential, key or endpoint from the environment — see [Configuration](#configuration).
+Only the desktop performs the device-authorization handshake (`/auth/device/code`, `/approve`, `/token`). This process only ever **refreshes** an already-issued Nimbalyst credential. Nimbalyst and AI provider configuration never comes from ambient credentials — see [Configuration](#configuration). The explicit Coder GitHub opt-in below uses only Coder's supported workspace connection to retrieve GitHub tool credentials.
 
-Anthropic authentication is likewise not this package's business: the container launcher clears the environment and sets `HOME`, and the `claude` CLI finds `~/.claude/.credentials.json` there.
+Anthropic authentication is likewise not this package's business: the launcher passes platform locations such as `HOME`, and the `claude` CLI finds `~/.claude/.credentials.json` there.
 
 ### Configuration for `serve`
 
@@ -92,6 +92,10 @@ For a multi-repository project, set `checkoutDir` to the project folder and `rep
 Set `sync.persistentWorkspaces: true` only for a host whose session directories and database survive restarts. The desktop then permits continuing those sessions after the runner reconnects. Leave it unset for ephemeral sandboxes.
 
 Codex sessions use the `openai-codex` provider and the remote operating-system user's existing Codex login. Claude sessions use the existing Claude login. The launcher should pass only OS/runtime environment values so ambient provider API keys cannot override the intended login. Interactive remote questions and permission responses remain unsupported; the config still requires an explicit noninteractive execution policy.
+
+For Coder-managed GitHub authentication, opt in on that runner only with `coderGitHubAuth: { "coderPath": "/absolute/path/to/coder", "providerId": "github", "workspaceRoot": "/path/to/foss" }`. Use the workspace's installed Coder CLI path and existing external-auth provider. Start via `node packages/node/dist/bin/nimbalyst-coder.js serve --config /path/to/config.json` from a Coder-provided environment, using Node >=22.15 and `/usr/bin/python3`. A clean exec and transient anonymous pipe capture Coder's connection privately before importing the runner; the long-lived process's initial OS environment contains no credentials. Host Git commands, repository hooks, and agents inherit only platform locations unless explicitly given a refreshed GitHub token. Do not wrap the entry point in `env -i`, which removes the connection before it can be captured. The opt-in fails before startup if this entry point was not used. Do not add token values to the config or command arguments.
+
+Each Codex child launch, including resumed sessions, requests fresh credentials with `coder external-auth access-token <providerId>`. Coder validates and refreshes them. The child receives only platform locations and `GH_TOKEN`; Coder connection credentials and unrelated secrets stay out of the child. A narrow Codex shell policy retains those names for agent commands. Retrieval failures stop the launch without logging provider output. Before attaching a thread, Codex's effective configuration and raw layers (including disabled project layers) are checked for `shell_environment_policy.set` entries named `GH_TOKEN` or `GITHUB_TOKEN`, ignoring case. Such overrides are refused because Codex can otherwise replace the fresh credential with a configured value; unreadable configuration fails closed without logging values. The configured root and requested directory are checked again after retrieval, and Codex uses the validated canonical path, so credentials are refused for other projects and changing symlink targets. The runner's persisted session identity, history, execution directory and worktree are unchanged. This opt-in does not change desktop sessions or Claude's environment policy. Long-running turns retain their launch credential; if it expires during a turn, resume the same session to obtain a fresh one.
 
 ### Five things that are load-bearing and not obvious
 
