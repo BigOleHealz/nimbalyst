@@ -95,6 +95,8 @@ import {
   workstreamChildrenNeedRefresh,
   countRegistryDescendants,
 } from './workstreamChildPinReconciliation';
+import { hideDoneTicketsAtom, hiddenDoneTicketSessionIdsAtom } from '../../store/atoms/ticketVisibility';
+import { HideDoneTicketsCheckbox } from '../common/HideDoneTicketsCheckbox';
 import './SessionHistory.css';
 
 // SessionItem is the shared SessionMeta type from the store atoms.
@@ -423,7 +425,12 @@ const SessionHistoryComponent: React.FC = () => {
     return count;
   }, [sessionRegistry, workspacePath, selectedRemoteHost]);
 
-  const [sessions, setSessions] = useState<SessionItem[]>([]); // Filtered sessions to display
+  const [matchingSessions, setSessions] = useState<SessionItem[]>([]);
+  const hideDoneTickets = useAtomValue(hideDoneTicketsAtom) && mode === 'agent';
+  const hiddenDoneSessions = useAtomValue(hiddenDoneTicketSessionIdsAtom);
+  const isTicketVisible = useCallback((session: SessionItem) => !hideDoneTickets || !hiddenDoneSessions.has(session.id), [hideDoneTickets, hiddenDoneSessions]);
+  // Apply after search so content-search results survive ticket filter changes.
+  const sessions = useMemo(() => matchingSessions.filter(isTicketVisible), [matchingSessions, isTicketVisible]);
   const loading = atomLoading && allSessions.length === 0; // Only show loading on initial load
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -2081,6 +2088,7 @@ const SessionHistoryComponent: React.FC = () => {
     for (const session of sessionRegistry.values()) {
       if (!allowedRoots.has(sessionTreeIndex.rootOf.get(session.id) ?? session.id)) continue;
       if (!showArchived && session.isArchived) continue;
+      if (!isTicketVisible(session)) continue;
       if (session.worktreeId) {
         const existing = groups.get(session.worktreeId);
         if (existing) {
@@ -2099,7 +2107,7 @@ const SessionHistoryComponent: React.FC = () => {
     }
 
     return groups;
-  }, [sessions, sortBy, sessionRegistry, sessionTreeIndex, showArchived, getDisplayedOrderTimestamp]);
+  }, [sessions, sortBy, sessionRegistry, sessionTreeIndex, showArchived, getDisplayedOrderTimestamp, isTicketVisible]);
 
   // Get all worktree IDs for batch fetching
   const sortedWorktreeIds = useMemo(() => {
@@ -2121,7 +2129,7 @@ const SessionHistoryComponent: React.FC = () => {
         const isWorkstream = (session.childCount ?? 0) > 0;
         if (isWorkstream) {
           // Create workstream item with cached children (or empty array if not loaded yet)
-          const cachedChildren = (sessionTreeIndex.membersByRoot.get(session.id) ?? []).filter(child => showArchived || !child.isArchived);
+          const cachedChildren = (sessionTreeIndex.membersByRoot.get(session.id) ?? []).filter(child => (showArchived || !child.isArchived) && isTicketVisible(child));
 
           // For workstreams, use the maximum updatedAt from all children for sorting
           // This ensures workstreams appear based on their most recent activity
@@ -2329,7 +2337,7 @@ const SessionHistoryComponent: React.FC = () => {
     }
 
     return result as Record<TimeGroupKey | 'Pinned' | 'Meta Agent', UnifiedListItem[]>;
-  }, [sessions, worktreeGroupsData, sortBy, worktreeCache, workstreamChildrenCache, sessionTreeIndex, blitzCache, superLoops, showArchived, isMetaAgentEnabled, getDisplayedOrderRank, getDisplayedOrderTimestamp, compareSessionOrder, compareUnifiedItems]);
+  }, [sessions, worktreeGroupsData, sortBy, worktreeCache, workstreamChildrenCache, sessionTreeIndex, blitzCache, superLoops, showArchived, isMetaAgentEnabled, getDisplayedOrderRank, getDisplayedOrderTimestamp, compareSessionOrder, compareUnifiedItems, isTicketVisible]);
 
   const groupKeys = useMemo(
     () => Object.keys(groupedItems) as (TimeGroupKey | 'Pinned' | 'Meta Agent')[],
@@ -2801,7 +2809,7 @@ const SessionHistoryComponent: React.FC = () => {
     />
   );
 
-  if (sessions.length === 0 && !hasSearchQuery && !hasTagFilter) {
+  if (sessions.length === 0 && !hasSearchQuery && !hasTagFilter && !hideDoneTickets) {
     // No sessions at all - show simple empty state without search.
     // When a search or tag filter is active we fall through to the main render so
     // the search input and tag chips stay mounted -- otherwise the user can't
@@ -3160,8 +3168,9 @@ const SessionHistoryComponent: React.FC = () => {
             <path d="M6 8h4" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round"/>
           </svg>
         </button>
+        {mode === 'agent' && <HideDoneTicketsCheckbox />}
         {(() => {
-          const hasFilter = searchQuery.trim().length > 0 || tagFilter.tags.length > 0;
+          const hasFilter = searchQuery.trim().length > 0 || tagFilter.tags.length > 0 || hideDoneTickets;
           const visibleCount = sessions.length;
           const totalLabel = `${iosMatchCount} non-archived session${iosMatchCount === 1 ? '' : 's'} in this workspace (matches the iOS project list count)`;
           const title = hasFilter

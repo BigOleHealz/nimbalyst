@@ -1,4 +1,5 @@
 import { atom } from 'jotai';
+import { isDoneStatus } from '@nimbalyst/tracker-schema';
 import { atomFamily } from '../debug/atomFamilyRegistry';
 import { sessionRegistryAtom } from './sessions';
 import { trackerItemsMapAtom } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerDataAtoms';
@@ -14,8 +15,7 @@ const linkedTicketsAtom = atom(get => {
     if (linked.has(sessionId)) return;
     const session = registry.get(sessionId);
     const item = records.get(itemId);
-    if (session && item && (!item.system.workspace || item.system.workspace === session.workspaceId)
-      && getRecordTicketKey(item)) linked.set(sessionId, item);
+    if (session && item && (!item.system.workspace || item.system.workspace === session.workspaceId)) linked.set(sessionId, item);
   };
   for (const session of registry.values()) {
     for (const itemId of session.linkedTrackerItemIds ?? []) link(session.id, itemId);
@@ -60,6 +60,11 @@ const sessionTicketAtom = atomFamily((id: string) => atom(get => {
 export const sessionTicketKeyAtom = atomFamily((id: string) => atom(get => {
   const item = get(sessionTicketAtom(id));
   return item ? getRecordTicketKey(item) : undefined;
+}));
+
+export const sessionTicketDoneAtom = atomFamily((id: string) => atom(get => {
+  const item = get(sessionTicketAtom(id));
+  return !!item && isDoneStatus(item.primaryType, getRecordStatus(item));
 }));
 
 /** Keep meaningful session names; use the ticket description while naming is pending. */

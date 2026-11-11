@@ -71,6 +71,7 @@ import { ArchiveWorktreeDialog } from '../AgentMode/ArchiveWorktreeDialog';
 import { useArchiveWorktreeDialog } from '../../hooks/useArchiveWorktreeDialog';
 import { saveSessionArchived } from '../../utils/saveSessionArchived';
 import { SessionRelativeTime } from '../AgenticCoding/SessionRelativeTime';
+import { HideDoneTicketsCheckbox } from '../common/HideDoneTicketsCheckbox';
 import { sessionDisplayTitleAtom } from '../../store/atoms/sessionTicketTitle';
 import { getRecordDisplayTitle } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
 import { trackerItemsMapAtom, trackerItemByIdAtom } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerDataAtoms';
@@ -966,6 +967,8 @@ function SessionKanbanToolbar({ selectedCount, onClearSelection }: { selectedCou
       <span className="text-[11px] text-nim-faint shrink-0">
         {totalCount} session{totalCount !== 1 ? 's' : ''}
       </span>
+
+      <HideDoneTicketsCheckbox />
 
       {/* Show completed toggle */}
       <button

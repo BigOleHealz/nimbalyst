@@ -6,6 +6,7 @@
  * remain independent; manual board overrides live in the same session metadata.
  */
 
+import { hiddenDoneTicketSessionIdsAtom } from './ticketVisibility';
 import { atom, type Getter, type createStore } from 'jotai';
 import { atomFamily } from '../debug/atomFamilyRegistry';
 import type { SessionMeta } from '@nimbalyst/runtime/ai/adapters/sessionStore';
@@ -269,6 +270,7 @@ export const sessionsByPhaseAtom = atom((get) => {
   const filter = get(sessionKanbanFilterAtom);
   const automatic = get(sessionAutomaticBoardStateAtom);
   const recentRoots = get(sessionKanbanRecentRootsAtom);
+  const hiddenDoneSessions = get(hiddenDoneTicketSessionIdsAtom);
 
   const grouped = new Map<SessionPhaseKey, SessionMeta[]>();
   grouped.set('unphased', []);
@@ -278,7 +280,7 @@ export const sessionsByPhaseAtom = atom((get) => {
 
   for (const [_id, meta] of registry) {
     // Only show active root sessions (not children of workstreams).
-    if (meta.isArchived || meta.parentSessionId) continue;
+    if (meta.isArchived || meta.parentSessionId || hiddenDoneSessions.has(meta.id)) continue;
     if (recentRoots && !recentRoots.has(meta.id)) continue;
 
     const state = automatic.get(meta.id)!;

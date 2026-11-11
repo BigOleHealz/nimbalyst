@@ -10,6 +10,7 @@ import { sessionRegistryAtom, sessionProcessingAtom, sessionLastActivityAtom, se
 import { trackerItemsMapAtom } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerDataAtoms';
 import { trackerCompletionMetricsAtom } from '../../../store/atoms/completionMetrics';
 import { TrackerCompletionMetrics } from '../CompletionMetrics';
+import { hideDoneTicketsAtom } from '../../../store/atoms/ticketVisibility';
 import { sessionDisplayTitleAtom, sessionPullRequestTitleAtom } from '../../../store/atoms/sessionTicketTitle';
 import { worktreeRecordsAtom } from '../../../store/atoms/worktrees';
 import { worktreeGitStatusAtom } from '../../../store/atoms/sessionFiles';
@@ -68,6 +69,21 @@ it('uses a child ticket for its grouped root and keeps an explicit child ticket 
   store.set(sessionRegistryAtom,new Map([[parent.id,{...parent,linkedTrackerItemIds:[parentTicket.id]}],[child.id,child]]));
   expect(store.get(sessionDisplayTitleAtom(parent.id))).toBe('ENG-8: Short parent');
   expect(store.get(sessionDisplayTitleAtom(child.id))).toBe('DES-79: Short child');
+});
+
+it('hides Done tickets independently of agent phase and restores them from the shared checkbox', () => {
+  const store = createStore();
+  const doneSession = blockedTestSession('finished-ticket-agent', { title: 'Finished ticket agent', phase: 'planning', linkedTrackerItemIds: ['done-ticket'] });
+  const openSession = blockedTestSession('open-ticket-agent', { title: 'Open ticket agent', phase: 'complete', linkedTrackerItemIds: ['open-ticket'] });
+  const unlinked = blockedTestSession('unlinked-agent', { title: 'Unlinked agent', phase: 'complete' });
+  store.set(sessionRegistryAtom, new Map([doneSession, openSession, unlinked].map(session => [session.id, session])));
+  store.set(trackerItemsMapAtom, new Map([['done-ticket', dependencyTicket('done-ticket', { status: 'done' })], ['open-ticket', dependencyTicket('open-ticket', { status: 'in-progress' })]]));
+  render(<Provider store={store}><SessionKanbanBoard /></Provider>);
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Hide done tickets' }));
+  const ids = () => screen.queryAllByTestId('session-kanban-card').map(card => card.dataset.sessionId).sort();
+  expect(ids()).toEqual(['open-ticket-agent', 'unlinked-agent']);
+  act(() => store.set(hideDoneTicketsAtom, false));
+  expect(ids()).toEqual(['finished-ticket-agent', 'open-ticket-agent', 'unlinked-agent']);
 });
 
 it('filters by rolling hour/12-hour/day boundaries and restores all sessions while preserving search, tags and Done visibility', () => {

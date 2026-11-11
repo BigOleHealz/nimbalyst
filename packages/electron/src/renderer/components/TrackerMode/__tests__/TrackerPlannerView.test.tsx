@@ -1,5 +1,9 @@
 // @vitest-environment jsdom
 import React, { useState } from 'react';
+import { Provider, createStore } from 'jotai';
+import { hideDoneTicketsAtom, hiddenDoneTicketSessionIdsAtom } from '../../../store/atoms/ticketVisibility';
+import { sessionRegistryAtom } from '../../../store/atoms/sessions';
+import { trackerItemsMapAtom } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerDataAtoms';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { TrackerRecord } from '@nimbalyst/runtime/core/TrackerRecord';
@@ -10,6 +14,45 @@ beforeAll(() => loadBuiltinTrackers());
 const record = (id: string, fields: Record<string, unknown> = {}) => ({ id, primaryType: 'task', typeTags: ['task'], source: 'native', archived: false, syncStatus: 'local', system: { workspace: '/test', createdAt: '2026-11-01', updatedAt: '2026-11-01' }, fields: { title: id, status: 'to-do', ...fields } }) as TrackerRecord;
 
 describe('planner interactions', () => {
+  it('hides completed tickets across every Planner view and shares the Agent filter without changing readiness', () => {
+    const store = createStore();
+    const done = record('Finished prerequisite', { status: 'done' });
+    const next = record('Open dependent', { dependsOn: [{ itemId: done.id }] });
+    store.set(sessionRegistryAtom, new Map([['done-agent', { id: 'done-agent', title: 'Finished session', workspaceId: '/test', linkedTrackerItemIds: [done.id] } as any]]));
+    store.set(trackerItemsMapAtom, new Map([[done.id, done], [next.id, next]]));
+    const open = vi.fn();
+    const view = render(<Provider store={store}><TrackerPlannerView items={[done, next]} allItems={[done, next]} onItemSelect={open} /></Provider>);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Hide done tickets' }));
+    expect(store.get(hideDoneTicketsAtom)).toBe(true);
+    expect([...store.get(hiddenDoneTicketSessionIdsAtom)]).toEqual(['done-agent']);
+    expect(screen.queryByRole('button', { name: 'Open ticket Finished prerequisite, Done' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Next ready ticket' }));
+    expect(open).toHaveBeenLastCalledWith(next.id);
+    for (const mode of ['Suggested order', 'Hierarchy timeline']) {
+      fireEvent.click(screen.getByRole('tab', { name: mode }));
+      expect(view.container.querySelector('.tracker-planner-row-completed')).toBeNull();
+      expect(screen.getByText('Ready now').textContent).toBe('Ready now');
+    }
+    act(() => store.set(hideDoneTicketsAtom, false));
+    expect((screen.getByRole('checkbox', { name: 'Hide done tickets' }) as HTMLInputElement).checked).toBe(false);
+    expect(view.container.querySelector('.tracker-planner-row-completed')?.textContent).toContain(done.id);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Hide done tickets' }));
+    const reopened = record(done.id, { status: 'in-progress' });
+    view.rerender(<Provider store={store}><TrackerPlannerView items={[reopened, next]} allItems={[reopened, next]} onItemSelect={open} /></Provider>);
+    fireEvent.click(screen.getByRole('tab', { name: 'Dependency graph' }));
+    expect(screen.getByRole('button', { name: `Open ticket ${done.id}, In Progress` }).textContent).toContain(done.id);
+  });
+
+  it('keeps the checkbox accessible when all tickets are hidden', () => {
+    const store = createStore();
+    const items = [record('Completed work', { status: 'done' })];
+    render(<Provider store={store}><TrackerPlannerView items={items} allItems={items} onItemSelect={vi.fn()} /></Provider>);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Hide done tickets' }));
+    expect(screen.getByText('No open tickets match this view. Uncheck Hide done tickets to show completed work.').textContent).toContain('Uncheck');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Hide done tickets' }));
+    expect(screen.getByRole('button', { name: 'Open ticket Completed work, Done' }).textContent).toContain('Completed work');
+  });
+
   it('keeps completed tickets selectable in every view and excludes them from ready navigation', () => {
     const done = record('Finished privacy', { status: 'done', dueDate: '2020-01-01' });
     const next = record('Live acceptance', { dependsOn: [{ itemId: done.id }] });
