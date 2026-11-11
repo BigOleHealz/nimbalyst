@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   areTrackerToolsEnabled,
   configureMcpServers,
+  isInternalMcpServerEnabled,
   resolveTrackersWorkspacePath,
 } from '../mcpServerConfig';
 
@@ -51,5 +52,18 @@ describe('resolveTrackersWorkspacePath', () => {
     ).toBe('/project');
     expect(resolveTrackersWorkspacePath({ worktreePath: '/wt' })).toBe('/wt');
     expect(resolveTrackersWorkspacePath(undefined)).toBeUndefined();
+  });
+});
+
+
+describe('native headless session metadata', () => {
+  afterEach(() => { configureMcpServers({ mcpServerPort: null, sessionMetaServerPort: null, sessionMetaAuthTokenLoader: null }); });
+  it('enables phase reporting instructions without a desktop MCP server', () => {
+    configureMcpServers({ mcpServerPort: null, sessionMetaServerPort: null, sessionMetaAuthTokenLoader: null });
+    expect(isInternalMcpServerEnabled()).toBe(false);
+    configureMcpServers({ sessionMetaServerPort: 41111 });
+    expect(isInternalMcpServerEnabled()).toBe(false);
+    configureMcpServers({ sessionMetaAuthTokenLoader: () => 'scoped-token' });
+    expect(isInternalMcpServerEnabled()).toBe(true);
   });
 });

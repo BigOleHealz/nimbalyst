@@ -38,6 +38,27 @@ function fixture() {
 
 afterEach(() => vi.useRealTimers());
 describe('remote desktop mirrors', () => {
+  it('shows remote phase and tags in both the list and loaded session, and refreshes them from the index', async () => {
+    const f = fixture();
+    Object.assign(f.entry, { phase: 'planning', tags: ['research'] });
+    expect((await f.mirror.list('/repo', []))[0]).toMatchObject({ phase: 'planning', tags: ['research'] });
+    expect((await f.mirror.get('remote', '/repo'))?.metadata).toMatchObject({ phase: 'planning', tags: ['research'] });
+    Object.assign(f.entry, { phase: 'validating', tags: ['testing'] });
+    f.index();
+    expect((await f.mirror.list('/repo', []))[0]).toMatchObject({ phase: 'validating', tags: ['testing'] });
+  });
+
+  it('prefers current remote phase over retained migration metadata and keeps the fallback offline', async () => {
+    const f = fixture();
+    (f.deps as any).migratedHost = async () => 'sandbox-1';
+    const local = [{ id: 'remote', phase: 'planning', tags: ['old'] } as any];
+    Object.assign(f.entry, { phase: 'implementing', tags: ['feature'] });
+    expect((await f.mirror.list('/repo', local))[0]).toMatchObject({ phase: 'implementing', tags: ['feature'] });
+    Object.assign(f.entry, { phase: undefined, tags: undefined });
+    f.index();
+    expect((await f.mirror.list('/repo', local))[0]).toMatchObject({ phase: 'planning', tags: ['old'] });
+  });
+
 
   it('disconnects a watched session on deletion and keeps later unsubscribe harmless', async () => {
     const f = fixture();

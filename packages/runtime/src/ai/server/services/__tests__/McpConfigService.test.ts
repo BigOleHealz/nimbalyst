@@ -54,6 +54,21 @@ describe('McpConfigService', () => {
       .rejects.toThrow(`MCP server "provisioned" field "${key}" contains an unexpanded environment reference; provision a literal value`);
   });
 
+  it('provides only the native headless metadata endpoint with session context and preserves provisioned tracker access', async () => {
+    const service = new McpConfigService({ ...mockDeps, mcpServerPort: null, extensionDevServerPort: null,
+      sessionMetaServerPort: 41009, mcpAuthToken: 'desktop-token',
+      sessionMetaAuthTokenLoader: (id, workspace) => `${id}:${workspace}`,
+      mcpConfigLoader: async () => ({ 'nimbalyst-trackers': { type: 'http', url: 'http://127.0.0.1:43456/mcp/trackers' } }),
+    });
+    const config = await service.getMcpServersConfig({ sessionId: 'remote-one', workspacePath: '/foss/task' });
+    expect(Object.keys(config).sort()).toEqual(['nimbalyst', 'nimbalyst-trackers']);
+    const url = new URL(config.nimbalyst.url);
+    expect(url.port).toBe('41009');
+    expect(url.searchParams.get('sessionId')).toBe('remote-one');
+    expect(url.searchParams.get('workspacePath')).toBe('/foss/task');
+    expect(config.nimbalyst.headers.Authorization).toBe('Bearer remote-one:/foss/task');
+  });
+
   describe('Environment Variable Expansion', () => {
     it('should expand simple ${VAR} syntax', async () => {
       mockDeps.mcpConfigLoader = async () => ({

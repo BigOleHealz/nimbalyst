@@ -345,6 +345,12 @@
         "import": "./dist-node/ai/server/protocols/codexAppServer/codexAppServerBinary.js"
       }
     },
+    "./ai/server/services/mcpServerConfig": {
+      "node": {
+        "types": "./dist-node/ai/server/services/mcpServerConfig.d.ts",
+        "import": "./dist-node/ai/server/services/mcpServerConfig.js"
+      }
+    },
     "./ai/server/providers/OpenAICodexProvider": {
       "node": {
         "types": "./dist-node/ai/server/providers/OpenAICodexProvider.d.ts",

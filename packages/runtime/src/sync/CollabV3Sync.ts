@@ -421,6 +421,8 @@ async function decryptSessionIndexEntry(
     queuedPromptCount: entry.queuedPromptCount,
     queuedPrompts,
     hasPendingPrompt: hasPendingPrompt ?? entry.hasPendingPrompt,
+    phase,
+    tags,
     currentContext,
     lastReadAt: entry.lastReadAt,
     transcriptSyncDisabled,
@@ -428,8 +430,6 @@ async function decryptSessionIndexEntry(
 
   const cacheEntry: CachedSessionIndex = {
     ...decrypted,
-    phase,
-    tags,
     draftInput,
     draftUpdatedAt,
     hasBeenNamed,

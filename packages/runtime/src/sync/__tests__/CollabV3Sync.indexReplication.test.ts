@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { asPersonalJwt, asPersonalMemberId } from '../../auth/jwtScopes';
 
 import { createCollabV3Sync } from '../CollabV3Sync';
+import { encrypt } from '../collabV3Crypto';
 import { selectSessionsForIndexSync } from '../../../../electron/src/main/services/sync/selectSessionsForIndexSync';
 
 /**
@@ -130,6 +131,21 @@ async function createConnectedProvider(encryptionKey?: CryptoKey) {
 }
 
 describe('CollabV3 v2 index replication client', () => {
+  it('retains decrypted phase and tags in full index reads and later deltas', async () => {
+    const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
+    const { provider, indexSocket } = await createConnectedProvider(key);
+    try {
+      const metadata = await encrypt(JSON.stringify({ phase: 'planning', tags: ['research'] }), key);
+      const first = provider.fetchIndex!(); const boot = await pageRequest(indexSocket, 0);
+      indexSocket.receive(pageResponse(boot.requestId, { complete: true, cursor: 1, entries: [sessionChange('phase-session', 1, { encryptedClientMetadata: metadata.encrypted, clientMetadataIv: metadata.iv })] }));
+      expect((await first).sessions[0]).toMatchObject({ phase: 'planning', tags: ['research'] });
+      const changed = await encrypt(JSON.stringify({ phase: 'validating', tags: ['testing'] }), key);
+      const next = provider.fetchIndex!(); const delta = await pageRequest(indexSocket, 1);
+      indexSocket.receive(pageResponse(delta.requestId, { mode: 'delta', complete: true, cursor: 2, entries: [sessionChange('phase-session', 2, { encryptedClientMetadata: changed.encrypted, clientMetadataIv: changed.iv })] }));
+      expect((await next).sessions[0]).toMatchObject({ phase: 'validating', tags: ['testing'] });
+    } finally { provider.disconnectAll(); }
+  });
+
 
   it('notifies deletion subscribers after applying a real v2 tombstone', async () => {
     const {provider, indexSocket} = await createConnectedProvider();

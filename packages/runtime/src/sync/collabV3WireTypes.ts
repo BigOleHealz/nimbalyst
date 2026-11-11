@@ -208,6 +208,8 @@ export type DecryptedSessionIndexEntry = Omit<SessionIndexEntry, 'title' | 'encr
   projectId: string;  // Decrypted project ID
   /** Optional on the wire (omitted = "keep what you have"); always concrete here. */
   messageCount: number;
+  phase?: string;  // Decrypted agent workflow phase
+  tags?: string[];  // Decrypted session tags
   queuedPrompts?: PlaintextQueuedPrompt[];  // Decrypted queued prompts
   currentContext?: { tokens: number; contextWindow: number };  // Decrypted from client metadata
   hasBeenNamed?: boolean;  // Decrypted from client metadata

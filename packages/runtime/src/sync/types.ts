@@ -301,6 +301,9 @@ export interface SyncProvider {
     /** Explicit server tombstones, including those retained across a full bootstrap. */
     deletedSessionIds?: string[];
     sessions: Array<{
+      /** Decrypted agent workflow metadata, separate from ticket status. */
+      phase?: string;
+      tags?: string[];
       sessionId: string;
       projectId: string;
       title: string;
@@ -346,6 +349,9 @@ export interface SyncProvider {
 
   /** Live changes and queue recovery; replayHierarchy opts into verified bootstrap hierarchy reconciliation. */
   onIndexChange?(callback: (sessionId: string, entry: {
+    /** Decrypted agent workflow metadata, separate from ticket status. */
+    phase?: string;
+    tags?: string[];
     sessionId: string;
     /** Hierarchy placement in a complete index row; undefined means omitted. */
     parentSessionId?: string | null;
@@ -394,6 +400,9 @@ export interface SyncProvider {
   /** Get cached index entry for a session (populated from indexSyncResponse and indexBroadcast)
    * Note: Returns decrypted values - title is always present after decryption */
   getCachedIndexEntry?(sessionId: string): {
+    /** Decrypted agent workflow metadata, separate from ticket status. */
+    phase?: string;
+    tags?: string[];
     sessionId: string;
     isArchived?: boolean;
     parentSessionId?: string | null;

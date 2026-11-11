@@ -155,7 +155,7 @@ A refresh has three outcomes, and the line between them is **whether the request
 
 `trust.mode` grants the agent the operating-system user's permissions. `--workspace` sets the working directory; it does not confine file access. Use a disposable isolated environment for untrusted repositories, and keep unrelated workspaces and privileged credentials outside it.
 
-Headless runs disable implicit MCP discovery and user/project/local settings sources, including executable repository hooks and automatic `CLAUDE.md` project-instruction loading. The SDK also receives `skills: []`, `agents: {}`, and `plugins: []`; Nimbalyst's extension plugin loader is skipped. Only the `mcpServers` map you provision is supplied to the SDK. Desktop configuration discovery is unaffected.
+Headless runs disable implicit MCP discovery and user/project/local settings sources, including executable repository hooks and automatic `CLAUDE.md` project-instruction loading. The SDK also receives `skills: []`, `agents: {}`, and `plugins: []`; Nimbalyst's extension plugin loader is skipped. Only the `mcpServers` map you provision supplies external connections. The node also supplies its authenticated, loopback-only `nimbalyst` core endpoint for `update_session_meta`, bound to each session and its execution directory. Phase and tag updates pass through the synchronized session store so remote session badges update on the desktop. Desktop configuration discovery is unaffected.
 
 ## Schema
 

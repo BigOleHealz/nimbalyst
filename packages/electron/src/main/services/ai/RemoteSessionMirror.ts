@@ -153,6 +153,7 @@ export class RemoteSessionMirror {
       return {
         ...row,
         ...(current ? {
+          phase: current.phase ?? row.phase, tags: current.tags ?? row.tags,
           title: current.title || row.title, isArchived: !!current.isArchived, isPinned: !!current.isPinned,
           parentSessionId: current.parentSessionId ?? null, createdBySessionId: current.createdBySessionId ?? null,
           updatedAt: current.updatedAt,
@@ -197,6 +198,7 @@ export class RemoteSessionMirror {
         createdBySessionId: entry.createdBySessionId ?? null,
         messageCount: entry.messageCount, isArchived: !!entry.isArchived, isPinned: !!entry.isPinned,
         remoteHostDeviceId: entry.hostDeviceId, remoteIsExecuting: !!entry.isExecuting,
+        phase: entry.phase, tags: entry.tags,
         linkedTrackerItemIds: this.deps.linkedTrackerItemIds?.(workspacePath, entry.sessionId),
       });
     }
@@ -226,7 +228,7 @@ export class RemoteSessionMirror {
       workspacePath: entry.projectId, createdAt: entry.createdAt, updatedAt: entry.updatedAt,
       messages, isArchived: entry.isArchived, isPinned: entry.isPinned,
       parentSessionId: entry.parentSessionId,
-      metadata: { remoteHostDeviceId: entry.hostDeviceId },
+      metadata: { remoteHostDeviceId: entry.hostDeviceId, phase: entry.phase, tags: entry.tags },
     };
   }
   async workspaceForSession(id: string): Promise<string | undefined> {

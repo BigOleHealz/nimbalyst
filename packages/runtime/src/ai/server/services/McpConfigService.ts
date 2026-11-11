@@ -45,6 +45,12 @@ export interface McpConfigServiceDeps {
   /** Port for the unified internal Nimbalyst MCP HTTP server (all endpoints). */
   mcpServerPort: number | null;
 
+  /** Native headless session metadata endpoint; no desktop-only tools. */
+  sessionMetaServerPort?: number | null;
+
+  /** Issues a credential bound to one headless session and execution directory. */
+  sessionMetaAuthTokenLoader?: ((sessionId: string, workspacePath: string) => string) | null;
+
   /** Port for the extension development MCP server (profile-gated, separate server). */
   extensionDevServerPort: number | null;
 
@@ -245,6 +251,15 @@ export class McpConfigService {
           };
         }
       }
+    }
+
+    if (this.deps.mcpServerPort === null && this.deps.sessionMetaServerPort && this.deps.sessionMetaAuthTokenLoader && sessionId && workspacePath) {
+      const query = new URLSearchParams({ sessionId, workspacePath });
+      config[MCP_CORE] = {
+        type: 'http',
+        url: `http://127.0.0.1:${this.deps.sessionMetaServerPort}/mcp/core?${query}`,
+        headers: { Authorization: `Bearer ${this.deps.sessionMetaAuthTokenLoader(sessionId, workspacePath)}` },
+      };
     }
 
     // MCP consolidation Phase 5: the standalone session-naming, session-context,

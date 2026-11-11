@@ -28,6 +28,8 @@ import type { DocumentContext } from '../types';
 export type SharedMcpServerConfig = Pick<
   McpConfigServiceDeps,
   | 'mcpServerPort'
+  | 'sessionMetaServerPort'
+  | 'sessionMetaAuthTokenLoader'
   | 'extensionDevServerPort'
   | 'settingsAgentToolsDisabledLoader'
   | 'trackersAgentToolsDisabledLoader'
@@ -44,6 +46,8 @@ export interface PerProviderMcpDeps {
 
 const shared: SharedMcpServerConfig = {
   mcpServerPort: null,
+  sessionMetaServerPort: null,
+  sessionMetaAuthTokenLoader: null,
   extensionDevServerPort: null,
   settingsAgentToolsDisabledLoader: null,
   trackersAgentToolsDisabledLoader: null,
@@ -62,7 +66,7 @@ export function configureMcpServers(partial: Partial<SharedMcpServerConfig>): vo
  * which providers use to decide whether to include the session-naming prompt.
  */
 export function isInternalMcpServerEnabled(): boolean {
-  return shared.mcpServerPort !== null;
+  return shared.mcpServerPort !== null || (shared.sessionMetaServerPort != null && typeof shared.sessionMetaAuthTokenLoader === 'function');
 }
 
 /**

@@ -29,6 +29,8 @@ import { createNodeSessionStore } from './store/NodeSessionStore.js';
 import { createNodeAgentMessagesStore } from './store/NodeAgentMessagesStore.js';
 import { requireExecutionPolicy, type LoadedConfig } from './config.js';
 import { createCoderGitHubLaunch } from './host/coderGitHubAuth.js';
+import { createSessionMetaServer } from './host/sessionMetaServer.js';
+import { configureMcpServers } from '@nimbalyst/runtime/ai/server/services/mcpServerConfig';
 
 registerNodeHostEnvironment();
 
@@ -82,6 +84,7 @@ export class NimbalystNode {
     private readonly sessions: SessionManager,
     private readonly sessionStore: SessionStore,
     private readonly config: LoadedConfig,
+    private readonly sessionMetaServer?: Awaited<ReturnType<typeof createSessionMetaServer>>,
   ) {}
 
   static async open(
@@ -117,7 +120,10 @@ export class NimbalystNode {
       mcpServers: config.mcpServers,
     });
 
-    return new NimbalystNode(db, sessions, sessionStore, config);
+    const sessionMetaServer = await createSessionMetaServer(sessionStore);
+    configureMcpServers({ sessionMetaServerPort: sessionMetaServer.port, sessionMetaAuthTokenLoader: sessionMetaServer.tokenForSession });
+    console.log(`[nimbalyst-node] session-meta-ready port=${sessionMetaServer.port}`);
+    return new NimbalystNode(db, sessions, sessionStore, config, sessionMetaServer);
   }
 
   get sessionManager(): SessionManager {
@@ -302,6 +308,10 @@ export class NimbalystNode {
   }
 
   close(): void {
+    if (this.sessionMetaServer) {
+      configureMcpServers({ sessionMetaServerPort: null, sessionMetaAuthTokenLoader: null });
+      void this.sessionMetaServer.close().catch(() => console.error('[nimbalyst-node] session metadata server close failed'));
+    }
     this.db.close();
   }
 }
