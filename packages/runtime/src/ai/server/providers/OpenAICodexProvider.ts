@@ -22,7 +22,7 @@ import {
 import { AgentCapabilities, BUILTIN_AGENT_CAPABILITIES } from '../agentCapabilities';
 import type { FileChangeFidelity } from '../providerFileTracking';
 import { CodexSDKProtocol } from '../protocols/CodexSDKProtocol';
-import { CodexAppServerProtocol, type CodexAppServerHostBindings } from '../protocols/CodexAppServerProtocol';
+import { CodexAppServerProtocol, type CodexAppServerHostBindings, type CodexAppServerProtocolOptions } from '../protocols/CodexAppServerProtocol';
 import {setCodexShellTrackingHost} from '../protocols/codexAppServer/shellTracking';
 import { AgentProtocol, ProtocolEvent, ProtocolSession } from '../protocols/ProtocolInterface';
 import { isNonRenderingAppServerItemStarted } from '../transcript/parsers/CodexAppServerRawParser';
@@ -71,6 +71,7 @@ interface ProtocolSessionIdleScheduler {
 
 interface OpenAICodexProviderDeps {
   protocol?: CodexProtocol;
+  prepareLaunch?: CodexAppServerProtocolOptions['prepareLaunch'];
   permissionService?: ToolPermissionService;
   /** Override the active transport for this provider instance (overrides the static resolver). */
   transport?: CodexTransport;
@@ -373,6 +374,7 @@ export class OpenAICodexProvider extends BaseAgentProvider {
       this.protocol = new CodexAppServerProtocol({
         apiKey,
         resolveCodexPathOverride: resolvePackagedCodexBinaryPath,
+        prepareLaunch: deps?.prepareLaunch,
         host: OpenAICodexProvider.appServerHostBindings ?? undefined,
         clientInfo: { name: 'nimbalyst', version: process.env.NIMBALYST_VERSION ?? '0.0.0' },
       });

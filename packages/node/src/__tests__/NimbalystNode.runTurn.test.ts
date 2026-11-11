@@ -1,15 +1,16 @@
 // @vitest-environment node
 import { expect, it, vi } from 'vitest';
-const { provider, codex } = vi.hoisted(() => ({ provider: {
+const { provider, codex, constructCodex } = vi.hoisted(() => ({ constructCodex: vi.fn(), provider: {
   on: vi.fn(), initialize: vi.fn(async () => {}),
   sendMessage: vi.fn(async function* () { yield {type: 'text', content: 'image received'}; }),
 }, codex: {on: vi.fn(), initialize: vi.fn(async () => {}), sendMessage: vi.fn(async function* () {yield {type: 'text', content: 'remote Codex'};})} }));
 vi.mock('../host/nodeHost.js', () => ({ registerNodeHostEnvironment: vi.fn() }));
 vi.mock('../host/claudeCodeDeps.js', () => ({ registerClaudeCodeDeps: vi.fn() }));
+vi.mock('../host/coderGitHubAuth.js', () => ({ createCoderGitHubLaunch: vi.fn(() => vi.fn()) }));
 vi.mock('../db/openDatabase.js', () => ({ openDatabase: vi.fn() }));
 vi.mock('@nimbalyst/runtime/ai/server/SessionManager', () => ({ SessionManager: class {} }));
 vi.mock('@nimbalyst/runtime/ai/server/providers/ClaudeCodeProvider', () => ({ ClaudeCodeProvider: class { constructor() { return provider; } } }));
-vi.mock('@nimbalyst/runtime/ai/server/providers/OpenAICodexProvider', () => ({OpenAICodexProvider: class {constructor() {return codex;}}}));
+vi.mock('@nimbalyst/runtime/ai/server/providers/OpenAICodexProvider', () => ({OpenAICodexProvider: class {constructor(...args: unknown[]) {constructCodex(...args); return codex;}}}));
 import { NimbalystNode } from '../NimbalystNode.js';
 
 it('supplies staged attachments in the provider attachment argument while resuming from host metadata', async () => {
@@ -33,4 +34,17 @@ it('uses Codex with the configured remote model and working directory', async ()
   expect(codex.initialize).toHaveBeenCalledWith(expect.objectContaining({model: 'gpt-6.1-sol'}));
   expect(codex.sendMessage).toHaveBeenCalledWith(expect.stringContaining('Check the workspace'), expect.any(Object), 'codex-session', [], '/remote/session', []);
   expect(result.text).toBe('remote Codex');
+});
+
+it('opts only the configured node into instance-scoped Coder credentials', async () => {
+  const node = Object.assign(Object.create(NimbalystNode.prototype), {
+    sessionStore: {get: async () => ({id: 'codex-session', provider: 'openai-codex'})},
+    db: {prepare: () => ({get: () => ({count: 2})})},
+    config: {coderGitHubAuth: {coderPath: '/usr/bin/coder', providerId: 'github', workspaceRoot: '/foss'}},
+  }) as NimbalystNode;
+  await node.runTurn({sessionId: 'codex-session', workspacePath: '/foss/task', prompt: 'Authentication check only'});
+  expect(constructCodex).toHaveBeenLastCalledWith(undefined, { transport: 'app-server', prepareLaunch: expect.any(Function) });
+  (node as any).config = {};
+  await node.runTurn({sessionId: 'codex-session', workspacePath: '/another-project', prompt: 'Check'});
+  expect(constructCodex).toHaveBeenLastCalledWith(undefined, undefined);
 });

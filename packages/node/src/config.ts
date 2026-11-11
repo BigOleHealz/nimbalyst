@@ -1,18 +1,28 @@
 /**
  * Configuration for a headless Nimbalyst node.
  *
- * Every value comes from a config file whose path the caller states. Nothing is
- * read from `process.env`, and credentials especially are not: a user with an
+ * Provider configuration comes from a file whose path the caller states. Provider
+ * API keys are never read from `process.env`: a user with an
  * unrelated `ANTHROPIC_API_KEY` in a `.env` had it silently picked up,
  * auto-persisted and billed against their personal account. See the
  * "Never Use Environment Variables as Implicit API Key Sources" rule in
  * CLAUDE.md. There is no fallback here on purpose -- an absent key means the
  * provider runs on the `claude` CLI's own login, which is the correct headless
  * default.
+ * The explicit coderGitHubAuth opt-in uses Coder's workspace agent connection
+ * only to retrieve GitHub tool credentials; it does not select an AI account.
  */
 
 import { readFileSync } from 'node:fs';
 import * as path from 'node:path';
+
+export interface CoderGitHubAuthConfig {
+  /** Absolute path to Coder's CLI, supplied by this workspace's launcher. */
+  coderPath: string;
+  providerId: string;
+  /** Only sessions inside this existing directory can request these credentials. */
+  workspaceRoot: string;
+}
 
 export interface NodeConfig {
   /**
@@ -33,6 +43,9 @@ export interface NodeConfig {
    * Claude Agent SDK's bundled native binary itself; see `nodeHost.ts`.
    */
   claudeCodePath?: string;
+
+  /** Opt-in workspace GitHub credentials, refreshed by Coder for each Codex launch/resume. No token values. */
+  coderGitHubAuth?: CoderGitHubAuthConfig;
 
   /**
    * Explicitly-provisioned provider credentials, keyed by provider id. Only
@@ -204,6 +217,7 @@ export function loadConfig(configPath: string): LoadedConfig {
 
   const configDir = path.dirname(absoluteConfigPath);
   const trust = requireExecutionPolicy(config);
+  if (config.coderGitHubAuth !== undefined) validateCoderGitHubAuth(config.coderGitHubAuth);
   if (config.mcpServers !== undefined && (!config.mcpServers || typeof config.mcpServers !== 'object' || Array.isArray(config.mcpServers))) {
     fail('mcpServers must be an object of explicitly provisioned connections');
   }
@@ -226,4 +240,14 @@ export function loadConfig(configPath: string): LoadedConfig {
       : undefined,
     configPath: absoluteConfigPath,
   };
+}
+
+export function validateCoderGitHubAuth(value: CoderGitHubAuthConfig): void {
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || typeof value.coderPath !== 'string' || !path.isAbsolute(value.coderPath)
+    || typeof value.workspaceRoot !== 'string' || !path.isAbsolute(value.workspaceRoot)
+    || typeof value.providerId !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(value.providerId)
+    || Object.keys(value).some(key => !['coderPath', 'providerId', 'workspaceRoot'].includes(key))) {
+    fail('coderGitHubAuth requires absolute coderPath and workspaceRoot, and a providerId; credential values are not accepted');
+  }
 }

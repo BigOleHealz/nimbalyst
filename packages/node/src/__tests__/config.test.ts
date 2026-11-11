@@ -18,6 +18,24 @@ import { NimbalystNode } from '../NimbalystNode.js';
 import { openDatabase } from '../db/openDatabase.js';
 
 describe('headless execution policy', () => {
+  it('rejects Coder GitHub opt-in without its launcher before opening the database', async () => {
+    vi.mocked(openDatabase).mockClear();
+    await expect(NimbalystNode.open({ trust: { mode: 'bypass-all' }, coderGitHubAuth: { coderPath: '/usr/bin/coder', providerId: 'github', workspaceRoot: '/foss' } } as LoadedConfig)).rejects.toThrow(/entry point/);
+    expect(openDatabase).not.toHaveBeenCalled();
+  });
+  it('accepts only credential-free, explicit Coder GitHub configuration', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'nimbalyst-coder-config-'));
+    const file = join(directory, 'config.json');
+    const valid = { coderPath: '/usr/bin/coder', providerId: 'github', workspaceRoot: '/workspace/foss' };
+    try {
+      for (const coderGitHubAuth of [null, [], {}, { ...valid, coderPath: 'coder' }, { ...valid, workspaceRoot: '.' }, { ...valid, providerId: '--help' }, { ...valid, token: 'fixture-forbidden' }]) {
+        writeFileSync(file, JSON.stringify({ databasePath: './agent.sqlite', trust: { mode: 'bypass-all' }, coderGitHubAuth }));
+        expect(() => loadConfig(file)).toThrow(/coderGitHubAuth/);
+      }
+      writeFileSync(file, JSON.stringify({ databasePath: './agent.sqlite', trust: { mode: 'bypass-all' }, coderGitHubAuth: valid }));
+      expect(loadConfig(file).coderGitHubAuth).toEqual(valid);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
   it.each([undefined, null, {}, { mode: 'ask' }, { mode: 'allow-all' }, { mode: 'typo' }])('rejects programmatic trust %j before opening the database', async (trust) => {
     vi.mocked(openDatabase).mockClear();
     const config = { databasePath: './agent.sqlite', resolvedDatabasePath: '/unused/agent.sqlite', configPath: '/unused/config.json', trust } as LoadedConfig;

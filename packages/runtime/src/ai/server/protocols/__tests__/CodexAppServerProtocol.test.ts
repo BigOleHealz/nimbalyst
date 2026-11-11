@@ -145,6 +145,86 @@ describe('CodexAppServerProtocol', () => {
   afterEach(() => {
     setCodexShellTrackingHost(undefined);
     if (!child.killed) child.kill();
+    vi.unstubAllEnvs();
+  });
+
+  it.each(['start', 'resume'])('refreshes workspace credentials in a replacement environment on %s without serializing them', async (kind) => {
+    vi.stubEnv('CODER_AGENT_TOKEN', 'fixture-coder-secret');
+    vi.stubEnv('UNRELATED_SECRET', 'fixture-unrelated-secret');
+    const prepareLaunch = vi.fn(async () => ({
+      workspacePath: '/canonical/foss',
+      env: { HOME: '/home/agent', PATH: '/usr/bin', GH_TOKEN: 'fixture-github-secret' },
+      shellEnvironmentPolicy: { inherit: 'all', ignore_default_excludes: true, include_only: ['HOME', 'PATH', 'GH_TOKEN'] },
+    }));
+    const protocol = new CodexAppServerProtocol({ prepareLaunch });
+    const options = { workspacePath: '/workspace/foss', raw: { codexEnv: { UNRELATED_SECRET: 'shell-secret' }, codexConfigOverrides: { show_raw_agent_reasoning: true } } };
+    const pending = kind === 'start' ? protocol.createSession(options) : protocol.resumeSession('original-thread', options);
+    const init = await nextWrittenMatching(child, 'initialize');
+    child.emitLine({ id: init.id, result: {} });
+    const configRead = await nextWrittenMatching(child, 'config/read');
+    expect(configRead.params).toEqual({ cwd: '/canonical/foss', includeLayers: true });
+    child.emitLine({ id: configRead.id, result: { config: {}, layers: [] } });
+    const request = await nextWrittenMatching(child, 'thread/' + kind);
+    child.emitLine({ id: request.id, result: { thread: { id: 'original-thread' } } });
+    const session = await pending;
+    expect(prepareLaunch).toHaveBeenCalledWith('/workspace/foss');
+    expect(spawnMock.mock.calls[0][2].cwd).toBe('/canonical/foss');
+    expect((request.params as any).cwd).toBe('/canonical/foss');
+    expect(spawnMock.mock.calls[0][2].env).toMatchObject({ GH_TOKEN: 'fixture-github-secret' });
+    expect(spawnMock.mock.calls[0][2].env).not.toHaveProperty('CODER_AGENT_TOKEN');
+    expect(spawnMock.mock.calls[0][2].env).not.toHaveProperty('UNRELATED_SECRET');
+    expect((request.params as any).config).toMatchObject({ show_raw_agent_reasoning: true, shell_environment_policy: { include_only: ['HOME', 'PATH', 'GH_TOKEN'] } });
+    expect(JSON.stringify(child.writtenLines)).not.toContain('fixture-github-secret');
+    expect(JSON.stringify(spawnMock.mock.calls[0][1])).not.toContain('fixture-github-secret');
+    expect(JSON.stringify(options)).not.toContain('fixture-github-secret');
+    expect(session.id).toBe('original-thread');
+    protocol.cleanupSession(session);
+  });
+
+  it('does not spawn an agent if the workspace credential provider fails', async () => {
+    const protocol = new CodexAppServerProtocol({ prepareLaunch: async () => { throw new Error('credential retrieval failed'); } });
+    await expect(protocol.resumeSession('original-thread', { workspacePath: '/workspace/foss' })).rejects.toThrow('credential retrieval failed');
+    expect(spawnMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['GH_TOKEN', 'gh_token', 'GITHUB_TOKEN'])('rejects %s overrides in disabled project layers without exposing values or attaching a thread', async (key) => {
+    const protocol = new CodexAppServerProtocol({ prepareLaunch: async () => ({ workspacePath: '/workspace/foss', env: { GH_TOKEN: 'fresh-fixture' }, shellEnvironmentPolicy: {} }) });
+    const pending = protocol.resumeSession('original-thread', { workspacePath: '/workspace/foss' });
+    const rejected = expect(pending).rejects.toThrow(/remove GH_TOKEN\/GITHUB_TOKEN/);
+    const init = await nextWrittenMatching(child, 'initialize'); child.emitLine({ id: init.id, result: {} });
+    const read = await nextWrittenMatching(child, 'config/read');
+    child.emitLine({ id: read.id, result: { config: {}, layers: [{ config: { shell_environment_policy: { set: { [key]: 'never-log-fixture-secret' } } }, disabledReason: 'untrusted' }] } });
+    await rejected;
+    expect(child.killed).toBe(true);
+    expect(child.writtenLines.some((line: any) => line.method === 'thread/resume')).toBe(false);
+    expect(JSON.stringify(child.writtenLines)).not.toContain('never-log-fixture-secret');
+  });
+
+  it('fails closed when the effective credential policy cannot be read, without exposing RPC errors', async () => {
+    const protocol = new CodexAppServerProtocol({ prepareLaunch: async () => ({ workspacePath: '/workspace/foss', env: { GH_TOKEN: 'fresh-fixture' }, shellEnvironmentPolicy: {} }) });
+    const pending = protocol.createSession({ workspacePath: '/workspace/foss' }).catch(error => error);
+    const init = await nextWrittenMatching(child, 'initialize'); child.emitLine({ id: init.id, result: {} });
+    const read = await nextWrittenMatching(child, 'config/read');
+    child.emitLine({ id: read.id, error: { code: -1, message: 'never-log-fixture-secret' } });
+    const error = await pending;
+    expect(error.message).toContain('Could not validate Coder GitHub authentication');
+    expect(error.message).not.toContain('never-log-fixture-secret');
+    expect(child.killed).toBe(true);
+  });
+
+  it('does not log or retain secret-bearing native initialization stderr', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const protocol = new CodexAppServerProtocol({ prepareLaunch: async () => ({ workspacePath: '/workspace/foss', env: { GH_TOKEN: 'fresh-fixture' }, shellEnvironmentPolicy: {} }) });
+      const pending = protocol.createSession({ workspacePath: '/workspace/foss' }).catch(error => error);
+      const init = await nextWrittenMatching(child, 'initialize');
+      child.stderr.write('invalid type: string "never-log-fixture-secret", expected a map\n');
+      child.emitLine({ id: init.id, error: { code: -1, message: 'native configuration failed' } });
+      const error = await pending;
+      expect(JSON.stringify(warn.mock.calls)).not.toContain('never-log-fixture-secret');
+      expect(error.message).not.toContain('never-log-fixture-secret');
+      expect(child.killed).toBe(true);
+    } finally { warn.mockRestore(); }
   });
 
   it.each(['start','resume'])('binds host hooks to %s and trusts only the exact session hook hashes',async(kind)=>{

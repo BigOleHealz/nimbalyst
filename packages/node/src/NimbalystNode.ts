@@ -28,6 +28,7 @@ import { openDatabase } from './db/openDatabase.js';
 import { createNodeSessionStore } from './store/NodeSessionStore.js';
 import { createNodeAgentMessagesStore } from './store/NodeAgentMessagesStore.js';
 import { requireExecutionPolicy, type LoadedConfig } from './config.js';
+import { createCoderGitHubLaunch } from './host/coderGitHubAuth.js';
 
 registerNodeHostEnvironment();
 
@@ -88,6 +89,8 @@ export class NimbalystNode {
     decorators: NodeStoreDecorators = {},
   ): Promise<NimbalystNode> {
     const trust = requireExecutionPolicy(config);
+    // Reject a misconfigured launcher before any database or host Git activity.
+    if (config.coderGitHubAuth) createCoderGitHubLaunch(config.coderGitHubAuth);
     const { db } = openDatabase(config.resolvedDatabasePath, config.schemaDir);
 
     // Both repository facades are module-level singletons in the runtime. They
@@ -171,7 +174,11 @@ export class NimbalystNode {
     }
 
     if (session.provider && !['claude-code', 'openai-codex'].includes(session.provider)) throw new Error(`Unsupported remote provider: ${session.provider}`);
-    const provider = session.provider === 'openai-codex' ? new OpenAICodexProvider() : new ClaudeCodeProvider();
+    const provider = session.provider === 'openai-codex'
+      ? new OpenAICodexProvider(undefined, this.config.coderGitHubAuth ? {
+        transport: 'app-server', prepareLaunch: createCoderGitHubLaunch(this.config.coderGitHubAuth),
+      } : undefined)
+      : new ClaudeCodeProvider();
 
     // Persisting `providerSessionId` is the HOST's job, not the provider's: the
     // provider only emits it. Without this listener the column stays NULL, and
