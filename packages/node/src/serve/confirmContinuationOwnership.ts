@@ -15,7 +15,7 @@ export async function ownsSessionExecution(provider: SyncProvider, sessionId: st
 }
 
 /** Retry on every startup. Missing/deleted source rows are never recreated. */
-export async function confirmContinuationOwnership(provider: SyncProvider, entry: SessionContinuation, hostDeviceId: string, currentProvider = entry.provider): Promise<'confirmed' | 'deleted'> {
+export async function confirmContinuationOwnership(provider: SyncProvider, entry: SessionContinuation, hostDeviceId: string, currentProvider = entry.provider, verifyNative?: () => Promise<void>): Promise<'confirmed' | 'deleted'> {
   if (!provider.fetchIndex) throw new Error('The remote session index is unavailable.');
   let deleted = false;
   const stop = provider.onIndexDelete?.(id => {if (id === entry.id) deleted = true;});
@@ -28,6 +28,10 @@ export async function confirmContinuationOwnership(provider: SyncProvider, entry
     const current = index.sessions.find(row => row.sessionId === entry.id);
     if (!current || current.projectId !== entry.workspaceId) throw new Error('The original conversation must already be synced in its mapped project.');
     if (current.provider && current.provider !== currentProvider) throw new Error('The indexed conversation provider does not match the imported native identity.');
+    try {await verifyNative?.();} catch (error) {if (deleted) return 'deleted'; throw error;}
+    if (deleted) return 'deleted';
+    const latest = provider.getCachedIndexEntry?.(entry.id);
+    if (provider.getConnectionGeneration?.() !== generation || (provider.getCachedIndexEntry && (!latest || latest.hostDeviceId !== current.hostDeviceId || latest.projectId !== entry.workspaceId))) throw new Error('The conversation ownership changed during native verification.');
     if (current.hostDeviceId === hostDeviceId) return 'confirmed';
     const previousHost = entry.sourceHostDeviceId ?? entry.metadata?.hostDeviceId;
     if (current.hostDeviceId && current.hostDeviceId !== previousHost) throw new Error('The original conversation belongs to an unexpected source host.');

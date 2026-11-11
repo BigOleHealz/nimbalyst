@@ -14,13 +14,15 @@ export async function importSessionContinuations(input: {
   entries: SessionContinuation[];
   hostDeviceId: string;
   store: Pick<SessionStore, 'get' | 'createIfAbsent' | 'verifyContinuationIdentity'>;
-  validate(entry: SessionContinuation): Promise<void>;
-  confirm(entry: SessionContinuation): Promise<'deleted' | 'confirmed' | void>;
+  validate(entry: SessionContinuation, options?: {allowAppendedHistory: boolean}): Promise<void>;
+  /** Invoke verifyLegacy only after ruling out an authoritative tombstone. */
+  confirm(entry: SessionContinuation, verifyLegacy?: () => Promise<void>): Promise<'deleted' | 'confirmed' | void>;
 }): Promise<{imported: number; retained: number; deleted: number}> {
   if (!input.migrationId || !input.hostDeviceId || !Array.isArray(input.entries) || input.entries.length > 100) throw new Error('Invalid session continuation manifest.');
   const pending: SessionContinuation[] = [];
   const ids = new Set<string>();
   const nativeIds = new Set<string>();
+  const legacyChecks = new Map<string, () => Promise<void>>();
   let retained = 0;
   for (const entry of input.entries) {
     if (!entry.id || ids.has(entry.id) || !entry.workspaceId || !['openai-codex', 'claude-code'].includes(entry.provider) || !entry.providerSessionId || !entry.remoteWorkspacePath) throw new Error('Invalid or duplicate session continuation.');
@@ -34,8 +36,10 @@ export async function importSessionContinuations(input: {
       if (migration?.id !== input.migrationId || existing.workspacePath !== entry.workspaceId || existing.metadata?.hostDeviceId !== input.hostDeviceId || existing.metadata?.remoteWorkspacePath !== entry.remoteWorkspacePath) throw new Error(`Session ${entry.id} already exists outside this migration.`);
       if (migration.originalProvider === undefined && migration.originalProviderSessionId === undefined) {
         if (!input.store.verifyContinuationIdentity) throw new Error('The legacy migration needs explicit native identity verification.');
-        await input.validate(entry);
-        await input.store.verifyContinuationIdentity(entry.id, input.migrationId, entry.provider, entry.providerSessionId);
+        legacyChecks.set(entry.id, async () => {
+          await input.validate(entry, {allowAppendedHistory: true});
+          await input.store.verifyContinuationIdentity!(entry.id, input.migrationId, entry.provider, entry.providerSessionId!);
+        });
       } else if (migration.originalProvider !== entry.provider || migration.originalProviderSessionId !== entry.providerSessionId) throw new Error('The original native conversation identity changed in the migration manifest.');
       retained++;
       continue;
@@ -62,6 +66,12 @@ export async function importSessionContinuations(input: {
     });
   }
   let deleted = 0;
-  for (const entry of input.entries) if (await input.confirm(entry) === 'deleted') deleted++;
+  for (const entry of input.entries) {
+    const legacyCheck = legacyChecks.get(entry.id);
+    let verified = false;
+    const outcome = legacyCheck ? await input.confirm(entry, async () => {await legacyCheck(); verified = true;}) : await input.confirm(entry);
+    if (outcome === 'deleted') deleted++;
+    else if (legacyCheck && !verified) throw new Error('Legacy native conversation verification was not confirmed.');
+  }
   return {imported: pending.length, retained, deleted};
 }

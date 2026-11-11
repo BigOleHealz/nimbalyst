@@ -65,7 +65,7 @@ import { withHostAttribution } from './hostAttributionStore.js';
 import { loadWorkspaces } from './workspaces.js';
 import {findWorkspace} from './workspaces.js';
 import {importSessionContinuations, type SessionContinuation} from './sessionContinuations.js';
-import {confineContinuationWorkspace, validateSessionContinuation} from './validateSessionContinuation.js';
+import {confineContinuationWorkspace, validateSessionContinuation, validateRetainedContinuation} from './validateSessionContinuation.js';
 import {confirmContinuationOwnership, ownsSessionExecution} from './confirmContinuationOwnership.js';
 
 const require = createRequire(import.meta.url);
@@ -244,17 +244,28 @@ export async function serve(options: ServeOptions): Promise<ServeResult> {
       if (Array.isArray(manifest.entries)) for (const entry of manifest.entries) if (typeof entry?.id === 'string') continuationIds.add(entry.id);
       const result = await importSessionContinuations({
         ...manifest, hostDeviceId: sync.deviceId, store: node.store,
-        validate: async entry => {
+        validate: async (entry, options) => {
           const mapping = findWorkspace(loadWorkspaces(workspacesPath), entry.workspaceId);
           if (!mapping) throw new Error(`No workspace mapping for continuation ${entry.id}.`);
-          await validateSessionContinuation(entry, mapping, checkoutRoot);
+          await validateSessionContinuation(entry, mapping, checkoutRoot, options);
         },
-        confirm: async entry => {
+        confirm: async (entry, verifyLegacy) => {
           continuationIds.add(entry.id);
           const current = await node.store.get(entry.id);
           const marker = current?.metadata?.remoteMigration as {id?: string; originalProvider?: string; originalProviderSessionId?: string} | undefined;
-          if (!current || marker?.id !== manifest.migrationId || marker.originalProvider !== entry.provider || marker.originalProviderSessionId !== entry.providerSessionId) throw new Error('The persisted migration identity changed before ownership confirmation.');
-          const status = await confirmContinuationOwnership(syncProvider, entry, sync.deviceId, current.provider);
+          const legacy = marker?.originalProvider === undefined && marker?.originalProviderSessionId === undefined && !!verifyLegacy;
+          if (!current || marker?.id !== manifest.migrationId || (!legacy && (marker.originalProvider !== entry.provider || marker.originalProviderSessionId !== entry.providerSessionId))) throw new Error('The persisted migration identity changed before ownership confirmation.');
+          const status = await confirmContinuationOwnership(syncProvider, entry, sync.deviceId, current.provider, async () => {
+            await verifyLegacy?.();
+            if (!node.store.verifyContinuationIdentity) throw new Error('The session store cannot verify retained native identity ownership.');
+            await node.store.verifyContinuationIdentity(entry.id, manifest.migrationId, entry.provider, entry.providerSessionId!);
+            const checked = await node.store.get(entry.id);
+            const verified = checked?.metadata?.remoteMigration as typeof marker;
+            if (!checked || verified?.id !== manifest.migrationId || verified.originalProvider !== entry.provider || verified.originalProviderSessionId !== entry.providerSessionId || checked.provider !== current.provider || checked.providerSessionId !== current.providerSessionId) throw new Error('The persisted native identity changed during ownership confirmation.');
+            const mapping = findWorkspace(loadWorkspaces(workspacesPath), entry.workspaceId);
+            if (!mapping) throw new Error('The retained continuation workspace mapping is unavailable.');
+            await validateRetainedContinuation(entry, checked, mapping, checkoutRoot);
+          });
           if (status === 'deleted') inactiveContinuations.add(entry.id);
           return status;
         },

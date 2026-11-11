@@ -333,6 +333,18 @@
         "import": "./dist-node/sync/encryptionKey.js"
       }
     },
+    "./ai/server/protocols/codexAppServer/jsonRpcClient": {
+      "node": {
+        "types": "./dist-node/ai/server/protocols/codexAppServer/jsonRpcClient.d.ts",
+        "import": "./dist-node/ai/server/protocols/codexAppServer/jsonRpcClient.js"
+      }
+    },
+    "./ai/server/protocols/codexAppServer/codexAppServerBinary": {
+      "node": {
+        "types": "./dist-node/ai/server/protocols/codexAppServer/codexAppServerBinary.d.ts",
+        "import": "./dist-node/ai/server/protocols/codexAppServer/codexAppServerBinary.js"
+      }
+    },
     "./ai/server/providers/OpenAICodexProvider": {
       "node": {
         "types": "./dist-node/ai/server/providers/OpenAICodexProvider.d.ts",

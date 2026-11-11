@@ -214,6 +214,8 @@ export function createNodeSessionStore(db: SqliteDatabase): SessionStore {
       db.transaction(() => {
         const collision = db.prepare(`SELECT id FROM ai_sessions
           WHERE id = @id OR (provider = @provider AND provider_session_id = @nativeId)
+            OR (json_extract(metadata, '$.remoteMigration.originalProvider') = @provider
+              AND json_extract(metadata, '$.remoteMigration.originalProviderSessionId') = @nativeId)
           LIMIT 1`).get({id: payload.id, provider: payload.provider, nativeId: payload.providerSessionId ?? null});
         if (collision) throw new Error('Session or native conversation already exists.');
         insert(payload, false);
@@ -226,13 +228,26 @@ export function createNodeSessionStore(db: SqliteDatabase): SessionStore {
         const metadata = parseJsonObjectColumn(row?.metadata);
         const migration = metadata.remoteMigration as Record<string, unknown> | undefined;
         if (!row || !migration || migration.id !== migrationId) throw new Error('Session migration identity is unavailable.');
-        if (migration.originalProvider !== undefined || migration.originalProviderSessionId !== undefined) {
+        const recorded = migration.originalProvider !== undefined || migration.originalProviderSessionId !== undefined;
+        if (recorded) {
           if (migration.originalProvider !== provider || migration.originalProviderSessionId !== providerSessionId) throw new Error('Session migration identity changed.');
-          return;
+        } else if (row.provider !== provider || row.provider_session_id !== providerSessionId) {
+          throw new Error('The legacy migration needs explicit native identity verification.');
         }
+        // Upgrades and retained resumes need the same exclusivity as a fresh
+        // import, including IDs reserved before the live thread advanced.
+        const collision = db.prepare(`SELECT id FROM ai_sessions WHERE id <> @id AND (
+          (provider = @provider AND provider_session_id = @nativeId)
+          OR (json_extract(metadata, '$.remoteMigration.originalProvider') = @provider
+            AND json_extract(metadata, '$.remoteMigration.originalProviderSessionId') = @nativeId)
+          OR (provider = @liveProvider AND provider_session_id = @liveId)
+          OR (json_extract(metadata, '$.remoteMigration.originalProvider') = @liveProvider
+            AND json_extract(metadata, '$.remoteMigration.originalProviderSessionId') = @liveId)
+        ) LIMIT 1`).get({id, provider, nativeId: providerSessionId, liveProvider: row.provider, liveId: row.provider_session_id ?? null});
+        if (collision) throw new Error('The native conversation already belongs to another session.');
+        if (recorded) return;
         // Legacy markers can be upgraded only while their live native identity
         // still proves the original import. Never infer an already-advanced ID.
-        if (row.provider !== provider || row.provider_session_id !== providerSessionId) throw new Error('The legacy migration needs explicit native identity verification.');
         metadata.remoteMigration = {...migration, originalProvider: provider, originalProviderSessionId: providerSessionId};
         db.prepare('UPDATE ai_sessions SET metadata = ? WHERE id = ?').run(toJsonColumn(metadata), id);
       }).immediate();

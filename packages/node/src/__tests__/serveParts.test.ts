@@ -76,11 +76,37 @@ describe('queued prompt store', () => {
     expect(await store.get('legacy-migration')).toMatchObject({providerSessionId: 'continued-thread', metadata: {remoteMigration: {id: 'move', originalProvider: 'openai-codex', originalProviderSessionId: 'original-thread'}}});
   });
 
+  it('reserves the original native identity after a migrated conversation advances', async () => {
+    const store = createNodeSessionStore(db);
+    await store.create({id: 'advanced-migration-owner', workspaceId: '/project', provider: 'openai-codex', providerSessionId: 'advanced-migration-thread',
+      metadata: {remoteMigration: {id: 'move', originalProvider: 'openai-codex', originalProviderSessionId: 'reserved-original-thread'}}});
+    await expect(store.createIfAbsent!({id: 'reused-original', workspaceId: '/other', provider: 'openai-codex', providerSessionId: 'reserved-original-thread'})).rejects.toThrow(/already exists/);
+    expect(await store.get('reused-original')).toBeNull();
+    expect((await store.get('advanced-migration-owner'))?.providerSessionId).toBe('advanced-migration-thread');
+  });
+
   it('never guesses the original identity of an already-advanced legacy migration', async () => {
     const store = createNodeSessionStore(db);
     await store.create({id: 'unknown-legacy', workspaceId: '/project', provider: 'openai-codex', providerSessionId: 'advanced-thread', metadata: {remoteMigration: {id: 'move'}}});
     await expect(store.verifyContinuationIdentity!('unknown-legacy', 'move', 'openai-codex', 'original-thread')).rejects.toThrow(/explicit native identity/);
     expect((await store.get('unknown-legacy'))?.metadata?.remoteMigration).toEqual({id: 'move'});
+  });
+
+  it.each(['legacy', 'retained-original', 'advanced-live', 'advanced-reserved'])('rejects a %s continuation identity owned by another persisted row', async kind => {
+    const store = createNodeSessionStore(db);
+    const id = `collision-${kind}`;
+    const original = `original-${kind}`;
+    const advanced = `advanced-${kind}`;
+    const legacy = kind === 'legacy';
+    const live = kind.startsWith('advanced') ? advanced : original;
+    const migration = legacy ? {id: 'move'} : {id: 'move', originalProvider: 'openai-codex', originalProviderSessionId: original};
+    await store.create({id, workspaceId: '/project', provider: 'openai-codex', providerSessionId: live, metadata: {remoteMigration: migration}});
+    await store.create({id: `${id}-other`, workspaceId: '/other', provider: 'openai-codex',
+      providerSessionId: kind === 'advanced-reserved' ? `${id}-other-live` : kind === 'advanced-live' ? advanced : original,
+      metadata: kind === 'advanced-reserved' ? {remoteMigration: {id: 'other-move', originalProvider: 'openai-codex', originalProviderSessionId: original}} : {}});
+    await expect(store.verifyContinuationIdentity!(id, 'move', 'openai-codex', original)).rejects.toThrow(/already|another|collision/);
+    expect((await store.get(id))?.metadata?.remoteMigration).toEqual(migration);
+    expect((await store.get(id))?.providerSessionId).toBe(live);
   });
 
   it('retains encrypted attachments through queue reload without replaying an accepted id', () => {
