@@ -5,7 +5,8 @@ import { createStore } from 'jotai';
 import { loadBuiltinTrackers } from '@nimbalyst/runtime/plugins/TrackerPlugin/models/ModelLoader';
 import { trackerItemsMapAtom } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerDataAtoms';
 import { sessionRegistryAtom } from '../sessions';
-import { hideDoneTicketsAtom, hiddenDoneTicketSessionIdsAtom } from '../ticketVisibility';
+import { hideDoneTicketsAtom } from '../ticketVisibility';
+import { hiddenDoneTicketSessionIdsAtom } from '../sessionKanban';
 import { globalRegistry } from '@nimbalyst/tracker-schema';
 import {
   isWorkstreamParentSession,

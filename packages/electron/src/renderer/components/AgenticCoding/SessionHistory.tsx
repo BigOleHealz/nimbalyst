@@ -95,7 +95,8 @@ import {
   workstreamChildrenNeedRefresh,
   countRegistryDescendants,
 } from './workstreamChildPinReconciliation';
-import { hideDoneTicketsAtom, hiddenDoneTicketSessionIdsAtom } from '../../store/atoms/ticketVisibility';
+import { hideDoneTicketsAtom } from '../../store/atoms/ticketVisibility';
+import { hiddenDoneTicketSessionIdsAtom } from '../../store/atoms/sessionKanban';
 import { HideDoneTicketsCheckbox } from '../common/HideDoneTicketsCheckbox';
 import './SessionHistory.css';
 

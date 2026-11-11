@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import React, { useState } from 'react';
 import { Provider, createStore } from 'jotai';
-import { hideDoneTicketsAtom, hiddenDoneTicketSessionIdsAtom } from '../../../store/atoms/ticketVisibility';
+import { hideDoneTicketsAtom } from '../../../store/atoms/ticketVisibility';
+import { hiddenDoneTicketSessionIdsAtom } from '../../../store/atoms/sessionKanban';
 import { sessionRegistryAtom } from '../../../store/atoms/sessions';
 import { trackerItemsMapAtom } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerDataAtoms';
 import { beforeAll, describe, expect, it, vi } from 'vitest';

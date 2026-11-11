@@ -11,6 +11,7 @@ import { trackerItemsMapAtom } from '@nimbalyst/runtime/plugins/TrackerPlugin/tr
 import { trackerCompletionMetricsAtom } from '../../../store/atoms/completionMetrics';
 import { TrackerCompletionMetrics } from '../CompletionMetrics';
 import { hideDoneTicketsAtom } from '../../../store/atoms/ticketVisibility';
+import { hiddenDoneTicketSessionIdsAtom } from '../../../store/atoms/sessionKanban';
 import { sessionDisplayTitleAtom, sessionPullRequestTitleAtom } from '../../../store/atoms/sessionTicketTitle';
 import { worktreeRecordsAtom } from '../../../store/atoms/worktrees';
 import { worktreeGitStatusAtom } from '../../../store/atoms/sessionFiles';
@@ -84,6 +85,24 @@ it('hides Done tickets independently of agent phase and restores them from the s
   expect(ids()).toEqual(['open-ticket-agent', 'unlinked-agent']);
   act(() => store.set(hideDoneTicketsAtom, false));
   expect(ids()).toEqual(['finished-ticket-agent', 'open-ticket-agent', 'unlinked-agent']);
+});
+
+it('hides merged sessions already in the Done board column even when their ticket is still In Progress', () => {
+  const store = createStore();
+  const session = blockedTestSession('delivered', { title: 'User funnel implementation', phase: 'complete', worktreeId: 'delivered-worktree', linkedTrackerItemIds: ['ticket'] });
+  store.set(sessionRegistryAtom, new Map([[session.id, session]]));
+  store.set(trackerItemsMapAtom, new Map([['ticket', dependencyTicket('ticket', { status: 'in-progress' })]]));
+  store.set(worktreeRecordsAtom, new Map([['delivered-worktree', { branch: 'funnel' } as any]]));
+  store.set(worktreeGitStatusAtom('delivered-worktree'), { hasUncommittedChanges: false, hasUpstream: true, unpushedCommits: 0, ahead: 0, headSha: 'delivered-sha' });
+  const pr = { workspaceId: '/repo', remote: 'owner/repo', number: 1, state: 'merged', headRef: 'funnel', headSha: 'delivered-sha' } as any;
+  store.set(prListAtom, [pr]);
+  render(<Provider store={store}><SessionKanbanBoard /></Provider>);
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Hide done tickets' }));
+  expect(store.get(hiddenDoneTicketSessionIdsAtom).has(session.id)).toBe(true);
+  expect(screen.queryAllByTestId('session-kanban-card')).toHaveLength(0);
+  act(() => store.set(prListAtom, [{ ...pr, state: 'open' }]));
+  expect(store.get(hiddenDoneTicketSessionIdsAtom).has(session.id)).toBe(false);
+  expect(screen.getAllByTestId('session-kanban-card')).toHaveLength(1);
 });
 
 it('filters by rolling hour/12-hour/day boundaries and restores all sessions while preserving search, tags and Done visibility', () => {

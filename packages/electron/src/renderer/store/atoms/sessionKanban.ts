@@ -6,7 +6,8 @@
  * remain independent; manual board overrides live in the same session metadata.
  */
 
-import { hiddenDoneTicketSessionIdsAtom } from './ticketVisibility';
+import { hideDoneTicketsAtom } from './ticketVisibility';
+import { sessionTicketDoneAtom } from './sessionTicketTitle';
 import { atom, type Getter, type createStore } from 'jotai';
 import { atomFamily } from '../debug/atomFamilyRegistry';
 import type { SessionMeta } from '@nimbalyst/runtime/ai/adapters/sessionStore';
@@ -186,10 +187,15 @@ function ownState(get: Getter, meta: SessionMeta): { column: SessionBoardColumn;
   return { column: meta.hasStarted || meta.messageCount > 0 || get(sessionHasActivityAtom(meta.id)) ? 'validating' : 'backlog' };
 }
 
+const sessionOwnBoardStateAtom = atom(get => {
+  const registry = get(sessionRegistryAtom);
+  return new Map([...registry].map(([id, meta]) => [id, ownState(get, meta)]));
+});
+
 /** Derived from existing status sources; includes descendants in a grouped card. */
 export const sessionAutomaticBoardStateAtom = atom(get => {
   const registry = get(sessionRegistryAtom);
-  const own = new Map([...registry].map(([id, meta]) => [id, ownState(get, meta)]));
+  const own = get(sessionOwnBoardStateAtom);
   const result = new Map<string, { column: SessionBoardColumn; status: string; gitStage?: SessionGitStage }>();
   const priority = ['blocked', 'awaiting-input', 'implementing', 'git', 'validating', 'backlog', 'complete'];
   for (const [id, meta] of registry) {
@@ -203,6 +209,33 @@ export const sessionAutomaticBoardStateAtom = atom(get => {
       status: JSON.stringify(states.sort((a, b) => a.id.localeCompare(b.id)).map(s => [s.id, s.gitStage ? `git:${s.gitStage}` : s.column])) });
   }
   return result;
+});
+
+const NO_HIDDEN_SESSIONS: ReadonlySet<string> = new Set();
+
+export const hiddenDoneTicketSessionIdsAtom = atom<ReadonlySet<string>>(get => {
+  if (!get(hideDoneTicketsAtom)) return NO_HIDDEN_SESSIONS;
+  const registry = get(sessionRegistryAtom);
+  const automatic = get(sessionAutomaticBoardStateAtom);
+  const own = get(sessionOwnBoardStateAtom);
+  const hidden = new Set<string>();
+  for (const session of registry.values()) {
+    if (get(sessionTicketDoneAtom(session.id)) || automatic.get(session.id)?.column === 'complete' || own.get(session.id)?.column === 'complete') hidden.add(session.id);
+  }
+  // Keep ancestors as navigation containers when unfinished descendants remain.
+  for (const session of registry.values()) {
+    if (session.isArchived || hidden.has(session.id)) continue;
+    const seen = new Set([session.id]);
+    let parent = session.parentSessionId;
+    while (parent && !seen.has(parent)) {
+      seen.add(parent);
+      const ancestor = registry.get(parent);
+      if (!ancestor || ancestor.workspaceId !== session.workspaceId) break;
+      hidden.delete(parent);
+      parent = ancestor.parentSessionId;
+    }
+  }
+  return hidden;
 });
 
 // ============================================================
