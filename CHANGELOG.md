@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 <!-- Bug fixes go here -->
+- Remote agent sessions show their processing spinner beside the ticket title while the host is working, even when their conversation is closed.
 - Remote Codex sessions in Coder retain GitHub authentication when starting or resuming.
 - Remote Coder sessions can be archived, restored, and deleted from the desktop, with sync confirmation and clear errors when running or queued work prevents cleanup.
 - New Git worktrees automatically claim their branch so repository safety hooks allow commits without manual setup.

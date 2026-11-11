@@ -107,9 +107,18 @@ export const activeSessionIdAtom = atom<string | null>(null);
  * Set when AI is actively generating a response.
  * SessionListItem subscribes to show processing indicator.
  */
-export const sessionProcessingAtom = atomFamily((_sessionId: string) =>
-  atom(false)
-);
+export const sessionProcessingAtom = atomFamily((sessionId: string) => {
+  const localProcessingAtom = atom(false);
+  return atom(
+    (get) => {
+      // A remote host publishes its execution state through the lightweight
+      // index, including sessions whose transcripts have never been opened.
+      const session = get(sessionRegistryAtom).get(sessionId);
+      return session?.remoteHostDeviceId ? !!session.remoteIsExecuting : get(localProcessingAtom);
+    },
+    (_get, set, processing: boolean) => set(localProcessingAtom, processing),
+  );
+});
 
 /**
  * Per-session unread state.

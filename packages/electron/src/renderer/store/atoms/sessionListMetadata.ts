@@ -7,7 +7,7 @@ export function sessionListMetadata(
 ): SessionMeta {
   return {
     id: s.id,
-    ...(s.remoteHostDeviceId && { remoteHostDeviceId: s.remoteHostDeviceId }),
+    ...(s.remoteHostDeviceId && { remoteHostDeviceId: s.remoteHostDeviceId, remoteIsExecuting: !!s.remoteIsExecuting }),
     title: s.title || "Untitled Session",
     createdAt: s.createdAt,
     updatedAt: s.updatedAt,
