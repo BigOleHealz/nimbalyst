@@ -1,6 +1,7 @@
 /* Import theme CSS - editor class styles and unified CSS variables (--nim-* prefix) */
 @import '../../../runtime/src/editor/themes/NimbalystEditorTheme.css';
 @import '../../../runtime/src/editor/themes/NimbalystTheme.css';
+@import './styles/neon-orbit.css';
 
 /* Material Symbols is bundled so startup icons never depend on network timing. */
 @font-face {

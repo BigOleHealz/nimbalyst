@@ -1,0 +1,88 @@
+/* Decorative chrome belongs to this theme only. Palette values stay in its
+   runtime manifest; editor content and semantic status indicators keep their
+   own styles. No animated effects or extra compositing layers. */
+html[data-theme='neon-orbit-dark'] .window-top-bar {
+  background-image: linear-gradient(110deg,
+    color-mix(in srgb, var(--nim-primary) 12%, var(--nim-bg-secondary)),
+    var(--nim-bg-secondary) 48%,
+    color-mix(in srgb, var(--nim-purple) 9%, var(--nim-bg-secondary)));
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--nim-link) 16%, transparent);
+}
+
+html[data-theme='neon-orbit-dark'] .navigation-gutter {
+  background-image: linear-gradient(180deg,
+    color-mix(in srgb, var(--nim-primary) 7%, var(--nim-bg-secondary)),
+    var(--nim-bg-secondary) 45%);
+}
+
+html[data-theme='neon-orbit-dark'] .navigation-gutter .nav-button.active {
+  color: var(--nim-link);
+  background: color-mix(in srgb, var(--nim-primary) 18%, var(--nim-bg-secondary));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nim-link) 35%, transparent),
+    0 0 16px color-mix(in srgb, var(--nim-primary) 14%, transparent);
+}
+
+html[data-theme='neon-orbit-dark'] .navigation-gutter .nav-button.active::before {
+  background: var(--nim-link);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--nim-link) 65%, transparent);
+}
+
+html[data-theme='neon-orbit-dark'] :is(.workspace-sidebar, .session-history) {
+  background-image: linear-gradient(165deg,
+    color-mix(in srgb, var(--nim-primary) 4%, var(--nim-bg-secondary)),
+    var(--nim-bg-secondary) 38%);
+}
+
+html[data-theme='neon-orbit-dark'] .session-tab.active {
+  color: var(--nim-link);
+  background: var(--nim-bg-selected);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--nim-link) 28%, var(--nim-border)),
+    inset 0 -2px 0 var(--nim-link);
+}
+
+html[data-theme='neon-orbit-dark'] .session-list-item.active {
+  background-image: linear-gradient(100deg,
+    color-mix(in srgb, var(--nim-link) 8%, transparent), transparent);
+  box-shadow: inset 2px 0 0 var(--nim-link);
+}
+
+html[data-theme='neon-orbit-dark'] .session-kanban-board {
+  background-image: radial-gradient(ellipse at 15% 0%,
+    color-mix(in srgb, var(--nim-primary) 7%, transparent), transparent 55%),
+    radial-gradient(ellipse at 95% 100%,
+    color-mix(in srgb, var(--nim-purple) 5%, transparent), transparent 50%);
+}
+
+html[data-theme='neon-orbit-dark'] .session-kanban-column {
+  box-shadow: inset 0 0 0 1px var(--nim-border);
+}
+
+html[data-theme='neon-orbit-dark'] .session-kanban-card {
+  border-radius: 10px;
+  background-image: linear-gradient(140deg,
+    color-mix(in srgb, var(--nim-text) 3%, transparent), transparent 70%);
+}
+
+html[data-theme='neon-orbit-dark'] .session-kanban-card:hover {
+  background-image: linear-gradient(140deg,
+    color-mix(in srgb, var(--nim-link) 7%, transparent), transparent 70%);
+}
+
+html[data-theme='neon-orbit-dark'] .ai-chat-input {
+  background-image: linear-gradient(180deg,
+    color-mix(in srgb, var(--nim-primary) 5%, var(--nim-bg-secondary)),
+    var(--nim-bg-secondary));
+}
+
+html[data-theme='neon-orbit-dark'] .ai-chat-input-field {
+  border-radius: 10px;
+}
+
+html[data-theme='neon-orbit-dark'] .ai-chat-input-field:focus {
+  border-color: var(--nim-border-focus);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--nim-link) 12%, transparent);
+}
+
+html[data-theme='neon-orbit-dark'] .nim-btn-primary {
+  background-image: linear-gradient(135deg, var(--nim-primary-hover), var(--nim-primary));
+}

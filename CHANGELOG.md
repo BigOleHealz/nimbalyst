@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 <!-- New features go here -->
+- Choose Neon Orbit for midnight navy surfaces, electric blue actions, cyan highlights, and matching code and terminal colors.
 - Filter session Kanban cards by activity within the last hour or day, or show all sessions, including activity in grouped child sessions.
 - Submit selected answers and typed responses in focused session question forms with Control+Enter.
 - Completed tickets record their completion date and show it in ticket details, preserving it through later edits and recording a fresh date after reopening and completing again.
