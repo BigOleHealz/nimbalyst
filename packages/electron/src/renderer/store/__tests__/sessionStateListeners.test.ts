@@ -20,6 +20,7 @@ import {
   setSessionWorkspaceOpenAtom,
   sessionHasPendingInteractivePromptAtom,
   sessionProcessingAtom,
+  sessionOrChildProcessingAtom,
   sessionPendingPromptsAtom,
   sessionRegistryAtom,
   sessionChildrenAtom,
@@ -39,6 +40,8 @@ import { scrollToMessageAtom } from '../atoms/agentMode';
 import { sessionApprovalSnapshotAtom, sessionAwaitingApprovalAtom } from '../atoms/sessionApproval';
 import { sessionSuccessfulCompletionAtom } from '../atoms/sessionCompletionActions';
 import { windowFocusedAtom } from '../atoms/windowFocus';
+import { acquireRemoteSession, initRemoteSessionListeners } from '../listeners/remoteSessionViews';
+import { sessionListMetadata } from '../atoms/sessionListMetadata';
 import { activeWorkspacePathAtom, multiProjectModeAtom, openProjectsAtom } from '../atoms/openProjects';
 import { activeExtensionPanelAtom, activeExtensionBottomPanelAtom } from '../atoms/extensionPanels';
 import { resetWindowMode, windowModeAtom } from '../atoms/windowMode';
@@ -1434,3 +1437,60 @@ it.each(['session:started', 'session:streaming', 'session:error', 'session:inter
     expect(store.get(sessionSuccessfulCompletionAtom(sessionId))).toBeNull();
   },
 );
+
+it('uses indexed remote execution without a transcript and across local reconciliation', async () => {
+  cleanup?.();
+  vi.useFakeTimers();
+  const sid = uniqueSessionId('remote-processing');
+  const parent = uniqueSessionId('remote-parent');
+  seedRegistry([{id: parent}]);
+  const setRemoteExecution = (executing: boolean) => {
+    const registry = new Map(store.get(sessionRegistryAtom));
+    registry.set(sid, sessionListMetadata({
+      id: sid, createdAt: 1, updatedAt: 2, parentSessionId: parent,
+      remoteHostDeviceId: 'coder', remoteIsExecuting: executing,
+    }, WS));
+    store.set(sessionRegistryAtom, registry);
+  };
+  const {initSessionStateListeners} = await import('../sessionStateListeners');
+  cleanup = initSessionStateListeners();
+  await vi.advanceTimersByTimeAsync(0);
+  const poll = window.electronAPI.sessionState.getRunningSessionIds as ReturnType<typeof vi.fn>;
+  const startupCalls = poll.mock.calls.length;
+  try {
+    setRemoteExecution(true);
+    expect(store.get(sessionProcessingAtom(sid))).toBe(true);
+    expect(store.get(sessionOrChildProcessingAtom(parent))).toBe(true);
+    await vi.advanceTimersByTimeAsync(15000);
+    expect(poll.mock.calls.length).toBeGreaterThan(startupCalls);
+    expect(store.get(sessionProcessingAtom(sid))).toBe(true);
+    // A stale local flag cannot outlive completion reported by the remote host.
+    store.set(sessionProcessingAtom(sid), true);
+    setRemoteExecution(false);
+    expect(store.get(sessionProcessingAtom(sid))).toBe(false);
+    expect(store.get(sessionOrChildProcessingAtom(parent))).toBe(false);
+  } finally {
+    cleanup?.(); cleanup = null;
+    store.set(sessionProcessingAtom(sid), false);
+    vi.useRealTimers();
+  }
+});
+
+it('keeps the indexed remote spinner after closing its transcript until the host completes', () => {
+  const sid = uniqueSessionId('remote-close');
+  const registry = new Map(store.get(sessionRegistryAtom));
+  registry.set(sid, sessionListMetadata({id: sid, createdAt: 1, updatedAt: 2, remoteHostDeviceId: 'coder', remoteIsExecuting: true}, WS));
+  store.set(sessionRegistryAtom, registry);
+  const stop = initRemoteSessionListeners();
+  const unsubscribe = store.sub(sessionProcessingAtom(sid), () => {});
+  const release = acquireRemoteSession(sid, WS);
+  try {
+    expect(store.get(sessionProcessingAtom(sid))).toBe(true);
+    release();
+    expect(store.get(sessionProcessingAtom(sid))).toBe(true);
+    const completed = new Map(store.get(sessionRegistryAtom));
+    completed.set(sid, {...completed.get(sid)!, remoteIsExecuting: false});
+    store.set(sessionRegistryAtom, completed);
+    expect(store.get(sessionProcessingAtom(sid))).toBe(false);
+  } finally {release(); unsubscribe(); stop();}
+});

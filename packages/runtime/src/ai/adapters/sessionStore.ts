@@ -16,6 +16,8 @@ export interface SessionMeta {
   externalLastActivityAt?: number;
   /** Read-only desktop mirror; execution remains on this remote device. */
   remoteHostDeviceId?: string;
+  /** Live execution state from the remote session index, independent of transcript watches. */
+  remoteIsExecuting?: boolean;
   id: string;
   title: string;
   provider: string;

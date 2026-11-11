@@ -158,7 +158,7 @@ export class RemoteSessionMirror {
           updatedAt: current.updatedAt,
           messageCount: Math.max(row.messageCount ?? 0, current.messageCount ?? 0),
         } : {}),
-        remoteHostDeviceId: host, worktreeId: null, uncommittedCount: 0,
+        remoteHostDeviceId: host, remoteIsExecuting: !!current?.isExecuting, worktreeId: null, uncommittedCount: 0,
       };
     }));
     local = retained.filter((row): row is SessionMeta => !!row);
@@ -196,7 +196,7 @@ export class RemoteSessionMirror {
         descendantCount: descendantCounts.get(`${entry.hostDeviceId}:${entry.sessionId}`) ?? 0,
         createdBySessionId: entry.createdBySessionId ?? null,
         messageCount: entry.messageCount, isArchived: !!entry.isArchived, isPinned: !!entry.isPinned,
-        remoteHostDeviceId: entry.hostDeviceId,
+        remoteHostDeviceId: entry.hostDeviceId, remoteIsExecuting: !!entry.isExecuting,
         linkedTrackerItemIds: this.deps.linkedTrackerItemIds?.(workspacePath, entry.sessionId),
       });
     }

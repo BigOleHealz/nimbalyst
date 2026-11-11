@@ -483,3 +483,26 @@ it('allows a durable Coder session to continue after the runner process restarts
   const f = fixture(); f.provider.getConnectedDevices.mockReturnValue([{deviceId:'sandbox-1', type:'headless', isOnline:true, connectedAt:500, persistentWorkspaces:true}] as any);
   await expect(f.mirror.queue('remote', '/repo', 'continue')).resolves.toHaveProperty('promptId');
 });
+
+// Sidebar activity must come from the index without opening transcript watches.
+it.each([false, true])('lists indexed execution for remote sessions (retained migration: %s)', async migrated => {
+  const f = fixture();
+  Object.assign(f.entry, {isExecuting: true});
+  const local = migrated ? [{id: 'remote', workspaceId: '/repo', title: 'Retained'} as any] : [];
+  if (migrated) Object.assign(f.deps, {migratedHost: async () => 'sandbox-1'});
+  expect((await f.mirror.list('/repo', local))[0]).toMatchObject({remoteHostDeviceId: 'sandbox-1', remoteIsExecuting: true});
+  expect(f.provider.connect).not.toHaveBeenCalled();
+  Object.assign(f.entry, {isExecuting: false});
+  f.index();
+  expect(f.deps.listChanged).toHaveBeenCalledWith('/repo', 'remote');
+  expect((await f.mirror.list('/repo', local))[0].remoteIsExecuting).toBe(false);
+  expect(f.provider.connect).not.toHaveBeenCalled();
+});
+
+it('does not use execution from an index entry on the wrong migration host', async () => {
+  const f = fixture();
+  Object.assign(f.entry, {isExecuting: true});
+  Object.assign(f.deps, {migratedHost: async () => 'other-host'});
+  const rows = await f.mirror.list('/repo', [{id: 'remote', workspaceId: '/repo'} as any]);
+  expect(rows[0].remoteIsExecuting).toBe(false);
+});

@@ -55,3 +55,7 @@ it('keeps background-wait updates out of the registry and clears them on an empt
     expect(store.get(sessionBackgroundTasksAtom('own'))).toEqual([]);
   } finally { dispose(); vi.unstubAllGlobals(); }
 });
+
+it.each([true, false])('retains indexed remote execution in the session registry (%s)', remoteIsExecuting => {
+  expect(sessionListMetadata({id: 'remote', createdAt: 1, updatedAt: 2, remoteHostDeviceId: 'coder', remoteIsExecuting}, '/repo')).toMatchObject({remoteHostDeviceId: 'coder', remoteIsExecuting});
+});

@@ -1103,6 +1103,8 @@ export function initSessionStateListeners(): () => void {
       }
       let healed = 0;
       for (const sessionId of candidates) {
+        // This poll describes local execution; remote hosts own their index state.
+        if (store.get(sessionRegistryAtom).get(sessionId)?.remoteHostDeviceId) continue;
         if (!running.has(sessionId) && store.get(sessionProcessingAtom(sessionId))) {
           store.set(sessionProcessingAtom(sessionId), false);
           healed++;
