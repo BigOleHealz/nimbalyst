@@ -82,6 +82,25 @@ describe('session list render budget', () => {
     expect(formatSessionDisplayTitle('New conversation')).toBe('New conversation');
   });
 
+  it.each(['linear', 'jira'])('uses the canonical imported ticket title for %s placeholders', (providerId) => {
+    const store = createStore();
+    const session = { id: 's1', workspaceId: '/repo', title: 'New conversation', linkedTrackerItemIds: ['ticket'] } as any;
+    const ticket = {
+      id: 'ticket', primaryType: 'task', issueKey: 'NIM-12',
+      fields: { title: 'NIM-12: Lesson fix' },
+      system: { workspace: '/repo', origin: { kind: 'external', external: {
+        providerId, externalId: providerId === 'jira' ? 'DES-79' : 'some-uuid',
+        url: 'https://linear.app/team/issue/DES-79/lesson-fix',
+        titleSnapshot: 'Lesson fix',
+      } } },
+    } as any;
+    store.set(sessionRegistryAtom, new Map([[session.id, session]]));
+    store.set(trackerItemsMapAtom, new Map([[ticket.id, ticket]]));
+    const view = render(<Provider store={store}><SessionListItem id="s1" title={session.title} createdAt={1} isActive={false} onClick={() => {}} /></Provider>);
+    expect(view.container.querySelector('.session-list-item-title')?.textContent).toBe('DES-79: Lesson fix');
+    expect(store.get(sessionDisplayTitleAtom('s1'))).toBe('DES-79: Lesson fix');
+  });
+
   it('shows the ticket ID before the brief session name and follows ticket link updates', () => {
     const store=createStore();
     store.set(sessionRegistryAtom,new Map([['s1',{id:'s1',workspaceId:'/repo',title:'Lesson fix',linkedTrackerItemIds:['ticket']} as any]]));

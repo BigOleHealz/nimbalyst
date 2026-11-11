@@ -3,7 +3,7 @@ import { atomFamily } from '../debug/atomFamilyRegistry';
 import { sessionRegistryAtom } from './sessions';
 import { trackerItemsMapAtom } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerDataAtoms';
 import type { TrackerRecord } from '@nimbalyst/runtime/core/TrackerRecord';
-import { formatTicketTitle, getRecordPullRequestTitle, getRecordTicketKey, getTitleTicketKey, getRecordTitle, getRecordStatus, getStatusOptions } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
+import { formatTicketTitle, getRecordPullRequestTitle, getRecordTicketKey, getTitleTicketKey, getRecordDisplayTitle, getRecordStatus, getStatusOptions } from '@nimbalyst/runtime/plugins/TrackerPlugin/trackerRecordAccessors';
 
 /** Resolve both durable link directions once for the whole registry. */
 const linkedTicketsAtom = atom(get => {
@@ -74,7 +74,7 @@ export function formatSessionDisplayTitle(title: string, key?: string, ticketTit
 
 export const sessionTicketDescriptionAtom = atomFamily((id: string) => atom(get => {
   const item = get(sessionTicketAtom(id));
-  return item ? getRecordTitle(item) : undefined;
+  return item ? getRecordDisplayTitle(item) : undefined;
 }));
 
 export const sessionTicketStatusLabelAtom = atomFamily((id: string) => atom(get => {
