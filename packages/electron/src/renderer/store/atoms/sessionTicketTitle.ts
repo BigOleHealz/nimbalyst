@@ -45,7 +45,7 @@ const sessionTicketAtom = atomFamily((id: string) => atom(get => {
   if (!session.parentSessionId) {
     for (const meta of registry.values()) {
       if (!linked.has(meta.id) || meta.workspaceId !== session.workspaceId) continue;
-      let ancestor = meta.parentSessionId;
+      let ancestor: string | null | undefined = meta.parentSessionId;
       const visited = new Set<string>();
       while (ancestor && !visited.has(ancestor)) {
         if (ancestor === id) return linked.get(meta.id);

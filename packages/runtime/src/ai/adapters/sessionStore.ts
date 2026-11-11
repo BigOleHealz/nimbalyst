@@ -172,6 +172,10 @@ export interface SessionStore {
   applyRemoteHierarchySnapshot?(rows: RemoteHierarchySnapshotRow[], isCurrent: () => boolean): Promise<HierarchySnapshotResult[]>;
   ensureReady(): Promise<void>;
   create(payload: CreateSessionPayload): Promise<void>;
+  /** Insert without replacing an existing session/native conversation; no implicit sync publication. */
+  createIfAbsent?(payload: CreateSessionPayload): Promise<void>;
+  /** Verify/backfill immutable migration identity without publishing or changing live provider state. */
+  verifyContinuationIdentity?(id: string, migrationId: string, provider: string, providerSessionId: string): Promise<void>;
   updateMetadata(sessionId: string, metadata: UpdateSessionMetadataPayload): Promise<void>;
   get(sessionId: string): Promise<SessionData | null>;
   /** Indexed, workspace-scoped lookup; rejects ambiguous provider resume handles. */

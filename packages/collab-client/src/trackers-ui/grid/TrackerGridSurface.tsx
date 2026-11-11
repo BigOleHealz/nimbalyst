@@ -597,7 +597,6 @@ export function TrackerGridSurface({
           />
         ) : (
           <RevoGrid
-            rowClass="__clientSessionClass"
             key={`${schemaType}:${sortBy ?? ''}:${sortDirection}:${JSON.stringify(sortColumns)}`}
             columns={gridColumns}
             source={markedGridSource}

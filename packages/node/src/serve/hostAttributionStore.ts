@@ -31,6 +31,13 @@ export function withHostAttribution(store: SessionStore, hostDeviceId: string): 
   return {
     ...store,
 
+    createIfAbsent: store.createIfAbsent ? async payload => {
+      return store.createIfAbsent!({
+        ...payload,
+        metadata: {...payload.metadata, hostDeviceId},
+      });
+    } : undefined,
+
     async create(payload: CreateSessionPayload): Promise<void> {
       const metadata = (payload as { metadata?: Record<string, unknown> }).metadata;
       return store.create({

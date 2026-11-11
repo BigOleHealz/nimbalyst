@@ -290,6 +290,9 @@ export interface SyncProvider {
   /** Sync project config (commands, settings) to the index room for mobile access */
   syncProjectConfig?(projectId: string, config: ProjectConfig): void;
 
+  /** Server ownership after a complete read on the current connection; excludes optimistic writes. */
+  getVerifiedSessionOwnership?(sessionId: string): {hostDeviceId?: string; projectId: string; isArchived?: boolean} | undefined;
+
   /** Fetch the current server index to compare with local state */
   fetchIndex?(): Promise<{
     /** Absent on older providers. Partial coverage never permits absence-based reconciliation. */
@@ -392,6 +395,7 @@ export interface SyncProvider {
    * Note: Returns decrypted values - title is always present after decryption */
   getCachedIndexEntry?(sessionId: string): {
     sessionId: string;
+    isArchived?: boolean;
     parentSessionId?: string | null;
     createdBySessionId?: string | null;
     /** Stable device ID of the host that owns this session. */

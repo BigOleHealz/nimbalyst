@@ -18,6 +18,7 @@ import {
   sessionDraftAttachmentsAtom,
   sessionDraftHydratedAtom,
   sessionDraftLocalModifiedAtAtom,
+  sessionStoreAtom,
 } from "../../store/atoms/sessions";
 import { SessionAIInput } from "./SessionAIInput";
 import type { SlashCommandEntry } from "../Typeahead/slashCommandAutocomplete";
@@ -35,6 +36,8 @@ export const RemoteSessionTranscript = forwardRef<
   SessionTranscriptProps
 >(({ sessionId, workspacePath }, ref) => {
   const snapshot = useAtomValue(remoteSessionSnapshotAtom(sessionId));
+  const retained = useAtomValue(sessionStoreAtom(sessionId));
+  const recovery = !snapshot && retained?.workspacePath === workspacePath && retained.metadata?.remoteMigration ? retained : undefined;
   const connectionError = useAtomValue(remoteSessionErrorAtom(sessionId));
   const [prompt, setPrompt] = useAtom(sessionDraftInputAtom(sessionId));
   const [attachments, setAttachments] = useAtom(
@@ -238,7 +241,7 @@ export const RemoteSessionTranscript = forwardRef<
         data-testid="remote-session-status"
       >
         {!snapshot
-          ? "Connecting…"
+          ? recovery ? "Offline recovery copy — reconnect to continue" : "Connecting…"
           : snapshot.readOnlyReason
           ? "History only"
           : !snapshot.hostOnline
@@ -271,8 +274,8 @@ export const RemoteSessionTranscript = forwardRef<
       <div className="min-h-0 flex-1 overflow-hidden">
         <RichTranscriptView
           sessionId={sessionId}
-          messages={snapshot?.session.messages ?? []}
-          provider={snapshot?.session.provider}
+          messages={snapshot?.session.messages ?? recovery?.messages ?? []}
+          provider={snapshot?.session.provider ?? recovery?.provider}
           isProcessing={snapshot?.executing}
           hideEmptyHelp
         />

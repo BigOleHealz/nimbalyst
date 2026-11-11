@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 <!-- New features go here -->
+- Continue existing conversations on a persistent remote host with verified native history, protected recovery copies, and restart-safe ownership handoffs.
 - Hide completed tickets and delivered sessions with a checkbox shared by Agent mode and the Planner, while keeping completed prerequisites satisfied.
 - Choose Neon Orbit for midnight navy surfaces, electric blue actions, cyan highlights, and matching code and terminal colors.
 - Filter session Kanban cards by activity within the last hour or day, or show all sessions, including activity in grouped child sessions.

@@ -48,3 +48,12 @@ it('opts only the configured node into instance-scoped Coder credentials', async
   await node.runTurn({sessionId: 'codex-session', workspacePath: '/another-project', prompt: 'Check'});
   expect(constructCodex).toHaveBeenLastCalledWith(undefined, undefined);
 });
+
+it('automatically supplies the migrated checkout when continuing an existing conversation', async () => {
+  const node = Object.assign(Object.create(NimbalystNode.prototype), {
+    sessionStore: {get: async () => ({id: 'migrated', provider: 'openai-codex', metadata: {remoteMigration: {id: 'move-one', sourceWorktreePath: '/Users/matt/old-task', sourceRepositoryPath: '/Users/matt/actual-repo'}}})},
+    db: {prepare: () => ({get: () => ({count: 2})})}, config: {},
+  }) as NimbalystNode;
+  await node.runTurn({sessionId: 'migrated', workspacePath: '/coder/existing-edits', prompt: 'continue'});
+  expect(codex.sendMessage).toHaveBeenLastCalledWith(expect.stringMatching(/same conversation[\s\S]*\/Users\/matt\/actual-repo[\s\S]*\/coder\/existing-edits/), expect.any(Object), 'migrated', [], '/coder/existing-edits', []);
+});

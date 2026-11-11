@@ -72,6 +72,8 @@ describe('remote desktop mirrors', () => {
   });
 
 
+
+
   it.each(['archive', 'delete'] as const)('keeps the session when the server has not confirmed %s', async action => {
     const f = fixture();
     f.provider.pushChange.mockResolvedValue({published: true});
@@ -168,6 +170,125 @@ describe('remote desktop mirrors', () => {
     expect(f.provider.pushChange).not.toHaveBeenCalled();
   });
 
+  it('keeps an explicitly migrated local conversation under its original id and routes it remotely', async () => {
+    const f = fixture();
+    f.entry.title = 'Original task';
+    Object.assign(f.deps, {migratedHost: async () => 'sandbox-1'});
+    const local = {id: 'remote', title: 'Original task', workspaceId: '/repo', worktreeId: 'old-local-tree'} as any;
+    const rows = await f.mirror.list('/repo', [local]);
+    expect(rows).toEqual([expect.objectContaining({id: 'remote', title: 'Original task', remoteHostDeviceId: 'sandbox-1', worktreeId: null})]);
+  });
+
+  it('uses confirmed remote lifecycle metadata for a retained migration copy', async () => {
+    const f = fixture();
+    Object.assign(f.deps, {migratedHost: async () => 'sandbox-1'});
+    Object.assign(f.entry, {title: 'Updated remotely', isArchived: true, isPinned: true});
+    const rows = await f.mirror.list('/repo', [{id: 'remote', title: 'Old local title', isArchived: false, tags: ['keep'], workspaceId: '/repo'} as any]);
+    expect(rows).toEqual([expect.objectContaining({id: 'remote', title: 'Updated remotely', isArchived: true, isPinned: true, tags: ['keep']})]);
+  });
+
+  it('never exposes migrated history through a different indexed workspace on the same host', async () => {
+    const f = fixture();
+    const seedMessages = vi.fn(async () => []);
+    Object.assign(f.deps, {migratedHost: async () => 'sandbox-1', migratedWorkspace: async () => '/repo', seedMessages});
+    f.entry.projectId = '/other';
+    expect(await f.mirror.list('/other', [])).toEqual([]);
+    await expect(f.mirror.watch('remote', '/other', vi.fn())).rejects.toThrow(/workspace|project/i);
+    await expect(f.mirror.get('remote', '/other')).rejects.toThrow(/workspace|project/i);
+    await expect(f.mirror.queue('remote', '/other', 'Do not cross projects')).rejects.toThrow(/workspace|project/i);
+    expect(seedMessages).not.toHaveBeenCalled();
+    expect(f.provider.pushChange).not.toHaveBeenCalled();
+  });
+
+  it('does not resurrect a removed remote session from its retained migration copy', async () => {
+    const f = fixture();
+    Object.assign(f.deps, {migratedHost: async () => 'sandbox-1'});
+    f.provider.fetchIndex.mockResolvedValue({sessions: [], projects: [], deletedSessionIds: ['remote']} as any);
+    expect(await f.mirror.list('/repo', [{id: 'remote', workspaceId: '/repo'} as any])).toEqual([]);
+  });
+
+  it('does not treat an unknown missing index row as deletion of recovery history', async () => {
+    const f = fixture();
+    Object.assign(f.deps, {migratedHost: async () => 'sandbox-1'});
+    f.provider.fetchIndex.mockResolvedValue({sessions: [], projects: []});
+    expect(await f.mirror.list('/repo', [{id: 'remote', workspaceId: '/repo'} as any])).toEqual([expect.objectContaining({id: 'remote', remoteHostDeviceId: 'sandbox-1'})]);
+  });
+
+  it('rejects loading a confirmed-deleted remote conversation instead of falling back to recovery history', async () => {
+    const f = fixture();
+    Object.assign(f.deps, {migratedHost: async () => 'sandbox-1'});
+    f.provider.fetchIndex.mockResolvedValue({sessions: [], projects: [], deletedSessionIds: ['remote']} as any);
+    await expect(f.mirror.get('remote', '/repo')).rejects.toThrow(/removed|deleted/);
+  });
+
+  it('retains remote lifecycle ownership when the migrated host is unavailable', async () => {
+    const f = fixture();
+    Object.assign(f.deps, {migratedHost: async () => 'sandbox-1', migratedWorkspace: async () => '/repo'});
+    f.mirror.setProvider(null);
+    expect(await f.mirror.workspaceForSession('remote')).toBe('/repo');
+    await expect(f.mirror.delete('remote', '/repo')).rejects.toThrow();
+  });
+
+  it('discards pending history seeding when its provider changes', async () => {
+    const f = fixture();
+    let release!: (rows: any[]) => void;
+    const seedMessages = vi.fn(() => new Promise<any[]>(resolve => {release = resolve;}));
+    Object.assign(f.deps, {migratedHost: async () => 'sandbox-1', seedMessages});
+    const pending = f.mirror.watch('remote', '/repo', vi.fn()).then(stop => {stop();});
+    await vi.waitFor(() => expect(seedMessages).toHaveBeenCalledTimes(1));
+    f.mirror.setProvider(null);release([]);
+    await expect(pending).rejects.toThrow(/sync changed/i);
+    expect(f.provider.onRemoteChange).not.toHaveBeenCalled();
+    expect(f.provider.connect).not.toHaveBeenCalled();
+  });
+
+  it('shares asynchronous history initialization between concurrent viewers', async () => {
+    const f = fixture();
+    let release!: (rows: any[]) => void;
+    const seed = new Promise<any[]>(resolve => {release = resolve;});
+    const seedMessages = vi.fn(() => seed);
+    Object.assign(f.deps, {migratedHost: async () => 'sandbox-1', seedMessages});
+    const first = f.mirror.watch('remote', '/repo', vi.fn());
+    const second = f.mirror.watch('remote', '/repo', vi.fn());
+    await vi.waitFor(() => expect(seedMessages).toHaveBeenCalled());
+    release([]);
+    const stops = await Promise.all([first, second]);
+    for (const stop of stops) stop();
+    expect(f.provider.onRemoteChange).toHaveBeenCalledTimes(1);
+    expect(f.offChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('retains the migrated recovery view when a complete remote index is unavailable', async () => {
+    const f = fixture();
+    Object.assign(f.deps, {migratedHost: async () => 'sandbox-1'});
+    f.provider.fetchIndex.mockRejectedValue(new Error('offline'));
+    expect(await f.mirror.list('/repo', [{id: 'remote', workspaceId: '/repo'} as any])).toEqual([expect.objectContaining({id: 'remote', remoteHostDeviceId: 'sandbox-1'})]);
+  });
+
+  it('seeds migrated history from the retained local rows and deduplicates server replay', async () => {
+    vi.useFakeTimers();
+    const f = fixture();
+    Object.assign(f.deps, {migratedHost: async () => 'sandbox-1', seedMessages: async () => [{id: 55, sessionId: 'remote', source: 'user', direction: 'input', content: 'Earlier local question', createdAt: new Date(100)}]});
+    const received = vi.fn();
+    const stop = await f.mirror.watch('remote', '/repo', received);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(JSON.stringify(received.mock.lastCall![0].session.messages)).toContain('Earlier local question');
+    f.change({type: 'message_added', message: {id: 1, sessionId: 'remote', source: 'user', direction: 'input', content: 'Earlier local question', createdAt: new Date(100)}});
+    f.change({type: 'message_added', message: {id: 2, sessionId: 'remote', source: 'user', direction: 'input', content: 'New Coder question', createdAt: new Date(200)}});
+    await vi.advanceTimersByTimeAsync(200);
+    const messages = received.mock.lastCall![0].session.messages;
+    expect(messages).toHaveLength(2);
+    expect(JSON.stringify(messages)).toContain('Earlier local question');
+    expect(JSON.stringify(messages)).toContain('New Coder question');
+    stop();
+  });
+
+  it('refuses a migrated session whose server host does not match its migration record', async () => {
+    const f = fixture();
+    Object.assign(f.deps, {migratedHost: async () => 'different-host'});
+    await expect(f.mirror.queue('remote', '/repo', 'continue')).rejects.toThrow(/host|machine/i);
+    expect(f.provider.pushChange).not.toHaveBeenCalled();
+  });
   it('counts descendants recursively without crossing workspace or host boundaries', async () => {
     const f = fixture();
     f.provider.fetchIndex.mockResolvedValue({ sessions: [f.entry,

@@ -247,7 +247,7 @@ class RecordingProvider extends EventEmitter {
   }
 }
 
-function openCodeSession(overrides: Record<string, unknown> = {}) {
+function openCodeSession<T extends Record<string, unknown> = Record<string, never>>(overrides: T = {} as T) {
   return {
     id: "opencode-session",
     provider: "opencode",

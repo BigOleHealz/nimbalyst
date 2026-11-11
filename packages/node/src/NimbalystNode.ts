@@ -244,6 +244,10 @@ export class NimbalystNode {
     const text: string[] = [];
     const toolCalls: string[] = [];
     let error: string | undefined;
+    const migration = session.metadata?.remoteMigration as {id?: string; sourceWorktreePath?: string; sourceRepositoryPath?: string} | undefined;
+    const continuation = migration?.id
+      ? `This is the same conversation continued on its remote host with its saved native history. Historical Mac paths refer to the previous machine. The previous task repository (${migration.sourceRepositoryPath ?? migration.sourceWorktreePath ?? session.workspacePath}) is now ${options.workspacePath}. Continue in this existing migrated worktree, preserving its branch and uncommitted work; do not create a replacement worktree or reset it.\n\n`
+      : '';
 
     // Hand out the cancel handle before the first `await` on the stream. A
     // cancel that arrives while the SDK is still starting up must still land,
@@ -265,7 +269,7 @@ export class NimbalystNode {
     // `protected`, so a consumer has no way to drain it from outside.
     try {
     for await (const chunk of provider.sendMessage(
-      `Execution workspace: ${options.workspacePath}. Run commands and make edits in this remote workspace. Before editing a repository, read its AGENTS.md and CLAUDE.md and follow their applicable instructions. For served sessions, use the isolated session worktrees already prepared by the host rather than the original checkouts.\n\n${options.prompt}`,
+      `Execution workspace: ${options.workspacePath}. Run commands and make edits in this remote workspace. Before editing a repository, read its AGENTS.md and CLAUDE.md and follow their applicable instructions. For served sessions, use the isolated session worktrees already prepared by the host rather than the original checkouts.\n\n${continuation}${options.prompt}`,
       documentContext,
       resolvedSessionId,
       [],

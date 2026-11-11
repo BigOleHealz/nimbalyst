@@ -4,6 +4,8 @@ import type { CreateSessionRequest, SessionControlMessage } from '@nimbalyst/run
 import { createServeRuntime, type ServeRuntimeDeps } from '../serve/serveRuntime.js';
 import type { PendingPrompt, QueuedPromptStore } from '../serve/queuedPrompts.js';
 import type { WorkspaceMapping } from '../serve/workspaces.js';
+import {reconcileFetchedIndex} from '@nimbalyst/runtime/sync/indexChangeDispatch';
+import {ownsSessionExecution} from '../serve/confirmContinuationOwnership.js';
 
 const DEVICE_ID = 'sandbox-abc123';
 const PROJECT_ID = '/Users/someone/sources/stravu-editor';
@@ -25,6 +27,7 @@ function fakeQueue() {
   const rows = new Map<string, PendingPrompt & { status: string }>();
   return {
     statuses: new Map<string, string>(),
+    has(id: string) {return rows.has(id);},
     offer(prompt) {
       if (rows.has(prompt.id)) return false;
       rows.set(prompt.id, { ...prompt, status: 'pending' });
@@ -134,6 +137,163 @@ function makeRuntime(overrides: Partial<ServeRuntimeDeps> = {}) {
     bumpGeneration: () => { generation += 1; },
   };
 }
+
+it('does not intake a prompt whose index entry explicitly belongs to another host', async () => {
+  const f = makeRuntime({getSessionProjectId: async () => PROJECT_ID});
+  const target = makeRuntime({deviceId: 'new-host', getSessionProjectId: async () => PROJECT_ID});
+  const entry = {hostDeviceId: 'new-host', queuedPrompts: [{id: 'handoff-prompt', prompt: 'perform task', timestamp: 1}]};
+  await Promise.all([f.runtime.handleIndexChange('handed-off', entry), target.runtime.handleIndexChange('handed-off', entry)]);
+  await f.runtime.idle();
+  await target.runtime.idle();
+  expect(f.turns).toEqual([]);
+  expect(f.queue.listPending('handed-off')).toEqual([]);
+  expect(target.turns.map(turn => turn.prompt)).toEqual(['perform task']);
+});
+
+it('executes a replayed index prompt without recursively fetching and replaying the index', async () => {
+  const entry = {sessionId: 'replayed', projectId: PROJECT_ID, hostDeviceId: DEVICE_ID, queuedPrompts: [{id: 'replayed-prompt', prompt: 'continue', timestamp: 1}]} as any;
+  const cache = new Map([[entry.sessionId, entry]]);
+  let runtime: ReturnType<typeof createServeRuntime>;
+  const listener = (id: string, row: any) => {void runtime.handleIndexChange(id, row);};
+  const fetchIndex = vi.fn(async (options?: {notifyListeners?: boolean}) => {
+    if (fetchIndex.mock.calls.length > 12) throw new Error('Recursive index fetch');
+    if (options?.notifyListeners !== false) await reconcileFetchedIndex(cache.values(), cache, [listener]);
+    return {sessions: [entry], complete: true};
+  });
+  const provider = {fetchIndex, isIndexReady: () => true, getCachedIndexEntry: (id: string) => cache.get(id), getConnectionGeneration: () => 1} as any;
+  provider.getVerifiedSessionOwnership = (id: string) => cache.get(id);
+  const f = makeRuntime({getSessionProjectId: async () => PROJECT_ID, canExecuteSession: id => ownsSessionExecution(provider, id, PROJECT_ID, DEVICE_ID)});
+  runtime = f.runtime;
+  await f.runtime.handleIndexChange(entry.sessionId, entry);
+  await f.runtime.idle();
+  expect(fetchIndex).not.toHaveBeenCalled();
+  expect(f.turns.map(turn => turn.prompt)).toEqual(['continue']);
+});
+
+it('leaves recovered prompts pending when current ownership is absent or deleted', async () => {
+  const f = makeRuntime({getSessionProjectId: async () => PROJECT_ID, canExecuteSession: async () => false});
+  f.queue.offer({id: 'recovered-moved', sessionId: 'handed-off', prompt: 'do not run here', createdAt: 1});
+  f.runtime.resumePendingQueue();
+  await f.runtime.idle();
+  expect(f.turns).toEqual([]);
+  expect(f.queue.listPending('handed-off').map(row => row.id)).toEqual(['recovered-moved']);
+});
+
+it('retries a never-started prompt after an ownership lookup temporarily fails', async () => {
+  let checks = 0;
+  let healthy = false;
+  const f = makeRuntime({getSessionProjectId: async () => PROJECT_ID, canExecuteSession: async () => healthy || ++checks !== 3});
+  const entry = {queuedPrompts: [{id: 'retry-unstarted', prompt: 'still needed', timestamp: 1}]};
+  await f.runtime.handleIndexChange('owned', entry);
+  await f.runtime.idle();
+  expect(f.turns).toEqual([]);
+  expect(f.queue.listPending('owned').map(row => row.id)).toEqual(['retry-unstarted']);
+  healthy = true;
+  await f.runtime.handleIndexChange('owned', entry);
+  await f.runtime.idle();
+  expect(f.turns.map(turn => turn.prompt)).toEqual(['still needed']);
+});
+
+it('keeps an initial submission pending until ownership can be verified', async () => {
+  let healthy = false;
+  const f = makeRuntime({canExecuteSession: async () => healthy});
+  await f.runtime.handleCreateSessionRequest(request({initialPrompt: 'first task'}));
+  await f.runtime.idle();
+  expect(f.turns).toEqual([]);
+  expect(f.queue.listPending('session-1').map(row => row.prompt)).toEqual(['first task']);
+  healthy = true;
+  f.runtime.resumePendingQueue();
+  await f.runtime.idle();
+  expect(f.turns.map(turn => turn.prompt)).toEqual(['first task']);
+});
+
+it('does not publish recovery notes or queues for conversations now owned elsewhere', async () => {
+  const f = makeRuntime({getSessionProjectId: async () => PROJECT_ID, canExecuteSession: async () => false});
+  f.queue.seed({id: 'former-turn', sessionId: 'moved', prompt: 'old work', createdAt: 1}, 'executing');
+  await f.runtime.recoverPersistedQueue();
+  await f.runtime.idle();
+  expect(f.notes).toEqual([]);
+  expect(f.pushes).toEqual([]);
+});
+
+it('preserves an unseen remote prompt when recovery clears an interrupted local turn', async () => {
+  const unseen = {id: 'arrived-offline', prompt: 'new task', timestamp: 2};
+  const remote = {queuedPrompts: [unseen]};
+  const changes: any[] = [];
+  const f = makeRuntime({getSessionProjectId: async () => PROJECT_ID, sync: {
+    getCachedIndexEntry: () => remote,
+    pushChange: async (_id, change) => {changes.push(change);if (change.type === 'metadata_updated' && change.metadata.queuedPrompts) remote.queuedPrompts = change.metadata.queuedPrompts;return {published: true};},
+  }});
+  f.queue.seed({id: 'old-interrupted', sessionId: 'owned', prompt: 'old task', createdAt: 1}, 'executing');
+  await f.runtime.recoverPersistedQueue();
+  expect(remote.queuedPrompts).toEqual([unseen]);
+  await f.runtime.handleIndexChange('owned', remote);
+  await f.runtime.idle();
+  expect(f.turns.map(turn => turn.prompt)).toEqual(['new task']);
+  expect(remote.queuedPrompts).toEqual([]);
+});
+
+it('does not recover an initial prompt abandoned during the create response', async () => {
+  const f = makeRuntime();
+  f.deps.sync.sendCreateSessionResponse = async () => {f.bumpGeneration();};
+  await f.runtime.handleCreateSessionRequest(request({initialPrompt: 'abandoned'}));
+  f.runtime.resumePendingQueue();
+  await f.runtime.idle();
+  expect(f.turns).toEqual([]);
+  expect(f.queue.listPendingSessions()).toEqual([]);
+});
+
+it('reconciles a completed turn after connectivity returns without executing it again', async () => {
+  let connected = true;
+  const changes: any[] = [];
+  const f = makeRuntime({getSessionProjectId: async () => PROJECT_ID, canExecuteSession: async () => connected,
+    sync: {pushChange: async (_id, change) => {changes.push(change);return {published: true};}},
+    runTurn: async () => {connected = false;return {};}});
+  await f.runtime.handleIndexChange('owned', {queuedPrompts: [{id: 'finished-offline', prompt: 'finish', timestamp: 1}]});
+  await f.runtime.idle();
+  connected = true;
+  f.runtime.resumePendingQueue();
+  await f.runtime.idle();
+  expect(changes).toContainEqual({type: 'metadata_updated', metadata: {isExecuting: false}});
+  expect(changes).toContainEqual({type: 'metadata_updated', metadata: {queuedPrompts: []}});
+});
+
+it('does not republish executing when an initial submission already completed through its queued echo', async () => {
+  const f = makeRuntime();
+  f.deps.sync.sendCreateSessionResponse = async () => {
+    await f.runtime.handleIndexChange('session-1', {queuedPrompts: [{id: 'request:req-1', prompt: 'once', timestamp: 1}]});
+    await f.runtime.idle();
+  };
+  await f.runtime.handleCreateSessionRequest(request({initialPrompt: 'once'}));
+  await f.runtime.idle();
+  expect(f.turns.map(turn => turn.prompt)).toEqual(['once']);
+  const execution = f.pushes.map(row => (row.change as any).metadata.isExecuting).filter(value => value !== undefined);
+  expect(execution.at(-1)).toBe(false);
+});
+
+it('rechecks ownership before each prompt in a multi-prompt drain', async () => {
+  let owns = true;
+  const prompts: string[] = [];
+  const f = makeRuntime({getSessionProjectId: async () => PROJECT_ID, canExecuteSession: async () => owns,
+    runTurn: async input => {prompts.push(input.prompt);owns = false;return {};}});
+  await f.runtime.handleIndexChange('handed-off', {hostDeviceId: DEVICE_ID, queuedPrompts: [
+    {id: 'first-owned', prompt: 'first', timestamp: 1}, {id: 'second-moved', prompt: 'second', timestamp: 2},
+  ]} as any);
+  await f.runtime.idle();
+  expect(prompts).toEqual(['first']);
+  expect(f.queue.listPending('handed-off').map(row => row.id)).toEqual(['second-moved']);
+});
+
+it('does not start a provider or clear the shared queue when ownership changes during execution publication', async () => {
+  let owns = true;
+  const pushes: any[] = [];
+  const f = makeRuntime({getSessionProjectId: async () => PROJECT_ID, canExecuteSession: async () => owns,
+    sync: {pushChange: async (_id, change) => {pushes.push(change);if (change.type === 'metadata_updated' && change.metadata.isExecuting) owns = false;return {published: true};}}});
+  await f.runtime.handleIndexChange('handed-off', {hostDeviceId: DEVICE_ID, queuedPrompts: [{id: 'moving', prompt: 'not here', timestamp: 1}]} as any);
+  await f.runtime.idle();
+  expect(f.turns).toEqual([]);
+  expect(pushes.some(change => change.metadata?.queuedPrompts)).toBe(false);
+});
 
 it('awaits queue publication before the next execution and reports failed outcomes with reasons', async () => {
   let finishQueue!: (value: { published: false; reason: string }) => void;
@@ -339,7 +499,7 @@ describe('serve: queued prompts', () => {
     const published = harness.pushes.filter(push => 'queuedPrompts' in (push.change as { metadata: object }).metadata).map((push) => (push.change as {
       metadata: { queuedPrompts: Array<{ id: string }> };
     }).metadata.queuedPrompts.map((entry) => entry.id));
-    expect(published).toEqual([['p2'], []]);
+    expect(published).toEqual([['p2'], [], []]);
   });
 
   it('ignores queued prompts for a session this node does not host', async () => {

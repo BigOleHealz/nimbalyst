@@ -509,6 +509,7 @@ Companion app; pairs with a desktop over encrypted sync. Voice mode is not inclu
 - Cloudflare sandbox management from Settings using the user's own account -- deploy, inspect status, wake, stop, delete, and pair a headless runner
 - Remote sandbox sessions use the normal composer, attachments, project Actions, session list, streamed transcripts, follow-up prompts, and stop controls
 - Remote execution selection is saved per project; projects assigned to a remote host reject local agent execution and local worktree creation rather than silently falling back when that host is offline.
+- Existing local conversations can continue on a persistent remote host under their original session IDs, with retained transcript history, verified native agent conversations, and explicit mappings to migrated worktrees. Their next turns automatically use those worktrees; runner restarts preserve subsequent continuation state and local copies remain recoverable.
 - Remote execution limitations: sandbox files/processes are ephemeral and previous sandbox execution state is not restored after the host restarts. Remote interactive question/permission answers remain unsupported; persistent mapped hosts support session worktrees.
 
 ## Terminal

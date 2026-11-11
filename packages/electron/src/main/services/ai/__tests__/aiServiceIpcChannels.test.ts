@@ -86,6 +86,7 @@ import type { AIServiceContext } from '../ipc/AIServiceContext';
 import { AIService } from '../AIService';
 import { logger } from '../../../utils/logger';
 import { resetPushOutcomeWarnings } from '@nimbalyst/runtime/sync/pushOutcome';
+import {remoteSessions} from '../remoteSessions';
 
 /**
  * A context whose every member throws when called. Registration must only
@@ -216,6 +217,34 @@ describe('AIService IPC registrars', () => {
 });
 
 describe('AIService metadata publication outcomes', () => {
+  it('never loads the recovery copy when the remote host confirms deletion', async () => {
+    const get = vi.spyOn(remoteSessions, 'get').mockRejectedValue(new Error('This remote conversation was deleted.'));
+    const loadSession = vi.fn();
+    try {
+      registerSessionHandlers({...stubContext, sessionManager: {loadSession}, documentContextService: {}} as any);
+      await expect(handlers.get('ai:loadSession')!({}, 'deleted', '/foss', false)).rejects.toThrow(/deleted/);
+      expect(loadSession).not.toHaveBeenCalled();
+    } finally {get.mockRestore();}
+  });
+  it('loads a migrated conversation from its remote host before its retained local copy', async () => {
+    const remote = {id: 'moved', messages: [], metadata: {remoteHostDeviceId: 'coder-foss'}};
+    const get = vi.spyOn(remoteSessions, 'get').mockResolvedValue(remote as any);
+    const loadSession = vi.fn();
+    try {
+      registerSessionHandlers({...stubContext, sessionManager: {loadSession}, documentContextService: {}} as any);
+      await expect(handlers.get('ai:loadSession')!({}, 'moved', '/foss', false)).resolves.toEqual(remote);
+      expect(loadSession).not.toHaveBeenCalled();
+    } finally {get.mockRestore();}
+  });
+
+  it('keeps an offline migrated tab remote while loading its recovery transcript', async () => {
+    const get = vi.spyOn(remoteSessions, 'get').mockResolvedValue(null);
+    const local = {id: 'moved', messages: [{content: 'Original history'}], metadata: {remoteMigration: {hostDeviceId: 'coder-foss'}}};
+    try {
+      registerSessionHandlers({...stubContext, sessionManager: {loadSession: async () => local}, documentContextService: {}} as any);
+      await expect(handlers.get('ai:loadSession')!({}, 'moved', '/foss', false)).resolves.toMatchObject({metadata: {remoteHostDeviceId: 'coder-foss'}, messages: [{content: 'Original history'}]});
+    } finally {get.mockRestore();}
+  });
   beforeEach(() => {
     resetPushOutcomeWarnings();
     vi.clearAllMocks();

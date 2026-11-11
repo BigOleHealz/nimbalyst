@@ -28,6 +28,8 @@ export interface PendingPrompt {
 }
 
 export interface QueuedPromptStore {
+  /** Seen in any state, including completed or interrupted work. */
+  has(id: string): boolean;
   /** Insert a prompt as pending. Returns false when the id was already seen. */
   offer(prompt: PendingPrompt): boolean;
   /** Oldest-first pending rows for a session. */
@@ -58,6 +60,7 @@ function toEpochMillis(value: unknown): number {
 }
 
 export function createQueuedPromptStore(db: SqliteDatabase): QueuedPromptStore {
+  const knownRow = db.prepare('SELECT 1 FROM queued_prompts WHERE id = ?');
   const insert = db.prepare(`
     INSERT OR IGNORE INTO queued_prompts (id, session_id, prompt, status, created_at, attachments, document_context)
     VALUES (@id, @sessionId, @prompt, 'pending', @createdAt, @attachments, @options)
@@ -102,6 +105,7 @@ export function createQueuedPromptStore(db: SqliteDatabase): QueuedPromptStore {
   `);
 
   return {
+    has(id: string): boolean {return knownRow.get(id) !== undefined;},
     offer(prompt: PendingPrompt): boolean {
       return insert.run({
         id: prompt.id,

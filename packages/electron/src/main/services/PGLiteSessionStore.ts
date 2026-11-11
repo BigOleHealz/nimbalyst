@@ -279,7 +279,8 @@ export async function getAllSessionsForSync(
   const { rows } = await moduleDb.query<any>(
     `SELECT s.id, s.provider, s.model, s.mode, s.session_type, s.parent_session_id, s.agent_role, s.created_by_session_id, s.title, s.workspace_id,
             s.worktree_id, s.is_archived, s.is_pinned, s.branched_from_session_id, s.branch_point_message_id, s.branched_at,
-            s.created_at, s.updated_at, ${buildSyncedMetadataProjectionSql('s.metadata')} AS metadata
+            s.created_at, s.updated_at, ${buildSyncedMetadataProjectionSql('s.metadata')} AS metadata,
+            s.metadata->'remoteMigration' AS remote_migration
      FROM ai_sessions s
      ${projectFilterSql}
      ORDER BY s.updated_at DESC`,
@@ -290,6 +291,10 @@ export async function getAllSessionsForSync(
   // Filter out sessions without workspace_id - they are legacy data that cannot be routed correctly
   // Do NOT fall back to 'default' as that masks the real issue (missing workspace tracking)
   const validRows = rows.filter((row: any) => {
+    // A retained migration row is a recovery copy, never a local-authoritative
+    // index publication. Read the marker before the wire metadata projection.
+    const migration = normalizeJsonObject(row.remote_migration);
+    if (typeof migration?.hostDeviceId === 'string' && migration.hostDeviceId) return false;
     if (!row.workspace_id) {
       console.warn(`[PGLiteSessionStore] Skipping session ${row.id} - missing workspace_id (legacy data)`);
       return false;

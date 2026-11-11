@@ -93,7 +93,7 @@ it('hides merged sessions already in the Done board column even when their ticke
   store.set(sessionRegistryAtom, new Map([[session.id, session]]));
   store.set(trackerItemsMapAtom, new Map([['ticket', dependencyTicket('ticket', { status: 'in-progress' })]]));
   store.set(worktreeRecordsAtom, new Map([['delivered-worktree', { branch: 'funnel' } as any]]));
-  store.set(worktreeGitStatusAtom('delivered-worktree'), { hasUncommittedChanges: false, hasUpstream: true, unpushedCommits: 0, ahead: 0, headSha: 'delivered-sha' });
+  store.set(worktreeGitStatusAtom('delivered-worktree'), { hasUncommittedChanges: false, hasUpstream: true, unpushedCommits: 0, ahead: 0, behind: 0, headSha: 'delivered-sha' });
   const pr = { workspaceId: '/repo', remote: 'owner/repo', number: 1, state: 'merged', headRef: 'funnel', headSha: 'delivered-sha' } as any;
   store.set(prListAtom, [pr]);
   render(<Provider store={store}><SessionKanbanBoard /></Provider>);

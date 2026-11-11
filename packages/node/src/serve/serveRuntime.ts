@@ -32,12 +32,13 @@ import type {
   SyncedQueuedPrompt,
 } from '@nimbalyst/runtime/sync/types';
 import type { Logger } from './log.js';
-import type { QueuedPromptStore } from './queuedPrompts.js';
+import type { PendingPrompt, QueuedPromptStore } from './queuedPrompts.js';
 import { findWorkspace, type WorkspaceMapping } from './workspaces.js';
 import type { CheckoutOutcome } from './repoCheckout.js';
 
 /** The slice of `SyncProvider` this runtime actually uses. */
 export interface ServeSyncProvider {
+  getCachedIndexEntry?(sessionId: string): {queuedPrompts?: SyncedQueuedPrompt[]} | undefined;
   sendSessionControlMessage?(message: SessionControlMessage): Promise<void>;
   pushChange(sessionId: string, change: SessionChange): void | Promise<void | PushChangeOutcome>;
   sendCreateSessionResponse?(response: CreateSessionResponse): Promise<void>;
@@ -96,6 +97,8 @@ export interface ServeRuntimeDeps {
   createSession(input: CreateSessionInput): Promise<CreatedSession>;
   /** The session's `workspaceId`, or null when this node does not host it. */
   getSessionProjectId(sessionId: string): Promise<string | null>;
+  /** Positive, current ownership check before intake and every provider start. */
+  canExecuteSession?(sessionId: string): Promise<boolean>;
   workspaceContext?(workspacePath: string): Promise<Record<string, unknown>>;
   runTurn(input: RunTurnInput): Promise<{ error?: string }>;
   queue: QueuedPromptStore;
@@ -129,6 +132,7 @@ export interface ServeRuntimeDeps {
 
 /** The `queuedPrompts` shape as it arrives on an index entry. */
 export interface IndexEntryQueue {
+  hostDeviceId?: string;
   queuedPrompts?: SyncedQueuedPrompt[];
 }
 
@@ -141,6 +145,8 @@ export interface ServeRuntime {
    * rows interrupted mid-execution are failed rather than replayed.
    */
   recoverPersistedQueue(): Promise<void>;
+  /** Re-drive work that never started after connectivity recovers. */
+  resumePendingQueue(): void;
   /** Refuse new work. Already-running turns keep going. */
   stopIntake(): void;
   /** Interrupt every streaming turn. */
@@ -160,8 +166,8 @@ const DEFAULT_PROVIDER = 'claude-code';
  * who deliberately sends the same prompt twice in a minute gets silently
  * ignored. Text is not identity and a clock is not a fact about the submission.
  *
- * The initial prompt is written here as `completed` when the session is created,
- * so a queued row carrying this id is skipped forever, and every other id runs.
+ * The initial prompt uses this same durable queue identity, so a replay cannot
+ * execute it twice and a temporary outage cannot consume it before it starts.
  */
 function initialSubmissionId(requestId: string): string {
   return `request:${requestId}`;
@@ -178,7 +184,14 @@ export function createServeRuntime(deps: ServeRuntimeDeps): ServeRuntime {
   const handledRequests = new Set<string>();
   const activeTurns = new Map<string, TurnControl>();
   const drains = new Map<string, Promise<void>>();
+  const dirtySharedQueues = new Set<string>();
+  const interruptedNotes = new Map<string, PendingPrompt>();
   let intakeStopped = false;
+
+  async function ownsSession(sessionId: string): Promise<boolean> {
+    try {return await deps.canExecuteSession?.(sessionId) ?? true;}
+    catch (error) {deps.log('ownership-check-failed', {sessionId, error: error instanceof Error ? error.message : String(error)});return false;}
+  }
 
   async function respond(response: CreateSessionResponse): Promise<void> {
     if (!deps.sync.sendCreateSessionResponse) return;
@@ -199,7 +212,7 @@ export function createServeRuntime(deps: ServeRuntimeDeps): ServeRuntime {
     await respond({ requestId, success: false, error: reason });
   }
 
-  async function publishQueue(sessionId: string): Promise<void> {
+  async function publishQueue(sessionId: string): Promise<boolean> {
     const pending: SyncedQueuedPrompt[] = deps.queue.listPending(sessionId).map((row) => ({
       id: row.id,
       prompt: row.prompt,
@@ -207,6 +220,11 @@ export function createServeRuntime(deps: ServeRuntimeDeps): ServeRuntime {
       ...(row.attachments?.length ? { attachments: row.attachments } : {}),
       ...(row.options ? {options: row.options} : {}),
     }));
+    // Recovery can run before intake subscribes to a warm index. Remove only
+    // IDs this runner has seen, preserving work submitted while it was offline.
+    for (const prompt of deps.sync.getCachedIndexEntry?.(sessionId)?.queuedPrompts ?? []) {
+      if (!deps.queue.has(prompt.id)) pending.push(prompt);
+    }
 
     // No `updatedAt`: draining a queue is not new content and must not resort
     // the session list on every other device.
@@ -216,32 +234,59 @@ export function createServeRuntime(deps: ServeRuntimeDeps): ServeRuntime {
         metadata: { queuedPrompts: pending },
       });
       warnIfUnpublished(() => deps.log('queue-publish-failed', { sessionId, reason: outcome?.reason ?? 'not published' }), sessionId, 'Queue publish', outcome);
+      return outcome?.published !== false;
     } catch (error) {
       deps.log('queue-publish-failed', {
         sessionId,
         error: error instanceof Error ? error.message : String(error),
       });
+      return false;
     }
   }
 
-  async function publishExecution(sessionId: string, isExecuting: boolean): Promise<void> {
+  async function publishExecution(sessionId: string, isExecuting: boolean): Promise<boolean> {
     try {
       const outcome = await deps.sync.pushChange(sessionId, { type: 'metadata_updated', metadata: { isExecuting } });
       warnIfUnpublished(() => deps.log('execution-state-not-published', { sessionId, isExecuting, reason: outcome?.reason ?? 'not published' }), sessionId, 'Execution publish', outcome);
+      return outcome?.published !== false;
     } catch (error) {
       deps.log('execution-state-not-published', { sessionId, isExecuting, reason: error instanceof Error ? error.message : String(error) });
+      return false;
     }
+  }
+
+  async function reconcileCompleted(sessionId: string): Promise<void> {
+    if (!dirtySharedQueues.has(sessionId) || !await ownsSession(sessionId)) return;
+    for (const [id, row] of interruptedNotes) {
+      if (row.sessionId !== sessionId) continue;
+      try {
+        await deps.noteInterrupted?.(row.sessionId, row.prompt);
+        interruptedNotes.delete(id);
+      } catch (error) {
+        deps.log('interrupt-note-failed', {sessionId, error: String(error)});
+        return;
+      }
+    }
+    if (!await ownsSession(sessionId)) return;
+    const idlePublished = await publishExecution(sessionId, false);
+    if (!await ownsSession(sessionId)) return;
+    if (await publishQueue(sessionId) && idlePublished) dirtySharedQueues.delete(sessionId);
   }
 
   async function runOne(
     sessionId: string,
     row: { id: string; prompt: string; attachments?: EncryptedAttachment[]; options?: import("@nimbalyst/runtime/sync/types").RemoteTurnOptions },
     workspacePath: string,
-    /** False for the initial prompt, which has no queue row to transition. */
-    queued = true,
-  ): Promise<void> {
+  ): Promise<boolean> {
+    if (!deps.queue.listPending(sessionId).some(pending => pending.id === row.id)) return false;
+    if (!await ownsSession(sessionId)) return false;
     deps.log('turn-started', { sessionId, promptId: row.id });
+    dirtySharedQueues.add(sessionId);
     await publishExecution(sessionId, true);
+    if (!await ownsSession(sessionId)) return false;
+    // No await between the atomic claim and provider invocation. Every earlier
+    // failure leaves the never-started row pending for a healthy replay.
+    if (!deps.queue.claim(row.id)) return false;
     try {
       const result = await deps.runTurn({
         sessionId,
@@ -252,21 +297,22 @@ export function createServeRuntime(deps: ServeRuntimeDeps): ServeRuntime {
         onTurnStarted: (control) => activeTurns.set(sessionId, control),
       });
       if (result.error) {
-        if (queued) deps.queue.fail(row.id, result.error);
+        deps.queue.fail(row.id, result.error);
         deps.log('turn-finished', { sessionId, promptId: row.id, error: result.error });
       } else {
-        if (queued) deps.queue.complete(row.id);
+        deps.queue.complete(row.id);
         deps.log('turn-finished', { sessionId, promptId: row.id });
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (queued) deps.queue.fail(row.id, message);
+      deps.queue.fail(row.id, message);
       deps.log('turn-failed', { sessionId, promptId: row.id, error: message });
       await deps.noteFailed?.(sessionId, row.prompt, message);
     } finally {
       activeTurns.delete(sessionId);
-      await publishExecution(sessionId, false);
+      await reconcileCompleted(sessionId);
     }
+    return true;
   }
 
   /**
@@ -306,6 +352,7 @@ export function createServeRuntime(deps: ServeRuntimeDeps): ServeRuntime {
   }
 
   async function drainSession(sessionId: string): Promise<void> {
+    await reconcileCompleted(sessionId);
     const workspacePath = await resolveWorkspacePath(sessionId);
     if (!workspacePath) return;
 
@@ -318,12 +365,8 @@ export function createServeRuntime(deps: ServeRuntimeDeps): ServeRuntime {
       if (pending.length === 0) break;
 
       const row = pending[0];
-      // A lost claim means someone else owns the row. Continuing would spin on
-      // the same head of the queue forever.
-      if (!deps.queue.claim(row.id)) break;
-
-      await runOne(sessionId, row, workspacePath);
-      await publishQueue(sessionId);
+      if (!await ownsSession(sessionId)) return;
+      if (!await runOne(sessionId, row, workspacePath)) break;
     }
   }
 
@@ -356,10 +399,7 @@ export function createServeRuntime(deps: ServeRuntimeDeps): ServeRuntime {
   /**
    * Run the prompt that arrived inside a create-session request.
    *
-   * Deliberately NOT drained through the queue: it is recorded there as already
-   * completed (so nothing can replay it) and then run directly. Executing it as
-   * a pending row would mean a claim, a status transition and a queue
-   * publication for work that was never queued.
+   * It shares the durable pending/claim/completion transitions with follow-ups.
    */
   function runInitialPrompt(
     sessionId: string,
@@ -369,9 +409,7 @@ export function createServeRuntime(deps: ServeRuntimeDeps): ServeRuntime {
   ): Promise<void> {
     return schedule(sessionId, async () => {
       if (intakeStopped) return;
-      // `queued: false` -- the row is already recorded as completed, and a turn
-      // that fails must not flip it back to something a replay could pick up.
-      await runOne(sessionId, { id: submissionId, prompt }, workspacePath, false);
+      await runOne(sessionId, { id: submissionId, prompt }, workspacePath);
     });
   }
 
@@ -541,20 +579,18 @@ export function createServeRuntime(deps: ServeRuntimeDeps): ServeRuntime {
       // out and be retried, creating a second session for the same ask.
       await respond({ requestId: request.requestId, success: true, sessionId: session.id });
 
+      if (claimLost('the response was sent', false)) return;
+
       if (request.initialPrompt) {
-        // Durable de-duplication, and the ONLY kind: recorded as completed under
-        // an id derived from the requestId, so a queued copy carrying that id is
-        // skipped forever -- no text comparison, no window. See
-        // `initialSubmissionId`.
+        // Durable de-duplication by submission identity, with pending work
+        // retained until a provider can actually start.
         const submissionId = initialSubmissionId(request.requestId);
-        if (deps.queue.offer({
+        deps.queue.offer({
           id: submissionId,
           sessionId: session.id,
           prompt: request.initialPrompt,
           createdAt: now(),
-        })) {
-          deps.queue.complete(submissionId);
-        }
+        });
 
         // Last check before work starts. Everything above is recoverable; a turn
         // is not, and this one would be running against a claim we no longer
@@ -567,13 +603,14 @@ export function createServeRuntime(deps: ServeRuntimeDeps): ServeRuntime {
 
     async handleIndexChange(sessionId: string, entry: IndexEntryQueue): Promise<void> {
       if (intakeStopped) return;
-      const queued = entry.queuedPrompts;
-      if (!queued || queued.length === 0) return;
+      if (entry.hostDeviceId && entry.hostDeviceId !== deps.deviceId) return;
+      const queued = entry.queuedPrompts ?? [];
 
       // Only for sessions this node hosts. Every index entry the user owns is
       // broadcast here, including ones running on their laptop.
       const projectId = await deps.getSessionProjectId(sessionId);
       if (!projectId) return;
+      if (!await ownsSession(sessionId)) return;
 
       let accepted = 0;
       for (const prompt of queued) {
@@ -603,9 +640,9 @@ export function createServeRuntime(deps: ServeRuntimeDeps): ServeRuntime {
         }
       }
 
-      if (accepted === 0) return;
-      deps.log('prompts-queued', { sessionId, count: accepted });
-      void drive(sessionId);
+      if (accepted > 0) deps.log('prompts-queued', { sessionId, count: accepted });
+      if (queued.length && !deps.queue.listPending(sessionId).length) dirtySharedQueues.add(sessionId);
+      if (dirtySharedQueues.has(sessionId) || deps.queue.listPending(sessionId).length) void drive(sessionId);
     },
 
     async handleSessionControlMessage(message: SessionControlMessage): Promise<void> {
@@ -667,19 +704,13 @@ export function createServeRuntime(deps: ServeRuntimeDeps): ServeRuntime {
       // transcript, where the person waiting on the session will see it.
       const interrupted = deps.queue.failInterrupted();
       for (const row of interrupted) {
+        dirtySharedQueues.add(row.sessionId);
+        interruptedNotes.set(row.id, row);
         deps.log('prompt-interrupted', {
           sessionId: row.sessionId,
           promptId: row.id,
           note: 'was executing when the previous process stopped; not replayed',
         });
-        try {
-          await deps.noteInterrupted?.(row.sessionId, row.prompt);
-        } catch (error) {
-          deps.log('interrupt-note-failed', {
-            sessionId: row.sessionId,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
       }
 
       // Pending rows never started, so they are safe to run. Without this a
@@ -691,9 +722,8 @@ export function createServeRuntime(deps: ServeRuntimeDeps): ServeRuntime {
       ]);
 
       for (const sessionId of sessions) {
-        if (interrupted.some((row) => row.sessionId === sessionId)) {
-          await publishQueue(sessionId);
-        }
+        if (!await ownsSession(sessionId)) continue;
+        await reconcileCompleted(sessionId);
         if (deps.queue.listPending(sessionId).length > 0) {
           deps.log('queue-recovered', {
             sessionId,
@@ -702,6 +732,10 @@ export function createServeRuntime(deps: ServeRuntimeDeps): ServeRuntime {
           void drive(sessionId);
         }
       }
+    },
+
+    resumePendingQueue(): void {
+      for (const sessionId of new Set([...deps.queue.listPendingSessions(), ...dirtySharedQueues])) void drive(sessionId);
     },
 
     stopIntake(): void {

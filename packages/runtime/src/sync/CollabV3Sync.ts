@@ -1366,6 +1366,15 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
   let indexMirrorMemberId: PersonalMemberId | undefined;
   /** Bumped on every index disconnect so a late page response is dropped. */
   let indexConnectionGeneration = 0;
+  let ownershipGeneration: number | undefined;
+  const serverOwnership = new Map<string, {hostDeviceId?: string; projectId: string; isArchived?: boolean}>();
+  const pendingOwnershipNotifications = new Set<string>();
+  let ownerMessageOrder = 0;
+  let latestOwnerSnapshot = 0;
+  const ownerMessageVersions = new Map<string, number>();
+  const recordServerOwnership = (entry: {sessionId: string; hostDeviceId?: string; projectId: string; isArchived?: boolean}) => {
+    serverOwnership.set(entry.sessionId, {hostDeviceId: entry.hostDeviceId, projectId: entry.projectId, isArchived: entry.isArchived});
+  };
   let pendingIndexPage: {
     requestId: string;
     generation: number;
@@ -1570,6 +1579,8 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
    * hierarchy and execution queues after verification opens the write gate.
    */
   async function removeIndexSession(id: string): Promise<void> {
+    ownerMessageVersions.set(id, ++ownerMessageOrder);
+    serverOwnership.delete(id);
     sessionIndexCache.delete(id);
     sessionQueueReconciler.delete(id);
     pendingMetadataUpdates.delete(id);
@@ -1586,11 +1597,12 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
     options: { notifyListeners: boolean },
   ): Promise<void> {
     await applyReplicatedSessionRows(applied, cacheEntries, removeIndexSession, async entry => {
+      recordServerOwnership(entry);
       sessionIndexCache.set(entry.sessionId, sessionQueueReconciler.merge(entry));
       indexPublicationGate.recordPublished(entry.sessionId, indexPatchSignatureForEntry(entry));
       if (!options.notifyListeners) return;
       applyPendingMetadataUpdates(entry.sessionId).catch(err => console.error('[CollabV3] Error applying pending metadata updates:', err));
-      await dispatchIndexChange(indexChangeListeners, entry);
+      pendingOwnershipNotifications.add(entry.sessionId);
     });
   }
 
@@ -1761,11 +1773,26 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
    * a degraded state rather than a reason to refuse the mirror.
    */
   async function runIndexReplicationWithPersonalState(options: { notifyListeners: boolean }): Promise<void> {
-    const bootstrapped = await runIndexReplication(options);
+    const generation = indexConnectionGeneration;
+    await runIndexReplication(options);
+    if (generation !== indexConnectionGeneration) throw new Error('Index connection changed before ownership verification.');
+    serverOwnership.clear();
+    for (const entry of indexMirror.snapshot().sessions) recordServerOwnership(entry);
+    ownershipGeneration = generation;
     personalSyncWriteGate.markVerified(indexMirror.skippedRowCount());
     hierarchySnapshots.replace(indexMirror.snapshot().sessions);
     await hierarchySnapshots.notify();
-    if (bootstrapped && options.notifyListeners) await reconcileFetchedIndex(sessionIndexCache.values(), sessionIndexCache, indexChangeListeners, indexHierarchyListeners);
+    // Live callbacks must see the committed cursor and confirmed ownership.
+    // A newer hint keeps execution suspended until its follow-up drain finishes.
+    if (options.notifyListeners && (maxHintedRevision === undefined || (indexMirror.cursor ?? -1) >= maxHintedRevision)) {
+      const pending = [...pendingOwnershipNotifications];
+      pendingOwnershipNotifications.clear();
+      for (const id of pending) {
+        const entry = sessionIndexCache.get(id);
+        if (entry) await dispatchIndexChange(indexChangeListeners, entry);
+      }
+      await reconcileFetchedIndex(sessionIndexCache.values(), sessionIndexCache, indexChangeListeners, indexHierarchyListeners);
+    }
     if (indexMirror.skippedRowCount() > 0) console.info('[CollabV3] Index read completed; skipped unreadable rows:', indexMirror.skippedRowCount());
     // A hint that arrived while the mirror was incomplete (or mid-drain) is
     // still recorded; now that coverage exists it can be acted on.
@@ -2255,7 +2282,9 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
       lastError = socketErrorMessage(event) ?? lastError;
     };
 
+    const receivingGeneration = indexConnectionGeneration;
     indexWs.onmessage = async (event) => {
+      if (receivingGeneration !== indexConnectionGeneration) return;
       try {
         const message: ServerMessage = JSON.parse(
           typeof event.data === 'string' ? event.data : new TextDecoder().decode(event.data)
@@ -2267,6 +2296,9 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
             break;
           }
           case 'indexSyncResponse': {
+            const snapshotOrder = ++ownerMessageOrder;
+            latestOwnerSnapshot = snapshotOrder;
+            ownershipGeneration = undefined;
             const totalCount = (message as any).totalSessionCount;
             if (totalCount !== undefined && totalCount !== message.sessions.length) {
               console.warn(`[CollabV3] INDEX TRUNCATION DETECTED! Server COUNT(*)=${totalCount} but received ${message.sessions.length} sessions`);
@@ -2277,9 +2309,16 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
               const pending = pendingIndexFetch;
               pendingIndexFetch = null;
               try {
+                const generation = indexConnectionGeneration;
                 const snapshot = await decodeLegacyIndexSnapshot(message.sessions, message.projects, config.encryptionKey);
+                if (generation !== indexConnectionGeneration) throw new Error('Index connection changed during ownership verification.');
+                if (snapshotOrder !== latestOwnerSnapshot) throw new Error('Index ownership snapshot was superseded.');
+                for (const id of serverOwnership.keys()) if ((ownerMessageVersions.get(id) ?? 0) <= snapshotOrder) serverOwnership.delete(id);
+                for (const row of snapshot.rows) if ((ownerMessageVersions.get(row.decrypted.sessionId) ?? 0) <= snapshotOrder) recordServerOwnership(row.decrypted);
+                ownershipGeneration = generation;
                 // Only readable rows update the cache; unreadable rows keep its last good value.
                 for (const row of snapshot.rows) {
+                  if ((ownerMessageVersions.get(row.decrypted.sessionId) ?? 0) > snapshotOrder) continue;
                   sessionIndexCache.set(row.decrypted.sessionId, sessionQueueReconciler.merge(row.cacheEntry));
                   // The server just told us what it holds; that is the value a
                   // subsequent patch has to differ from to be worth sending.
@@ -2316,6 +2355,10 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
             // instead of writing 'unknown' / 'Untitled' placeholders into the
             // cache and out to the renderer.
             const entry = message.session;
+            const generation = indexConnectionGeneration;
+            const messageOrder = ++ownerMessageOrder;
+            ownerMessageVersions.set(entry.sessionId, messageOrder);
+            serverOwnership.delete(entry.sessionId);
             let row: DecryptedLegacyIndexRow;
             try {
               row = await decryptSessionIndexEntry(entry, config.encryptionKey);
@@ -2331,6 +2374,8 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
               personalSyncWriteGate.setSkippedRowCount(legacyUnreadableRows.size);
             }
             const decryptedEntry = row.cacheEntry;
+            if (generation !== indexConnectionGeneration || messageOrder < latestOwnerSnapshot || ownerMessageVersions.get(entry.sessionId) !== messageOrder) break;
+            recordServerOwnership(decryptedEntry);
 
             // Cache the decrypted entry
             sessionIndexCache.set(entry.sessionId, sessionQueueReconciler.merge(decryptedEntry));
@@ -3832,6 +3877,15 @@ export function createCollabV3Sync(config: SyncConfig): SyncProvider {
 
       indexWs.send(JSON.stringify(message));
       // console.log('[CollabV3] Sent projectConfigUpdate with', projectConfig.commands.length, 'commands and', projectConfig.actions?.length ?? 0, 'actions');
+    },
+
+    getVerifiedSessionOwnership(sessionId: string) {
+      if (!indexConnected || !indexReady || ownershipGeneration !== indexConnectionGeneration) return undefined;
+      if (personalSyncWriteGate.snapshot().state !== 'verified') return undefined;
+      if (indexProtocolCapability !== 'legacy' && !indexMirror.isComplete()) return undefined;
+      if (indexProtocolCapability !== 'legacy' && maxHintedRevision !== undefined && (indexMirror.cursor ?? -1) < maxHintedRevision) return undefined;
+      const entry = serverOwnership.get(sessionId);
+      return entry ? {...entry} : undefined;
     },
 
     async fetchIndex(): Promise<{ complete?: boolean; indexProtocolVersion?: 1 | 2; deletedSessionIds?: string[]; sessions: DecryptedSessionIndexEntry[]; projects: Array<{ projectId: string; name: string; sessionCount: number; lastActivityAt: number; syncEnabled: boolean; gitRemoteHash?: string }> }> {

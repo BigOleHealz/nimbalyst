@@ -13,7 +13,8 @@ vi.mock('../../../store/listeners/remoteSessionViews', async () => {
 vi.mock('../../../store/atoms/sessions', async () => {
   const {atom} = await import('jotai');
   const text = atom(''), attachments = atom([]), hydrated = atom(false), modified = atom(0);
-  return {sessionDraftInputAtom: () => text, sessionDraftAttachmentsAtom: () => attachments, sessionDraftHydratedAtom: () => hydrated, sessionDraftLocalModifiedAtAtom: () => modified, canPersistSessionDraft: (ready: boolean, timestamp: number) => ready && timestamp > 0};
+  const data = atom(null);
+  return {sessionStoreAtom: () => data, sessionDraftInputAtom: () => text, sessionDraftAttachmentsAtom: () => attachments, sessionDraftHydratedAtom: () => hydrated, sessionDraftLocalModifiedAtAtom: () => modified, canPersistSessionDraft: (ready: boolean, timestamp: number) => ready && timestamp > 0};
 });
 vi.mock('../AIInput', async () => {
   const React = await import('react');
@@ -26,12 +27,35 @@ vi.mock('../AIInput', async () => {
       <button onClick={() => props.onLaunchActionInNewSession({id: 'review', label: 'Review', body: 'Review these changes', config: {launch: 'new-session', autoSubmit: false, foreground: false, worktree: false}})}>Action</button></div>;
   })};
 });
-vi.mock('@nimbalyst/runtime/ui/AgentTranscript/components/RichTranscriptView', () => ({ RichTranscriptView: () => <div /> }));
+vi.mock('@nimbalyst/runtime/ui/AgentTranscript/components/RichTranscriptView', () => ({ RichTranscriptView: ({messages}: any) => <div>{messages.map((message: any, index: number) => <p key={index}>{message.content}</p>)}</div> }));
 import { RemoteSessionTranscript } from '../RemoteSessionTranscript';
-import {sessionDraftInputAtom, sessionDraftHydratedAtom} from '../../../store/atoms/sessions';
+import {sessionStoreAtom, sessionDraftInputAtom, sessionDraftHydratedAtom} from '../../../store/atoms/sessions';
+import {remoteSessionSnapshotAtom} from '../../../store/listeners/remoteSessionViews';
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe('remote session composer commands', () => {
+  it('renders retained recovery history when an offline cold-open has no remote snapshot', async () => {
+    mocks.acquire.mockReturnValue(mocks.release);
+    (window as any).electronAPI = {invoke: vi.fn(async () => ({text: '', attachments: []}))};
+    const state = createStore();
+    state.set(remoteSessionSnapshotAtom('remote'), null);
+    state.set(sessionStoreAtom('remote'), {id: 'remote', provider: 'claude-code', workspacePath: '/repo', messages: [{content: 'Original retained history'}], metadata: {remoteMigration: {hostDeviceId: 'host'}}} as any);
+    render(<Provider store={state}><RemoteSessionTranscript sessionId="remote" workspacePath="/repo" mode="agent" /></Provider>);
+    await screen.findByText('Original retained history');
+    expect((screen.getByText('Send') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('does not fall back to retained messages from another workspace', async () => {
+    mocks.acquire.mockReturnValue(mocks.release);
+    (window as any).electronAPI = {invoke: vi.fn(async () => ({text: '', attachments: []}))};
+    const state = createStore();
+    state.set(remoteSessionSnapshotAtom('remote'), null);
+    state.set(sessionStoreAtom('remote'), {id: 'remote', workspacePath: '/private', messages: [{content: 'Private recovery history'}], metadata: {remoteMigration: {hostDeviceId: 'host'}}} as any);
+    render(<Provider store={state}><RemoteSessionTranscript sessionId="remote" workspacePath="/repo" mode="agent" /></Provider>);
+    await waitFor(() => expect(mocks.acquire).toHaveBeenCalledWith('remote', '/repo'));
+    expect(screen.queryByText('Private recovery history')).toBeNull();
+  });
+
   it('restores the saved draft again if session initialization clears hydration after mount', async () => {
     mocks.acquire.mockReturnValue(mocks.release);
     const invoke = vi.fn(async (channel: string) => channel === 'ai:loadRemoteDraft' ? {text: 'Saved remote draft', attachments: []} : channel === 'ai:remoteWorkspaceContext' ? {files: [], commands: []} : undefined);

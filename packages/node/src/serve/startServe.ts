@@ -22,6 +22,8 @@ import { stageRemoteAttachments } from './remoteAttachments.js';
  */
 
 import { createRequire } from 'node:module';
+import {readFile} from 'node:fs/promises';
+import * as path from 'node:path';
 
 import { createCollabV3Sync } from '@nimbalyst/runtime/sync/CollabV3Sync';
 import {
@@ -61,6 +63,10 @@ import {
 } from './syncedAgentMessagesStore.js';
 import { withHostAttribution } from './hostAttributionStore.js';
 import { loadWorkspaces } from './workspaces.js';
+import {findWorkspace} from './workspaces.js';
+import {importSessionContinuations, type SessionContinuation} from './sessionContinuations.js';
+import {confineContinuationWorkspace, validateSessionContinuation} from './validateSessionContinuation.js';
+import {confirmContinuationOwnership, ownsSessionExecution} from './confirmContinuationOwnership.js';
 
 const require = createRequire(import.meta.url);
 
@@ -224,6 +230,43 @@ export async function serve(options: ServeOptions): Promise<ServeResult> {
   });
 
   const queue = createQueuedPromptStore(node.database);
+  const continuationIds = new Set<string>();
+  const inactiveContinuations = new Set<string>();
+  const stopContinuationDeletes = syncProvider.onIndexDelete?.(sessionId => {
+    if (continuationIds.has(sessionId)) inactiveContinuations.add(sessionId);
+  }) ?? (() => {});
+
+  // Import through this runner's owning stores, before intake. A restart only
+  // verifies the existing marker; it never overwrites a continued conversation.
+  if (config.sessionContinuationsPath) {
+    try {
+      const manifest = JSON.parse(await readFile(path.resolve(path.dirname(config.configPath), config.sessionContinuationsPath), 'utf8')) as {migrationId: string; entries: SessionContinuation[]};
+      if (Array.isArray(manifest.entries)) for (const entry of manifest.entries) if (typeof entry?.id === 'string') continuationIds.add(entry.id);
+      const result = await importSessionContinuations({
+        ...manifest, hostDeviceId: sync.deviceId, store: node.store,
+        validate: async entry => {
+          const mapping = findWorkspace(loadWorkspaces(workspacesPath), entry.workspaceId);
+          if (!mapping) throw new Error(`No workspace mapping for continuation ${entry.id}.`);
+          await validateSessionContinuation(entry, mapping, checkoutRoot);
+        },
+        confirm: async entry => {
+          continuationIds.add(entry.id);
+          const current = await node.store.get(entry.id);
+          const marker = current?.metadata?.remoteMigration as {id?: string; originalProvider?: string; originalProviderSessionId?: string} | undefined;
+          if (!current || marker?.id !== manifest.migrationId || marker.originalProvider !== entry.provider || marker.originalProviderSessionId !== entry.providerSessionId) throw new Error('The persisted migration identity changed before ownership confirmation.');
+          const status = await confirmContinuationOwnership(syncProvider, entry, sync.deviceId, current.provider);
+          if (status === 'deleted') inactiveContinuations.add(entry.id);
+          return status;
+        },
+      });
+      log('session-continuations-ready', result);
+    } catch (error) {
+      stopContinuationDeletes();
+      syncProvider.disconnectAll();
+      node.close();
+      throw error;
+    }
+  }
 
   const runtime = createServeRuntime({
     deviceId: sync.deviceId,
@@ -234,8 +277,14 @@ export async function serve(options: ServeOptions): Promise<ServeResult> {
     ensureCheckout: (mapping) => ensureCheckout(mapping, { checkoutRoot }),
     prepareWorkspace: (mapping, requestId) => prepareSessionWorkspace(mapping, requestId, {checkoutRoot}),
     getSessionWorkspacePath: async sessionId => {
+      if (inactiveContinuations.has(sessionId)) return null;
       const session = await node.store.get(sessionId);
       const value = session?.metadata?.remoteWorkspacePath;
+      if (typeof value === 'string' && session?.metadata?.remoteMigration) {
+        const mapping = findWorkspace(loadWorkspaces(workspacesPath), session.workspacePath ?? '');
+        if (!mapping) throw new Error('The migrated conversation project is no longer mapped.');
+        return confineContinuationWorkspace(value, mapping, checkoutRoot);
+      }
       return typeof value === "string" ? value : null;
     },
     confineCheckout: (mapping) => confineCheckout(mapping, { checkoutRoot }),
@@ -334,8 +383,15 @@ export async function serve(options: ServeOptions): Promise<ServeResult> {
     },
 
     getSessionProjectId: async (sessionId) => {
+      if (inactiveContinuations.has(sessionId)) return null;
       const session = await node.store.get(sessionId);
       return session?.workspacePath ?? null;
+    },
+
+    canExecuteSession: async sessionId => {
+      if (inactiveContinuations.has(sessionId)) return false;
+      const session = await node.store.get(sessionId);
+      return !!session?.workspacePath && await ownsSessionExecution(syncProvider, sessionId, session.workspacePath, sync.deviceId);
     },
 
     workspaceContext: async workspace => {
@@ -361,9 +417,13 @@ export async function serve(options: ServeOptions): Promise<ServeResult> {
 
   // Kept so shutdown can stop intake at the source rather than relying on a
   // flag every handler has to remember to check.
+  // Recover before subscribing: a cached replay must not start a fresh turn
+  // that failInterrupted would mistake for work from the previous process.
+  await runtime.recoverPersistedQueue();
   const unsubscribes: Array<() => void> = [];
 
   unsubscribes.push(
+    stopContinuationDeletes,
     // Every reconnect, not just the ones this process initiates. A transcript
     // row that could not be sent is retried when a socket is usable again --
     // hooking only the twelve-minute rotation left a row stranded for up to
@@ -386,17 +446,11 @@ export async function serve(options: ServeOptions): Promise<ServeResult> {
     }) ?? (() => {}),
   );
 
-  // Work the previous process did not finish. A broadcast can already be
-  // arriving by now, which is fine: drains are serialized per session and the
-  // claim is an atomic status transition, so a recovered prompt and a fresh one
-  // queue behind each other rather than racing.
-  await runtime.recoverPersistedQueue();
-
   log('connected', { deviceId: sync.deviceId, serverUrl: sync.serverUrl });
 
   // Announced is not the same as eligible: the server also requires this socket
   // to be `synced`, which only an index read produces. See indexEligibility.ts.
-  await ensureIndexSynced({ provider: syncProvider, log });
+  if (await ensureIndexSynced({ provider: syncProvider, log })) runtime.resumePendingQueue();
   log('announced', { deviceId: sync.deviceId, deviceType: 'headless' });
 
   log('serving', {
@@ -410,7 +464,7 @@ export async function serve(options: ServeOptions): Promise<ServeResult> {
   // host selection. Re-establish it on a slow heartbeat; on protocol v2 this is
   // a delta read, not a bootstrap.
   const eligibilityTimer = setInterval(() => {
-    void ensureIndexSynced({ provider: syncProvider, log });
+    void ensureIndexSynced({ provider: syncProvider, log }).then(ready => {if (ready) runtime.resumePendingQueue();});
   }, ELIGIBILITY_HEARTBEAT_MS);
   eligibilityTimer.unref?.();
   timers.push(eligibilityTimer);
@@ -431,7 +485,7 @@ export async function serve(options: ServeOptions): Promise<ServeResult> {
       log('reconnected', { deviceId: sync.deviceId, generation: connectionGeneration() });
       // A new socket starts un-synced; without this the node stays connected
       // and announced but stops being offered work.
-      await ensureIndexSynced({ provider: syncProvider, log });
+      if (await ensureIndexSynced({ provider: syncProvider, log })) runtime.resumePendingQueue();
     },
   });
   // Not if shutdown already ran: `stopWithRevokedCredential` can fire from the

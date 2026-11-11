@@ -352,12 +352,18 @@ export function registerSessionHandlers(ctx: AIServiceContext): void {
 
     const loadPromise = (async () => {
     const loadStart = performance.now();
-    const session = await ctx.sessionManager.loadSession(sessionId, workspacePath)
-      ?? (workspacePath ? await remoteSessions.get(sessionId, workspacePath) : null);
+    const session = (workspacePath ? await remoteSessions.get(sessionId, workspacePath) : null)
+      ?? await ctx.sessionManager.loadSession(sessionId, workspacePath);
     const loadTime = performance.now() - loadStart;
     if (!session) {
       console.log(`[SESSION] Session not found: ${sessionId} (this is normal if the session was deleted)`);
       return null;
+    }
+
+    // An offline host must not make an already-migrated tab become a local tab.
+    const migratedHost = (session.metadata?.remoteMigration as {hostDeviceId?: unknown} | undefined)?.hostDeviceId;
+    if (typeof migratedHost === 'string' && migratedHost) {
+      session.metadata = {...session.metadata, remoteHostDeviceId: migratedHost};
     }
 
     // Restore document context state from persisted data (if available)

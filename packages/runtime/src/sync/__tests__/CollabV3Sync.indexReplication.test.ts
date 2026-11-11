@@ -174,6 +174,35 @@ describe('CollabV3 v2 index replication client', () => {
     } finally { provider.disconnectAll(); }
   });
 
+  it('reads only server-confirmed ownership and suspends authorization until hinted revisions commit', async () => {
+    const {provider, indexSocket} = await createConnectedProvider();
+    await provider.waitForIndexReady!();
+    const seen = vi.fn(() => provider.getVerifiedSessionOwnership!('owned'));
+    provider.onIndexChange?.(seen);
+    try {
+      expect(provider.getVerifiedSessionOwnership!('owned')).toBeUndefined();
+      const fetch = provider.fetchIndex!();
+      const request = await pageRequest(indexSocket, 0);
+      indexSocket.receive(pageResponse(request.requestId, {complete: true, cursor: 1,
+        entries: [sessionChange('owned', 1, {hostDeviceId: 'coder-one'})]}));
+      expect((await fetch).sessions).toEqual([expect.objectContaining({sessionId: 'owned', hostDeviceId: 'coder-one'})]);
+      expect(seen).not.toHaveBeenCalled();
+      expect(provider.getVerifiedSessionOwnership!('owned')).toMatchObject({hostDeviceId: 'coder-one'});
+      // Optimistic local metadata must never grant execution authority.
+      await provider.pushChange('owned', {type: 'metadata_updated', metadata: {hostDeviceId: 'optimistic'}});
+      expect(provider.getVerifiedSessionOwnership!('owned')).toMatchObject({hostDeviceId: 'coder-one'});
+      indexSocket.receive({type: 'indexChangesAvailable', revision: 2});
+      expect(provider.getVerifiedSessionOwnership!('owned')).toBeUndefined();
+      const delta = await pageRequest(indexSocket, 1);
+      indexSocket.receive(pageResponse(delta.requestId, {mode: 'delta', complete: true, cursor: 2,
+        entries: [sessionChange('owned', 2, {hostDeviceId: 'coder-two'})]}));
+      await vi.waitFor(() => expect(seen).toHaveBeenCalled());
+      expect(seen.mock.results.at(-1)?.value).toMatchObject({hostDeviceId: 'coder-two'});
+      provider.disconnectAll();
+      expect(provider.getVerifiedSessionOwnership!('owned')).toBeUndefined();
+    } finally {provider.disconnectAll();}
+  });
+
   it('replays verified hierarchy for a listener registered after bootstrap', async () => {
     const { provider, indexSocket } = await createConnectedProvider();
     try {
@@ -186,6 +215,26 @@ describe('CollabV3 v2 index replication client', () => {
       provider.onIndexChange?.(seen, { replayHierarchy: true });
       await vi.waitFor(() => expect(seen).toHaveBeenCalledWith('late-listener', expect.objectContaining({ parentSessionId: null, createdBySessionId: null })));
     } finally { provider.disconnectAll(); }
+  });
+
+  it('suspends ownership while an expired index cursor is being rebuilt', async () => {
+    const {provider, indexSocket} = await createConnectedProvider();
+    await provider.waitForIndexReady!();
+    try {
+      const first = provider.fetchIndex!();
+      const boot = await pageRequest(indexSocket, 0);
+      indexSocket.receive(pageResponse(boot.requestId, {complete: true, cursor: 1, entries: [sessionChange('owned', 1, {hostDeviceId: 'old-host'})]}));
+      await first;
+      const next = provider.fetchIndex!();
+      const delta = await pageRequest(indexSocket, 1);
+      indexSocket.receive(pageResponse(delta.requestId, {mode: 'delta', resetRequired: true}));
+      const rebuild = await pageRequest(indexSocket, 2);
+      const duringRebuild = provider.getVerifiedSessionOwnership!('owned');
+      indexSocket.receive(pageResponse(rebuild.requestId, {complete: true, cursor: 2, entries: [sessionChange('owned', 2, {hostDeviceId: 'new-host'})]}));
+      await next;
+      expect(duringRebuild).toBeUndefined();
+      expect(provider.getVerifiedSessionOwnership!('owned')).toMatchObject({hostDeviceId: 'new-host'});
+    } finally {provider.disconnectAll();}
   });
 
   it('keeps generic UI listeners silent while bootstrapping hierarchy rows', async () => {
@@ -1013,6 +1062,32 @@ describe('CollabV3 personal index safety on the legacy full-index path', () => {
     await legacyFetch(provider, indexSocket, [sessionEntry('bad', { encryptedTitle: 'bad', titleIv: 'bad' })], [projectChange('bad', 1).project]);
     expect.soft(provider.getPersonalSyncWriteGate!().skippedRowCount).toBe(1);
     provider.disconnectAll();
+  });
+
+  it('does not authorize stale or unreadable legacy ownership broadcasts', async () => {
+    const key = await generateKey();
+    const {provider, indexSocket} = await createConnectedProvider(key);
+    await provider.waitForIndexReady!();
+    await legacyFetch(provider, indexSocket, [{...await readableRow(key, 'owned', 'original'), hostDeviceId: 'original-host'}]);
+    expect(provider.getVerifiedSessionOwnership!('owned')).toMatchObject({hostDeviceId: 'original-host'});
+    const older = {...await readableRow(key, 'owned', 'older'), hostDeviceId: 'older-host'};
+    const newer = {...await readableRow(key, 'owned', 'newer'), hostDeviceId: 'newer-host'};
+    let release!: () => void;
+    const held = new Promise<void>(resolve => {release = resolve;});
+    const decrypt = crypto.subtle.decrypt.bind(crypto.subtle);
+    const spy = vi.spyOn(crypto.subtle, 'decrypt').mockImplementationOnce(async (...args: any[]) => {await held;return decrypt(args[0], args[1], args[2]);});
+    try {
+      indexSocket.receive({type: 'indexBroadcast', session: older});
+      expect(provider.getVerifiedSessionOwnership!('owned')).toBeUndefined();
+      indexSocket.receive({type: 'indexBroadcast', session: newer});
+      await vi.waitFor(() => expect(provider.getVerifiedSessionOwnership!('owned')).toMatchObject({hostDeviceId: 'newer-host'}));
+      release();
+      await settle();
+      expect(provider.getVerifiedSessionOwnership!('owned')).toMatchObject({hostDeviceId: 'newer-host'});
+      indexSocket.receive({type: 'indexBroadcast', session: sessionEntry('owned', {encryptedTitle: 'bad', titleIv: 'bad'})});
+      await settle();
+      expect(provider.getVerifiedSessionOwnership!('owned')).toBeUndefined();
+    } finally {release();spy.mockRestore();provider.disconnectAll();}
   });
 
   it('skips an undecryptable row, sends no indexDelete, and keeps the last good cache', async () => {

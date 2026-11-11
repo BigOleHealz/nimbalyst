@@ -132,6 +132,74 @@ function toSessionMeta(row: Row): SessionMeta {
 }
 
 export function createNodeSessionStore(db: SqliteDatabase): SessionStore {
+  function insert(payload: CreateSessionPayload, allowUpdate: boolean): void {
+    const now = Date.now();
+    const createdAt = toIsoText(payload.createdAt ?? now);
+    const updatedAt = toIsoText(payload.updatedAt ?? now);
+
+    db.prepare(`
+      INSERT INTO ai_sessions (
+        id, workspace_id, file_path, worktree_id, parent_session_id, provider, model,
+        title, session_type, mode, agent_role, created_by_session_id,
+        document_context, provider_config, provider_session_id, draft_input, metadata,
+        has_been_named, created_at, updated_at,
+        branched_from_session_id, branch_point_message_id, branched_at
+      ) VALUES (
+        @id, @workspaceId, @filePath, @worktreeId, @parentSessionId, @provider, @model,
+        @title, @sessionType, @mode, @agentRole, @createdBySessionId,
+        @documentContext, @providerConfig, @providerSessionId, @draftInput, @metadata,
+        @hasBeenNamed, @createdAt, @updatedAt,
+        @branchedFromSessionId, @branchPointMessageId, @branchedAt
+      )
+      ${allowUpdate ? `ON CONFLICT (id) DO UPDATE SET
+        workspace_id = excluded.workspace_id,
+        file_path = excluded.file_path,
+        worktree_id = excluded.worktree_id,
+        parent_session_id = excluded.parent_session_id,
+        provider = excluded.provider,
+        model = excluded.model,
+        title = excluded.title,
+        session_type = excluded.session_type,
+        mode = excluded.mode,
+        agent_role = excluded.agent_role,
+        created_by_session_id = excluded.created_by_session_id,
+        document_context = excluded.document_context,
+        provider_config = excluded.provider_config,
+        provider_session_id = excluded.provider_session_id,
+        draft_input = excluded.draft_input,
+        metadata = excluded.metadata,
+        has_been_named = excluded.has_been_named,
+        updated_at = excluded.updated_at,
+        branched_from_session_id = excluded.branched_from_session_id,
+        branch_point_message_id = excluded.branch_point_message_id,
+        branched_at = excluded.branched_at` : ""}
+    `).run({
+      id: payload.id,
+      workspaceId: payload.workspaceId,
+      filePath: payload.filePath ?? null,
+      worktreeId: payload.worktreeId ?? null,
+      parentSessionId: payload.parentSessionId ?? null,
+      provider: payload.provider,
+      model: payload.model ?? null,
+      title: payload.title ?? 'New conversation',
+      sessionType: payload.sessionType ?? 'session',
+      mode: payload.mode ?? 'agent',
+      agentRole: payload.agentRole ?? 'standard',
+      createdBySessionId: payload.createdBySessionId ?? null,
+      documentContext: toJsonColumn(payload.documentContext),
+      providerConfig: toJsonColumn(payload.providerConfig),
+      providerSessionId: payload.providerSessionId ?? null,
+      draftInput: null,
+      metadata: toJsonColumn((payload as { metadata?: unknown }).metadata ?? {}),
+      hasBeenNamed: fromBool((payload as { hasBeenNamed?: boolean }).hasBeenNamed),
+      createdAt,
+      updatedAt,
+      branchedFromSessionId: payload.branchedFromSessionId ?? null,
+      branchPointMessageId: payload.branchPointMessageId ?? null,
+      branchedAt: payload.branchedAt ? toIsoText(payload.branchedAt) : null,
+    });
+  }
+
   return {
     async ensureReady(): Promise<void> {
       // The database is opened and migrated before the store is constructed;
@@ -139,71 +207,35 @@ export function createNodeSessionStore(db: SqliteDatabase): SessionStore {
     },
 
     async create(payload: CreateSessionPayload): Promise<void> {
-      const now = Date.now();
-      const createdAt = toIsoText(payload.createdAt ?? now);
-      const updatedAt = toIsoText(payload.updatedAt ?? now);
+      insert(payload, true);
+    },
 
-      db.prepare(`
-        INSERT INTO ai_sessions (
-          id, workspace_id, file_path, worktree_id, parent_session_id, provider, model,
-          title, session_type, mode, agent_role, created_by_session_id,
-          document_context, provider_config, provider_session_id, draft_input, metadata,
-          has_been_named, created_at, updated_at,
-          branched_from_session_id, branch_point_message_id, branched_at
-        ) VALUES (
-          @id, @workspaceId, @filePath, @worktreeId, @parentSessionId, @provider, @model,
-          @title, @sessionType, @mode, @agentRole, @createdBySessionId,
-          @documentContext, @providerConfig, @providerSessionId, @draftInput, @metadata,
-          @hasBeenNamed, @createdAt, @updatedAt,
-          @branchedFromSessionId, @branchPointMessageId, @branchedAt
-        )
-        ON CONFLICT (id) DO UPDATE SET
-          workspace_id = excluded.workspace_id,
-          file_path = excluded.file_path,
-          worktree_id = excluded.worktree_id,
-          parent_session_id = excluded.parent_session_id,
-          provider = excluded.provider,
-          model = excluded.model,
-          title = excluded.title,
-          session_type = excluded.session_type,
-          mode = excluded.mode,
-          agent_role = excluded.agent_role,
-          created_by_session_id = excluded.created_by_session_id,
-          document_context = excluded.document_context,
-          provider_config = excluded.provider_config,
-          provider_session_id = excluded.provider_session_id,
-          draft_input = excluded.draft_input,
-          metadata = excluded.metadata,
-          has_been_named = excluded.has_been_named,
-          updated_at = excluded.updated_at,
-          branched_from_session_id = excluded.branched_from_session_id,
-          branch_point_message_id = excluded.branch_point_message_id,
-          branched_at = excluded.branched_at
-      `).run({
-        id: payload.id,
-        workspaceId: payload.workspaceId,
-        filePath: payload.filePath ?? null,
-        worktreeId: payload.worktreeId ?? null,
-        parentSessionId: payload.parentSessionId ?? null,
-        provider: payload.provider,
-        model: payload.model ?? null,
-        title: payload.title ?? 'New conversation',
-        sessionType: payload.sessionType ?? 'session',
-        mode: payload.mode ?? 'agent',
-        agentRole: payload.agentRole ?? 'standard',
-        createdBySessionId: payload.createdBySessionId ?? null,
-        documentContext: toJsonColumn(payload.documentContext),
-        providerConfig: toJsonColumn(payload.providerConfig),
-        providerSessionId: payload.providerSessionId ?? null,
-        draftInput: null,
-        metadata: toJsonColumn((payload as { metadata?: unknown }).metadata ?? {}),
-        hasBeenNamed: fromBool((payload as { hasBeenNamed?: boolean }).hasBeenNamed),
-        createdAt,
-        updatedAt,
-        branchedFromSessionId: payload.branchedFromSessionId ?? null,
-        branchPointMessageId: payload.branchPointMessageId ?? null,
-        branchedAt: payload.branchedAt ? toIsoText(payload.branchedAt) : null,
-      });
+    async createIfAbsent(payload: CreateSessionPayload): Promise<void> {
+      db.transaction(() => {
+        const collision = db.prepare(`SELECT id FROM ai_sessions
+          WHERE id = @id OR (provider = @provider AND provider_session_id = @nativeId)
+          LIMIT 1`).get({id: payload.id, provider: payload.provider, nativeId: payload.providerSessionId ?? null});
+        if (collision) throw new Error('Session or native conversation already exists.');
+        insert(payload, false);
+      }).immediate();
+    },
+
+    async verifyContinuationIdentity(id, migrationId, provider, providerSessionId): Promise<void> {
+      db.transaction(() => {
+        const row = db.prepare('SELECT provider, provider_session_id, metadata FROM ai_sessions WHERE id = ?').get(id) as Row | undefined;
+        const metadata = parseJsonObjectColumn(row?.metadata);
+        const migration = metadata.remoteMigration as Record<string, unknown> | undefined;
+        if (!row || !migration || migration.id !== migrationId) throw new Error('Session migration identity is unavailable.');
+        if (migration.originalProvider !== undefined || migration.originalProviderSessionId !== undefined) {
+          if (migration.originalProvider !== provider || migration.originalProviderSessionId !== providerSessionId) throw new Error('Session migration identity changed.');
+          return;
+        }
+        // Legacy markers can be upgraded only while their live native identity
+        // still proves the original import. Never infer an already-advanced ID.
+        if (row.provider !== provider || row.provider_session_id !== providerSessionId) throw new Error('The legacy migration needs explicit native identity verification.');
+        metadata.remoteMigration = {...migration, originalProvider: provider, originalProviderSessionId: providerSessionId};
+        db.prepare('UPDATE ai_sessions SET metadata = ? WHERE id = ?').run(toJsonColumn(metadata), id);
+      }).immediate();
     },
 
     async updateMetadata(

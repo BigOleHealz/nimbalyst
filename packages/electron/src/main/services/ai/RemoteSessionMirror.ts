@@ -1,5 +1,5 @@
 import { projectRemoteHosts } from './remoteHostInventory';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { logger } from '../../utils/logger';
 import { TranscriptRuntime } from '@nimbalyst/runtime/ai/server/transcript/TranscriptRuntime';
 import type { RawMessage } from '@nimbalyst/runtime/ai/server/transcript/TranscriptTransformer';
@@ -37,6 +37,9 @@ export class RemoteSessionMirror {
   private unlistenDevices?: () => void;
   private refreshInFlight?: Promise<void>;
   private refreshedAt = 0;
+  private deletedIds = new Set<string>();
+  private providerGeneration = 0;
+  private initializing = new Map<string, Promise<Observation>>();
   private writeQueue: Promise<unknown> = Promise.resolve();
   constructor(private readonly deps: {
     preparePrompt?(prompt: string, workspace: string): Promise<string>;
@@ -45,6 +48,10 @@ export class RemoteSessionMirror {
     configuredHostIds?(): Set<string>;
     linkedTrackerItemIds?(workspace: string, sessionId: string): string[] | undefined;
     hasLocalSession(id: string): Promise<boolean>;
+    /** An explicit, retained local copy whose execution was moved to this host. */
+    migratedHost?(id: string): Promise<string | undefined>;
+    migratedWorkspace?(id: string): Promise<string | undefined>;
+    seedMessages?(id: string): Promise<RawMessage[]>;
     assertLocalProjectExecution?(id: string): Promise<void>;
     listChanged(workspacePath: string, sessionId: string): void;
   }) {}
@@ -52,6 +59,9 @@ export class RemoteSessionMirror {
   setProvider(provider: SyncProvider | null, encryptionKey: CryptoKey | null = null): void {
     this.encryptionKey = encryptionKey;
     if (provider === this.provider) return;
+    this.providerGeneration++;
+    this.initializing.clear();
+    this.deletedIds.clear();
     this.unlistenIndex?.();
     this.unlistenIndexDelete?.();
     this.unlistenDevices?.();
@@ -104,6 +114,7 @@ export class RemoteSessionMirror {
     return this.isRemoteHost(this.provider?.getCachedIndexEntry?.(sessionId)?.hostDeviceId ?? this.entries.get(sessionId)?.hostDeviceId);
   }
   async assertLocalExecution(sessionId: string): Promise<void> {
+    if (await this.deps.migratedHost?.(sessionId)) throw new Error('This conversation continues on its remote machine.');
     await this.deps.assertLocalProjectExecution?.(sessionId);
     if (this.isRemote(sessionId) && !await this.deps.hasLocalSession(sessionId)) {
       throw new Error('Use the sandbox controls to send this prompt to its host.');
@@ -119,6 +130,8 @@ export class RemoteSessionMirror {
       if (this.provider !== provider) return;
       const next = new Map(index.sessions.filter(entry => this.isRemoteHost(entry.hostDeviceId)).map(entry => [entry.sessionId, entry]));
       this.entries = next;
+      for (const id of index.deletedSessionIds ?? []) this.deletedIds.add(id);
+      for (const id of next.keys()) this.deletedIds.delete(id);
       this.refreshedAt = Date.now();
     })();
     this.refreshInFlight = attempt;
@@ -127,6 +140,28 @@ export class RemoteSessionMirror {
   }
   async list(workspacePath: string, local: SessionMeta[]): Promise<SessionMeta[]> {
     try { await this.refresh(); } catch { /* Local history remains usable offline. */ }
+    const retained = await Promise.all(local.map(async row => {
+      const host = await this.deps.migratedHost?.(row.id);
+      if (!host) return row;
+      const recordedWorkspace = await this.deps.migratedWorkspace?.(row.id);
+      if (recordedWorkspace && recordedWorkspace !== workspacePath) return undefined;
+      const entry = this.entries.get(row.id);
+      // Only an explicit tombstone proves deletion. An unknown/expired index
+      // row must not hide the user's retained recovery history.
+      if (this.deletedIds.has(row.id)) return undefined;
+      const current = entry?.projectId === workspacePath && entry.hostDeviceId === host ? entry : undefined;
+      return {
+        ...row,
+        ...(current ? {
+          title: current.title || row.title, isArchived: !!current.isArchived, isPinned: !!current.isPinned,
+          parentSessionId: current.parentSessionId ?? null, createdBySessionId: current.createdBySessionId ?? null,
+          updatedAt: current.updatedAt,
+          messageCount: Math.max(row.messageCount ?? 0, current.messageCount ?? 0),
+        } : {}),
+        remoteHostDeviceId: host, worktreeId: null, uncommittedCount: 0,
+      };
+    }));
+    local = retained.filter((row): row is SessionMeta => !!row);
     const ids = new Set(local.map(entry => entry.id));
     const provider = this.provider;
     const remote: SessionMeta[] = [];
@@ -149,6 +184,8 @@ export class RemoteSessionMirror {
     }
     for (const entry of this.entries.values()) {
       if (entry.projectId !== workspacePath || ids.has(entry.sessionId)) continue;
+      const recordedWorkspace = await this.deps.migratedWorkspace?.(entry.sessionId);
+      if (recordedWorkspace && recordedWorkspace !== workspacePath) continue;
       if (await this.deps.hasLocalSession(entry.sessionId)) continue;
       if (this.provider !== provider) return local;
       remote.push({
@@ -167,13 +204,20 @@ export class RemoteSessionMirror {
   }
   private async requireEntry(id: string, workspace: string): Promise<IndexEntry> {
     const provider = this.provider;
+    await this.assertMigrationWorkspace(id, workspace);
     await this.refresh();
     const entry = this.entries.get(id);
     if (!entry || !this.isRemoteHost(entry.hostDeviceId) || entry.projectId !== workspace || await this.deps.hasLocalSession(id)) {
       throw new Error('This remote session is not available in this workspace.');
     }
+    const migratedHost = await this.deps.migratedHost?.(id);
+    if (migratedHost && migratedHost !== entry.hostDeviceId) throw new Error('The remote host does not match this conversation’s migration record.');
     if (provider !== this.provider) throw new Error('Session sync changed. Reopen this remote session.');
     return entry;
+  }
+  private async assertMigrationWorkspace(id: string, workspace: string): Promise<void> {
+    const recordedWorkspace = await this.deps.migratedWorkspace?.(id);
+    if (recordedWorkspace && recordedWorkspace !== workspace) throw new Error('The migrated conversation belongs to another workspace.');
   }
   private sessionData(entry: IndexEntry, messages: SessionData['messages']): SessionData {
     return {
@@ -186,14 +230,23 @@ export class RemoteSessionMirror {
     };
   }
   async workspaceForSession(id: string): Promise<string | undefined> {
+    const migratedWorkspace = await this.deps.migratedWorkspace?.(id);
+    if (migratedWorkspace) return migratedWorkspace;
+    if (await this.deps.migratedHost?.(id)) throw new Error('The migrated conversation workspace is unavailable.');
     if (await this.deps.hasLocalSession(id)) return undefined;
     await this.refresh();
     const entry = this.entries.get(id);
     return entry && this.isRemoteHost(entry.hostDeviceId) && !await this.deps.hasLocalSession(id) ? entry.projectId : undefined;
   }
   async get(id: string, workspace: string): Promise<SessionData | null> {
+    await this.assertMigrationWorkspace(id, workspace);
     if (await this.deps.hasLocalSession(id)) return null;
-    try { await this.refresh(); } catch { return null; }
+    if (this.deletedIds.has(id)) throw new Error('This remote conversation was deleted.');
+    try { await this.refresh(); } catch {
+      if (this.deletedIds.has(id)) throw new Error('This remote conversation was deleted.');
+      return null;
+    }
+    if (this.deletedIds.has(id)) throw new Error('This remote conversation was deleted.');
     if (!this.entries.has(id)) return null;
     const entry = await this.requireEntry(id, workspace);
     return this.sessionData(entry, []);
@@ -241,45 +294,79 @@ export class RemoteSessionMirror {
       });
     }, 150);
   }
+  private async initializeObservation(id: string, workspace: string, entry: IndexEntry, provider: SyncProvider, generation: number): Promise<Observation> {
+    if (new Set([...this.observations.keys(), ...this.initializing.keys()]).size >= 4) throw new Error('Close another remote transcript before opening this one.');
+    const rows = new Map<number, RawMessage>();
+    const identity = (row: Pick<RawMessage, 'source' | 'direction' | 'createdAt' | 'content'>) => createHash('sha256').update(JSON.stringify([row.source, row.direction, new Date(row.createdAt).getTime(), row.content])).digest('hex');
+    const identities = new Set<string>();
+    // The original database remains the recovery copy. Seed its history without
+    // uploading it again or counting it against the live remote receive limit.
+    if (await this.deps.migratedHost?.(id)) {
+      const seed = await this.deps.seedMessages?.(id) ?? [];
+      for (const [index, row] of seed.entries()) {
+        if (row.sessionId !== id) throw new Error('Mismatched migrated transcript.');
+        const seedId = index - seed.length;
+        rows.set(seedId, {...row, id: seedId, createdAt: new Date(row.createdAt)});
+        identities.add(identity(row));
+      }
+    }
+    if (provider !== this.provider || generation !== this.providerGeneration) throw new Error('Session sync changed. Reopen this remote session.');
+    const live = this.entries.get(id);
+    if (this.deletedIds.has(id) || !live || live.hostDeviceId !== entry.hostDeviceId || live.projectId !== workspace) throw new Error('Session sync changed. Reopen this remote session.');
+    let receivedRows = 0;
+    const runtime = new TranscriptRuntime({ getMessages: async (_id, afterId) => [...rows.values()]
+      // A retained row can arrive after the answer it preceded. Wire receipt
+      // order is not agent turn order; timestamp ties keep the room sequence.
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id - b.id)
+      .map((row, index) => ({ ...row, id: index + 1 }))
+      .filter(row => afterId === undefined || row.id > afterId)
+    }, { cacheCap: 1 });
+    const observation: Observation = { entry, rows, runtime, bytes: 0, dirty: false, rowVersion: 0, projectedVersion: -1, listeners: new Set(), dispose() {} };
+    this.observations.set(id, observation);
+    const current = observation;
+    const offChange = provider.onRemoteChange(id, change => {
+      if (change.type !== 'message_added' || change.message.sessionId !== id) return;
+      const message = change.message;
+      if (typeof message.id !== 'number' || !Number.isSafeInteger(message.id) || message.id <= 0 || rows.has(message.id)) return;
+      const messageIdentity = identity({...message, createdAt: new Date(message.createdAt ?? 0)});
+      if (identities.has(messageIdentity)) return;
+      const bytes = Buffer.byteLength(message.content, 'utf8');
+      if (current.bytes + bytes > 8 * 1024 * 1024 || receivedRows >= 20000) {
+        current.error = 'This remote transcript exceeds the desktop viewing limit.';
+        offChange(); provider.disconnect(id); this.schedule(id, current); return;
+      }
+      current.bytes += bytes;
+      receivedRows++;
+      rows.set(message.id, { ...message, id: message.id, createdAt: new Date(message.createdAt ?? 0) });
+      current.rowVersion++;
+      this.schedule(id, current);
+    });
+    const offStatus = provider.onStatusChange(id, () => this.schedule(id, current));
+    current.dispose = () => { offChange(); offStatus(); if (current.timer) clearTimeout(current.timer); };
+    void provider.connect(id).catch(() => {
+      current.error = 'The sandbox transcript could not connect. Reopen it to retry.';
+      this.schedule(id, current);
+    });
+    return current;
+  }
   async watch(id: string, workspace: string, listener: (snapshot: RemoteSessionSnapshot) => void): Promise<() => void> {
-    const entry = await this.requireEntry(id, workspace);
     const provider = this.provider;
+    const generation = this.providerGeneration;
+    const entry = await this.requireEntry(id, workspace);
     if (!provider) throw new Error('Session sync is not connected.');
+    if (provider !== this.provider || generation !== this.providerGeneration) throw new Error('Session sync changed. Reopen this remote session.');
     let observation = this.observations.get(id);
     if (!observation) {
-      if (this.observations.size >= 4) throw new Error('Close another remote transcript before opening this one.');
-      const rows = new Map<number, RawMessage>();
-      const runtime = new TranscriptRuntime({ getMessages: async (_id, afterId) => [...rows.values()]
-        // A retained row can arrive after the answer it preceded. Wire receipt
-        // order is not agent turn order; timestamp ties keep the room sequence.
-        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id - b.id)
-        .map((row, index) => ({ ...row, id: index + 1 }))
-        .filter(row => afterId === undefined || row.id > afterId)
-      }, { cacheCap: 1 });
-      observation = { entry, rows, runtime, bytes: 0, dirty: false, rowVersion: 0, projectedVersion: -1, listeners: new Set(), dispose() {} };
-      this.observations.set(id, observation);
-      const current = observation;
-      const offChange = provider.onRemoteChange(id, change => {
-        if (change.type !== 'message_added' || change.message.sessionId !== id) return;
-        const message = change.message;
-        if (typeof message.id !== 'number' || !Number.isSafeInteger(message.id) || message.id <= 0 || rows.has(message.id)) return;
-        const bytes = Buffer.byteLength(message.content, 'utf8');
-        if (current.bytes + bytes > 8 * 1024 * 1024 || rows.size >= 20000) {
-          current.error = 'This remote transcript exceeds the desktop viewing limit.';
-          offChange(); provider.disconnect(id); this.schedule(id, current); return;
-        }
-        current.bytes += bytes;
-        rows.set(message.id, { ...message, id: message.id, createdAt: new Date(message.createdAt ?? 0) });
-        current.rowVersion++;
-        this.schedule(id, current);
-      });
-      const offStatus = provider.onStatusChange(id, () => this.schedule(id, current));
-      current.dispose = () => { offChange(); offStatus(); if (current.timer) clearTimeout(current.timer); };
-      void provider.connect(id).catch(() => {
-        current.error = 'The sandbox transcript could not connect. Reopen it to retry.';
-        this.schedule(id, current);
-      });
+      let pending = this.initializing.get(id);
+      if (!pending) {
+        pending = this.initializeObservation(id, workspace, entry, provider, generation);
+        this.initializing.set(id, pending);
+        const started = pending;
+        void pending.finally(() => {if (this.initializing.get(id) === started) this.initializing.delete(id);}).catch(() => {});
+      }
+      observation = await pending;
     }
+    if (provider !== this.provider || generation !== this.providerGeneration || this.observations.get(id) !== observation) throw new Error('Session sync changed. Reopen this remote session.');
     observation.listeners.add(listener);
     this.schedule(id, observation);
     const current = observation;
@@ -402,6 +489,7 @@ export class RemoteSessionMirror {
   }
 
   private removeEntry(id: string): void {
+    this.deletedIds.add(id);
     const entry = this.entries.get(id);
     const observation = this.observations.get(id);
     if (observation) {

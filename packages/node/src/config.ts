@@ -79,6 +79,9 @@ export interface NodeConfig {
    */
   workspacesPath?: string;
 
+  /** Operator-provisioned native conversation continuations, imported before accepting prompts. */
+  sessionContinuationsPath?: string;
+
   /**
    * Absolute directory every `checkoutDir` must live under. Defaults to
    * `/workspace`, which is where the container mounts them.

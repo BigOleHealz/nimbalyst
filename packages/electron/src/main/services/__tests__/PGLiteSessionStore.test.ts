@@ -40,6 +40,16 @@ describe('PGLiteSessionStore archive filters', () => {
 });
 
 describe('PGLiteSessionStore personal sync snapshot', () => {
+  it.each(['parsed', 'json-text'])('excludes migrated recovery rows before sync metadata projection (%s)', async shape => {
+    const migration = {hostDeviceId: 'coder-one'};
+    const base = {workspace_id: '/project', provider: 'openai-codex', created_at: new Date(0), updated_at: new Date(0), is_archived: false, metadata: {hostDeviceId: 'coder-one'}};
+    const db = {query: vi.fn(async () => ({rows: [
+      {...base, id: 'recovery', remote_migration: shape === 'parsed' ? migration : JSON.stringify(migration)},
+      {...base, id: 'local', remote_migration: null},
+    ]}))};
+    createPGLiteSessionStore(db as any);
+    expect((await getAllSessionsForSync()).map(s => s.id)).toEqual(['local']);
+  });
   it('excludes tutorial sessions identified by parsed metadata', async () => {
     const db = {
       query: vi.fn(async () => ({

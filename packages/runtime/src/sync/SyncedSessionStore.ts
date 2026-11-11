@@ -145,6 +145,9 @@ export function createSyncedSessionStore(
 
   return {
     findByProviderSessionId: baseStore.findByProviderSessionId?.bind(baseStore),
+    // Migration handoff is confirmed explicitly after persistence, never detached.
+    createIfAbsent: baseStore.createIfAbsent?.bind(baseStore),
+    verifyContinuationIdentity: baseStore.verifyContinuationIdentity?.bind(baseStore),
     getMany: baseStore.getMany?.bind(baseStore),
     listPendingHierarchyIntents: baseStore.listPendingHierarchyIntents?.bind(baseStore),
     acknowledgeHierarchyIntent: baseStore.acknowledgeHierarchyIntent?.bind(baseStore),

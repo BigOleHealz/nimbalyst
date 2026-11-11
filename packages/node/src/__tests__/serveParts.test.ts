@@ -15,6 +15,8 @@ import { CredentialRevokedError } from '../serve/credentials.js';
 import { createSyncedAgentMessagesStore } from '../serve/syncedAgentMessagesStore.js';
 import { ensureIndexSynced } from '../serve/indexEligibility.js';
 import { withHostAttribution } from '../serve/hostAttributionStore.js';
+import {createNodeSessionStore} from '../store/NodeSessionStore.js';
+import {importSessionContinuations} from '../serve/sessionContinuations.js';
 import {
   createMessageSyncHandler,
   createSyncedSessionStore,
@@ -44,6 +46,43 @@ describe('queued prompt store', () => {
     rmSync(directory, { recursive: true, force: true });
   });
 
+  it('does not overwrite a session created after migration preflight', async () => {
+    const store = createNodeSessionStore(db);
+    const original = {id: 'import-race', workspaceId: '/project', provider: 'claude-code', providerSessionId: 'unrelated-native-thread', title: 'Concurrent user work'};
+    await expect(importSessionContinuations({
+      migrationId: 'move', hostDeviceId: 'host', store,
+      entries: [{...original, providerSessionId: 'migrated-thread', title: 'Migration', remoteWorkspacePath: '/host/project', nativeSessionPath: '/host/thread.jsonl', nativeSessionSha256: 'checked'}],
+      validate: async () => {await store.create(original);},
+      confirm: async () => {},
+    })).rejects.toThrow(/already exists/);
+    expect(await store.get(original.id)).toMatchObject({title: original.title, providerSessionId: original.providerSessionId});
+  });
+
+  it('refuses importing an existing native conversation under a different Nimbalyst identity', async () => {
+    const store = createNodeSessionStore(db);
+    await store.create({id: 'native-owner', workspaceId: '/project', provider: 'claude-code', providerSessionId: 'already-owned-thread'});
+    await expect(store.createIfAbsent!({id: 'native-copy', workspaceId: '/other', provider: 'claude-code', providerSessionId: 'already-owned-thread'})).rejects.toThrow(/already exists/);
+    expect(await store.get('native-copy')).toBeNull();
+    expect((await store.get('native-owner'))?.providerSessionId).toBe('already-owned-thread');
+  });
+
+  it('records provable legacy migration identity once and preserves later native state', async () => {
+    const store = createNodeSessionStore(db);
+    await store.create({id: 'legacy-migration', workspaceId: '/project', provider: 'openai-codex', providerSessionId: 'original-thread', metadata: {remoteMigration: {id: 'move'}}});
+    await store.verifyContinuationIdentity!('legacy-migration', 'move', 'openai-codex', 'original-thread');
+    await store.updateMetadata('legacy-migration', {providerSessionId: 'continued-thread'});
+    await store.verifyContinuationIdentity!('legacy-migration', 'move', 'openai-codex', 'original-thread');
+    await expect(store.verifyContinuationIdentity!('legacy-migration', 'move', 'claude-code', 'unrelated-thread')).rejects.toThrow(/identity changed/);
+    expect(await store.get('legacy-migration')).toMatchObject({providerSessionId: 'continued-thread', metadata: {remoteMigration: {id: 'move', originalProvider: 'openai-codex', originalProviderSessionId: 'original-thread'}}});
+  });
+
+  it('never guesses the original identity of an already-advanced legacy migration', async () => {
+    const store = createNodeSessionStore(db);
+    await store.create({id: 'unknown-legacy', workspaceId: '/project', provider: 'openai-codex', providerSessionId: 'advanced-thread', metadata: {remoteMigration: {id: 'move'}}});
+    await expect(store.verifyContinuationIdentity!('unknown-legacy', 'move', 'openai-codex', 'original-thread')).rejects.toThrow(/explicit native identity/);
+    expect((await store.get('unknown-legacy'))?.metadata?.remoteMigration).toEqual({id: 'move'});
+  });
+
   it('retains encrypted attachments through queue reload without replaying an accepted id', () => {
     const attachments = [{id: 'image', filename: 'image.png', mimeType: 'image/png', encryptedData: 'cipher', iv: 'nonce', size: 5}];
     const queue = createQueuedPromptStore(db);
@@ -59,6 +98,8 @@ describe('queued prompt store', () => {
     const prompt = { id: 'p1', sessionId: 'session-1', prompt: 'first', createdAt: 1_000 };
 
     expect(queue.offer(prompt)).toBe(true);
+    expect(queue.has(prompt.id)).toBe(true);
+    expect(queue.has('never-received')).toBe(false);
     // A reconnect replays the same broadcast. The row already exists, so the
     // second offer is a no-op -- this is what stops a re-run.
     expect(queue.offer(prompt)).toBe(false);
@@ -69,6 +110,7 @@ describe('queued prompt store', () => {
     expect(queue.listPending('session-1')).toEqual([]);
 
     queue.complete('p1');
+    expect(queue.has(prompt.id)).toBe(true);
     // Completed is still "seen": the id must never come back as pending.
     expect(queue.offer(prompt)).toBe(false);
     expect(queue.listPending('session-1')).toEqual([]);
@@ -294,6 +336,23 @@ describe('workspaces file', () => {
 });
 
 describe('host attribution', () => {
+  it('persists collision-safe imports with attribution but leaves publication to the confirmed handoff', async () => {
+    const createIfAbsent = vi.fn(async () => {});
+    const create = vi.fn();
+    const pushChange = vi.fn(async () => ({published: true}));
+    const provider = {pushChange, connect: vi.fn(async () => {})} as any;
+    const store = withHostAttribution(createSyncedSessionStore({create, createIfAbsent} as any, provider), 'persistent-host');
+    const payload = {id: 'continuation', workspaceId: '/project', provider: 'openai-codex'};
+    await store.createIfAbsent!(payload);
+    expect(createIfAbsent).toHaveBeenCalledWith({...payload, metadata: {hostDeviceId: 'persistent-host'}});
+    expect(pushChange).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+    pushChange.mockClear();
+    createIfAbsent.mockRejectedValueOnce(new Error('Already exists'));
+    await expect(store.createIfAbsent!(payload)).rejects.toThrow('Already exists');
+    expect(pushChange).not.toHaveBeenCalled();
+  });
+
   it('carries hostDeviceId in the FIRST publication, through the real synced store', async () => {
     const pushes: Array<{ sessionId: string; change: any }> = [];
     const created: Array<Record<string, unknown>> = [];
