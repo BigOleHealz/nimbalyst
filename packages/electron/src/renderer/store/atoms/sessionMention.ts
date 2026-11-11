@@ -92,7 +92,7 @@ function buildDescription(updatedAt: number, phase?: string): React.ReactElement
     ? React.createElement(
         'span',
         {
-          className: 'text-[0.5625rem] leading-tight px-1 py-px rounded font-medium whitespace-nowrap',
+          className: 'session-phase-badge text-[0.5625rem] leading-tight px-1 py-px rounded font-medium whitespace-nowrap',
           style: { color: style.color, backgroundColor: style.bg },
         },
         style.label
